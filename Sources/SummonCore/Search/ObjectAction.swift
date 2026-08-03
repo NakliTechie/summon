@@ -60,6 +60,7 @@ public enum ObjectActionGrammar {
             return [
                 ObjectAction(id: "copy", title: "Copy", name: "clipboard.copy"),
                 ObjectAction(id: "paste", title: "Paste", name: "clipboard.paste"),
+                ObjectAction(id: "paste-plain", title: "Paste as Plain Text", name: "clipboard.pastePlain"),
                 ObjectAction(id: "pin", title: "Pin", name: "clipboard.pin"),
                 ObjectAction(id: "delete", title: "Delete", name: "clipboard.delete", isDestructive: true),
             ]

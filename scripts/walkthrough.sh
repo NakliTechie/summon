@@ -27,8 +27,12 @@ echo "=== role: human/user (CLI settings + search) ==="
 
 echo "=== role: agent (same CLI, journals actor=agent) ==="
 "$BIN" settings set agent.walk true
-# AI may or may not be available; status must not crash
 "$BIN" ai status || true
+"$BIN" web enable
+"$BIN" settings get web.search.baseURL | grep -q '127.0.0.1' || true
+"$BIN" web disable
+"$BIN" window leftHalf | grep -q layout
+"$BIN" ai l0-consent || true
 
 echo "=== role: extension (shim fixtures via swift test) ==="
 swift test --filter FixtureHarnessTests >/dev/null

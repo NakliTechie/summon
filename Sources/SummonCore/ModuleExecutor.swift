@@ -113,12 +113,17 @@ public enum ModuleRouter {
                 text = result.title
             }
             try executor.copyToPasteboard(text: text)
-        case "clipboard.copy", "clipboard.paste":
+        case "clipboard.copy", "clipboard.paste", "clipboard.pastePlain":
+            let raw: String
             if case .string(let t) = result.payload["text"] {
-                try executor.copyToPasteboard(text: t)
+                raw = t
             } else {
-                try executor.copyToPasteboard(text: result.title)
+                raw = result.title
             }
+            let text = actionName == "clipboard.pastePlain"
+                ? raw.precomposedStringWithCanonicalMapping
+                : raw
+            try executor.copyToPasteboard(text: text)
         case "quicklink.open":
             let url: String
             if case .string(let u) = result.payload["url"] {

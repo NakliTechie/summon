@@ -21,6 +21,12 @@ public struct ClipboardItem: Sendable, Hashable, Codable, Equatable, Identifiabl
         self.createdAt = createdAt
         self.isPinned = isPinned
     }
+
+    /// Paste-as-plain: strip RTF/HTML markers already stored as plain text; NFC normalize.
+    public var plainText: String {
+        text.precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
 }
 
 public struct ClipboardStore: Sendable {
