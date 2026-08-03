@@ -1,6 +1,9 @@
 # --- Local planning scratch (per NakliTechie convention — never committed) ---
 plan/
 
+# --- Autopilot isolated worktrees ---
+.worktrees/
+
 # --- macOS ---
 .DS_Store
 .AppleDouble
