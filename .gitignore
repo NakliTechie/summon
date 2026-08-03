@@ -1,0 +1,45 @@
+# --- Local planning scratch (per NakliTechie convention — never committed) ---
+plan/
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Swift Package Manager ---
+.build/
+.swiftpm/
+Package.resolved
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
+# --- Xcode ---
+build/
+*.xcarchive
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# --- Signing / secrets (never commit) ---
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+.env
+.env.*
+
+# --- Derived model / index data (rebuildable, excluded from exports) ---
+Models/
+*.gguf
+
+# --- Editors ---
+.idea/
+.vscode/

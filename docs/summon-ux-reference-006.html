@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="version" content="ux-ref-006">
+<title>Summon — UX/UI Reference 006</title>
+<style>
+  :root{
+    /* app tokens (source of truth → Tokens.swift) */
+    --bg-glass:#14151A; --surface:#1C1E26; --raised:#24262F;
+    --text:#E8E6DF; --dim:#9A98A0; --accent:#7C6FE8; --staged:#E5A54B;
+    --ok:#5FB37A; --danger:#E06C5F; --hairline:#33353F;
+    /* document chrome (reference only, not app) */
+    --doc-bg:#0E0F12; --doc-ink:#C9C7CE; --doc-faint:#6E6C76;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--doc-bg);color:var(--doc-ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  header{padding:28px 24px 18px;border-bottom:1px solid #1E2027}
+  header h1{font-size:20px;font-weight:600;color:var(--text)}
+  header .sub{font-size:12px;color:var(--doc-faint);margin-top:4px}
+  .eyebrow{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent)}
+  .wrap{display:flex;min-height:calc(100vh - 90px)}
+  nav{width:210px;flex:none;border-right:1px solid #1E2027;padding:16px 0}
+  nav button{display:block;width:100%;text-align:left;background:none;border:0;
+    color:var(--doc-faint);font:12.5px/1 ui-monospace,monospace;padding:10px 22px;
+    cursor:pointer;border-left:2px solid transparent}
+  nav button:hover{color:var(--doc-ink)}
+  nav button.on{color:var(--text);border-left-color:var(--accent);background:#13141A}
+  nav .grp{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:#4B4A55;padding:14px 22px 6px;font-family:ui-monospace,monospace}
+  main{flex:1;padding:26px 30px 60px;max-width:960px}
+  section{display:none}section.on{display:block}
+  h2{font-size:16px;font-weight:600;color:var(--text);margin-bottom:2px}
+  .rule{font-size:12.5px;color:var(--doc-faint);margin-bottom:18px;max-width:640px}
+  .rule b{color:var(--staged);font-weight:600}
+  .stage{background:#17181E;border:1px solid #23242C;border-radius:14px;
+    padding:34px 26px;display:flex;justify-content:center}
+  .notes{margin-top:16px;display:grid;gap:8px;max-width:680px}
+  .note{display:flex;gap:10px;font-size:12.5px;color:var(--doc-ink)}
+  .pin{flex:none;width:18px;height:18px;border-radius:50%;background:var(--accent);
+    color:#0E0F12;font:600 10.5px/18px ui-monospace,monospace;text-align:center}
+  .pin.amb{background:var(--staged)} .pin.red{background:var(--danger)}
+  /* ---- launcher panel ---- */
+  .panel{width:560px;max-width:100%;background:var(--bg-glass);border:1px solid var(--hairline);
+    border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+  .qrow{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--hairline)}
+  .qrow .glyph{color:var(--accent);font-size:15px}
+  .qrow input{flex:1;background:none;border:0;outline:0;color:var(--text);
+    font:16px ui-monospace,monospace}
+  .qrow input::placeholder{color:#55545E}
+  .list{padding:6px}
+  .row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;
+    color:var(--text);font-size:13.5px}
+  .row .ic{width:22px;text-align:center;color:var(--dim)}
+  .row .k{margin-left:auto;color:#55545E;font:11px ui-monospace,monospace}
+  .row.sel{background:var(--raised)}
+  .row .cat{color:#55545E;font-size:11px;margin-left:8px}
+  .foot{display:flex;gap:14px;padding:8px 14px;border-top:1px solid var(--hairline);
+    color:#55545E;font:10.5px ui-monospace,monospace}
+  .foot .ver{margin-left:auto}
+  /* staged proposal card — THE signature */
+  .prop{margin:8px;border:1px solid var(--staged);border-radius:10px;background:#1E1B15}
+  .prop .ph{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    color:var(--staged);font:600 10.5px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+  .prop .ph .dot{width:7px;height:7px;border-radius:50%;background:var(--staged)}
+  .prop pre{padding:4px 14px 12px;color:var(--text);font:13.5px/1.5 ui-monospace,monospace;
+    white-space:pre-wrap;outline:none}
+  .prop .acts{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #3A3222}
+  .btn{border:1px solid var(--hairline);background:var(--raised);color:var(--text);
+    font:12px ui-monospace,monospace;padding:6px 12px;border-radius:7px;cursor:pointer}
+  .btn.pri{background:var(--staged);border-color:var(--staged);color:#14151A;font-weight:600}
+  .btn.ghost{background:none;color:var(--dim)}
+  .hint{padding:0 14px 10px;color:#7A6B45;font-size:11px}
+  /* degraded strip */
+  .deg{margin:8px;padding:9px 12px;border:1px dashed var(--hairline);border-radius:8px;
+    color:var(--dim);font-size:12px;display:flex;gap:8px;align-items:center}
+  .deg .d{width:7px;height:7px;border-radius:50%;background:#55545E}
+  /* empty */
+  .empty{padding:34px 20px;text-align:center;color:var(--dim);font-size:13px}
+  .empty .big{font-size:22px;color:#44434D;margin-bottom:6px}
+  /* state toggles */
+  .toggles{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+  .tg{border:1px solid #23242C;background:none;color:var(--doc-faint);
+    font:11.5px ui-monospace,monospace;padding:6px 11px;border-radius:20px;cursor:pointer}
+  .tg.on{color:var(--text);border-color:var(--accent)}
+  /* diff (quick fix) */
+  .diff{width:560px;max-width:100%}
+  .dline{font:13px/1.6 ui-monospace,monospace;padding:2px 12px;border-radius:4px}
+  .del{background:rgba(224,108,95,.13);color:#E8A69E;text-decoration:line-through}
+  .add{background:rgba(95,179,122,.13);color:#9ED8B2}
+  /* alt-tab */
+  .atgrid{display:grid;grid-template-columns:repeat(3,150px);gap:12px;padding:20px}
+  .win{background:var(--raised);border:1px solid var(--hairline);border-radius:9px;
+    height:96px;position:relative;padding:8px;color:var(--dim);font-size:11px}
+  .win.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,111,232,.35)}
+  .win .num{position:absolute;top:6px;right:8px;color:var(--accent);
+    font:600 12px ui-monospace,monospace}
+  .win .thumb{height:46px;border-radius:5px;background:#2C2E38;margin-bottom:6px}
+  /* clipboard */
+  .cliprow{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid #20222A;
+    font-size:13px;color:var(--text)}
+  .cliprow .t{margin-left:auto;color:#55545E;font:10.5px ui-monospace,monospace}
+  .chip{font:10px ui-monospace,monospace;color:var(--dim);border:1px solid var(--hairline);
+    border-radius:4px;padding:1px 6px}
+  /* ladder */
+  .rung{display:flex;gap:12px;align-items:center;padding:13px 14px;
+    border:1px solid var(--hairline);border-radius:10px;margin-bottom:10px;background:var(--surface)}
+  .lamp{width:9px;height:9px;border-radius:50%;flex:none}
+  .lamp.ok{background:var(--ok)} .lamp.off{background:#44434D} .lamp.key{background:var(--accent)}
+  .rung .rl{font:600 11px ui-monospace,monospace;color:var(--dim);width:26px}
+  .rung .rn{color:var(--text);font-size:13.5px}
+  .rung .rs{margin-left:auto;font-size:11.5px;color:var(--dim)}
+  .rung .lift{margin-left:auto}
+  /* permission sheet */
+  .sheet{width:440px;max-width:100%;background:var(--surface);border:1px solid var(--hairline);
+    border-radius:14px;padding:20px}
+  .sheet h3{color:var(--text);font-size:14.5px;margin-bottom:4px}
+  .sheet .sub2{color:var(--dim);font-size:12px;margin-bottom:14px}
+  .ent{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #23242C;font-size:12.5px;color:var(--text)}
+  .ent .desc{color:var(--dim);font-size:11.5px;margin-top:2px}
+  .ent input{margin-top:3px;accent-color:var(--accent)}
+  .ent.denied{opacity:.55}
+  /* tokens */
+  .tokgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .tok{border:1px solid #23242C;border-radius:9px;overflow:hidden}
+  .tok .sw{height:42px}
+  .tok .tn{padding:7px 10px;font:11px ui-monospace,monospace;color:var(--doc-ink)}
+  .tok .tn span{display:block;color:var(--doc-faint);font-size:10px}
+  /* agent face */
+  .term{width:620px;max-width:100%;background:#0B0C0F;border:1px solid var(--hairline);
+    border-radius:10px;padding:16px;font:12.5px/1.7 ui-monospace,monospace;color:#B9B7C0}
+  .term .p{color:var(--ok)} .term .c{color:var(--text)} .term .amber{color:var(--staged)}
+  kbd{font:11px ui-monospace,monospace;border:1px solid var(--hairline);border-bottom-width:2px;
+    border-radius:4px;padding:1px 5px;color:var(--dim)}
+  @media(max-width:760px){
+    .wrap{flex-direction:column}
+    nav{width:100%;display:flex;overflow-x:auto;border-right:0;border-bottom:1px solid #1E2027;padding:0}
+    nav .grp{display:none}
+    nav button{flex:none;border-left:0;border-bottom:2px solid transparent;padding:12px 14px}
+    nav button.on{border-bottom-color:var(--accent);border-left:0}
+    main{padding:20px 16px 50px}
+    .atgrid{grid-template-columns:repeat(2,1fr)}
+    .stage{padding:22px 12px}
+  }
+  @media(prefers-reduced-motion:no-preference){
+    section.on{animation:fade .18s ease}
+    @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Summon · Bundle doc 3 / 3 · rev 006</div>
+  <h1>UX/UI Reference</h1>
+  <div class="sub">The drawn product. Coding agent builds against these surfaces, not prose. Amber is the one signature: <span class="mono" style="color:var(--staged)">staged</span> means something awaits the user's word.</div>
+</header>
+<div class="wrap">
+<nav id="nav">
+  <div class="grp">Core</div>
+  <button data-s="launcher" class="on">launcher</button>
+  <button data-s="quickfix">quick fix</button>
+  <button data-s="alttab">alt-tab</button>
+  <button data-s="clipboard">clipboard</button>
+  <div class="grp">AI &amp; trust</div>
+  <button data-s="ladder">ai ladder</button>
+  <button data-s="perms">ext permissions</button>
+  <div class="grp">System</div>
+  <button data-s="states">states gallery</button>
+  <button data-s="tokens">tokens</button>
+  <button data-s="agent">agent face</button>
+</nav>
+<main>
+
+<!-- LAUNCHER -->
+<section id="launcher" class="on">
+  <h2>Launcher bar + results</h2>
+  <p class="rule">One surface, four states. The sidecar attaches <em>inside the bar</em> — typed intent that misses the fuzzy index offers an AI proposal as a <b>staged</b> card. Toggle the states; the proposal card is editable and never auto-runs.</p>
+  <div class="toggles" id="ltg">
+    <button class="tg on" data-m="fuzzy">fuzzy results</button>
+    <button class="tg" data-m="staged">nl → command (staged)</button>
+    <button class="tg" data-m="degraded">degraded ai</button>
+    <button class="tg" data-m="empty">empty</button>
+  </div>
+  <div class="stage"><div class="panel">
+    <div class="qrow"><span class="glyph">◈</span><input id="lq" value="arrange" aria-label="Search or type what you want"></div>
+    <div id="lbody"></div>
+    <div class="foot"><span>↑↓ navigate</span><span>↩ run</span><span>⌘K actions</span><span class="ver">v0.1.0</span></div>
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin">1</span>Invoke-to-visible &lt; 50 ms; results re-rank &lt; 16 ms per keystroke. HUD vibrancy; solid <span class="mono">bg.glass</span> under Reduce Transparency.</div>
+    <div class="note"><span class="pin amb">2</span>Staged card: amber border, the exact action in mono, editable in place. <kbd>↩</kbd> accept · <kbd>⌘E</kbd> edit · <kbd>esc</kbd> reject. Deterministic core runs the shown text verbatim — wrong generation fails loud downstream, never silently.</div>
+    <div class="note"><span class="pin">3</span>Degraded AI is a dimmed one-liner, not a modal, not an error wall. Fuzzy floor keeps working untouched.</div>
+    <div class="note"><span class="pin">4</span>Version string always visible in the footer.</div>
+  </div>
+</section>
+
+<!-- QUICK FIX -->
+<section id="quickfix">
+  <h2>Quick Fix — rewrite in place</h2>
+  <p class="rule">Attaches to selected text in any app. Output is a reviewable diff — the same <b>staged</b> language — applied on accept, back into the source field. No chat window anywhere.</p>
+  <div class="stage"><div class="panel diff">
+    <div class="qrow"><span class="glyph" style="color:var(--staged)">✦</span><span class="mono" style="color:var(--dim);font-size:12px">quick fix · formal · 42 words in → 31 out</span></div>
+    <div style="padding:12px 4px">
+      <div class="dline del">hey just checking if u got a chance to look at the doc i sent, need it back soonish</div>
+      <div class="dline add">Following up on the document I sent — could you share your review by Thursday?</div>
+    </div>
+    <div class="prop" style="margin:0 8px 8px;border-radius:8px"><div class="acts" style="border-top:0">
+      <button class="btn pri">Apply ↩</button><button class="btn">Edit ⌘E</button><button class="btn ghost">Discard esc</button>
+    </div></div>
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin amb">1</span>Diff, not replacement: the user sees exactly what changes before it lands. Apply writes back via Accessibility; discard restores selection untouched.</div>
+    <div class="note"><span class="pin">2</span>Per-call footer states rung + what left the machine (here: the 42 selected words only — never the surrounding document).</div>
+  </div>
+</section>
+
+<!-- ALT-TAB -->
+<section id="alttab">
+  <h2>Alt-tab switcher</h2>
+  <p class="rule">Live previews, ranked and numbered. Hit a number, land there. <kbd>⌫</kbd> closes the selected window. No AI on this surface — deliberately.</p>
+  <div class="stage"><div class="panel" style="width:520px">
+    <div class="atgrid">
+      <div class="win sel"><div class="thumb"></div>Ghostty — ~/summon<span class="num">1</span></div>
+      <div class="win"><div class="thumb"></div>Safari — GRDB docs<span class="num">2</span></div>
+      <div class="win"><div class="thumb"></div>Xcode — SummonCore<span class="num">3</span></div>
+      <div class="win"><div class="thumb"></div>Notes — release plan<span class="num">4</span></div>
+      <div class="win"><div class="thumb"></div>Finder — Downloads<span class="num">5</span></div>
+      <div class="win"><div class="thumb"></div>Music<span class="num">6</span></div>
+    </div>
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin">1</span>Selection ring uses <span class="mono">accent</span>; never amber — amber is reserved for staged proposals portfolio-wide.</div>
+    <div class="note"><span class="pin">2</span>Reduce Motion: instant selection moves, no zoom animation.</div>
+  </div>
+</section>
+
+<!-- CLIPBOARD -->
+<section id="clipboard">
+  <h2>Clipboard history</h2>
+  <p class="rule">Unlimited, local SQLite. Keyword search is the floor; semantic search is the sidecar riding on local embeddings — same box, better recall, zero setup.</p>
+  <div class="stage"><div class="panel">
+    <div class="qrow"><span class="glyph">⧉</span><input value="that invoice number" aria-label="Search clipboard"></div>
+    <div class="list">
+      <div class="cliprow sel-none"><span class="chip">text</span>INV-2026-0841 · Netcore PS<span class="t">2h · Mail</span></div>
+      <div class="cliprow"><span class="chip">text</span>“…invoice raised on the 28th, ref attached…”<span class="t">2h · Mail</span></div>
+      <div class="cliprow"><span class="chip">img</span>Screenshot — annotated payment flow<span class="t">1d · Summon</span></div>
+      <div class="cliprow"><span class="chip">url</span>https://github.com/naklitechie/summon<span class="t">3d · Safari</span></div>
+    </div>
+    <div class="deg" style="border-style:solid;border-color:#2A2C36"><span class="d" style="background:var(--ok)"></span>semantic match · on-device embeddings · nothing left this machine</div>
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin">1</span>Provenance chips (source app, age) on every entry — attribution is a spine invariant, surfaced.</div>
+    <div class="note"><span class="pin">2</span>The semantic strip states the rung honestly. If embeddings are unavailable, the strip reads “keyword search” and nothing else changes.</div>
+  </div>
+</section>
+
+<!-- LADDER -->
+<section id="ladder">
+  <h2>The ladders — detected, never configured</h2>
+  <p class="rule">This is the <em>entire</em> AI + search settings surface. No provider dropdown, no engine picker. Lamps show what the machine already offers; the only actions are the elevation offers (Ollama setup, S2 index build with disk cost stated) and BYOK entry.</p>
+  <div class="stage"><div style="width:520px;max-width:100%">
+    <div class="rung"><span class="lamp off"></span><span class="rl">L0</span><span class="rn">Summon's brain — Gemma E2B</span><button class="btn lift" style="border-color:var(--staged);color:var(--staged);background:none">Download — 2.6 GB</button></div>
+    <div class="rung"><span class="lamp ok"></span><span class="rl">L1</span><span class="rn">On-device (Apple)</span><span class="rs">active now · nothing leaves this Mac</span></div>
+    <div class="rung"><span class="lamp ok"></span><span class="rl">L2</span><span class="rn">Ollama · localhost</span><span class="rs">detected · qwen3:8b</span></div>
+    <div class="rung"><span class="lamp key"></span><span class="rl">L3</span><span class="rn">Your own key</span><button class="btn lift">Add key → Keychain</button></div>
+    <div class="deg" style="margin:14px 0 18px"><span class="d"></span>Keys live in your macOS Keychain and go only to your provider. Summon has no server.</div>
+    <div class="eyebrow" style="margin-bottom:8px">Search ladder — same pattern</div>
+    <div class="rung"><span class="lamp ok"></span><span class="rl">S1</span><span class="rn">Spotlight index</span><span class="rs">active · filter grammar on top</span></div>
+    <div class="rung"><span class="lamp off"></span><span class="rl">S2</span><span class="rn">Full-text index</span><button class="btn lift">Build index — ~1.2 GB</button></div>
+    <div class="rung"><span class="lamp off"></span><span class="rl">S3</span><span class="rn">Semantic recall</span><span class="rs">rides S2 · on-device</span></div>
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin amb">1</span>L0 download button borrows the staged amber — a cost awaiting the user's word. Consent sheet states size + hash; declining is first-class, the ladder simply rides L1+. Once installed, the same model powers text, screenshot-ask, and dictation.</div>
+    <div class="note"><span class="pin">2</span>Below the L1 hardware floor, that rung simply doesn't render — detection, not a disabled toggle.</div>
+    <div class="note"><span class="pin">2</span>Elevation offer (guided Ollama setup) appears only when L2 is absent and L1 quality misses a task's floor. Offered, never forced.</div>
+    <div class="note"><span class="pin amb">3</span>Every sidecar call journals rung + payload summary; the per-call “what left” line is user-visible, honoring the key-never-leaves ≠ data-never-leaves rule.</div>
+  </div>
+</section>
+
+<!-- PERMISSIONS -->
+<section id="perms">
+  <h2>Extension permission grant</h2>
+  <p class="rule">The one moment untrusted code enters the process. Manifest-declared entitlements shown plainly; undeclared capabilities aren't grayed options — they don't exist for this extension.</p>
+  <div class="stage"><div class="sheet" role="dialog" aria-label="Install extension">
+    <h3>Install “GitHub Repos”?</h3>
+    <div class="sub2">by raycast-community · runs in its own sandbox · every action journaled as <span class="mono">ext:github-repos</span></div>
+    <label class="ent"><input type="checkbox" checked><span>Network — api.github.com only<div class="desc">Declared hosts, enforced at the one ingress.</div></span></label>
+    <label class="ent"><input type="checkbox" checked><span>Own storage namespace<div class="desc">~/…/Summon/Extensions/github-repos/ — nothing outside it.</div></span></label>
+    <label class="ent denied"><input type="checkbox" disabled><span>Clipboard history · Keychain · agent socket<div class="desc">Not declared by this extension — not grantable.</div></span></label>
+    <div class="prop" style="margin:14px 0 0"><div class="acts" style="border-top:0">
+      <button class="btn pri">Install</button><button class="btn ghost">Cancel</button>
+    </div></div>
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin red">1</span>Trust boundary made visible: the denied row exists precisely so users see what an extension <em>cannot</em> touch.</div>
+    <div class="note"><span class="pin">2</span>Grants are journaled and revocable per extension in settings.</div>
+  </div>
+</section>
+
+<!-- STATES -->
+<section id="states">
+  <h2>Empty · error · degraded — the gallery</h2>
+  <p class="rule">Every list surface ships all three, designed. Errors say what happened and the next action; empties invite; degraded-AI dims and carries on.</p>
+  <div class="stage" style="flex-direction:column;gap:14px;align-items:center">
+    <div class="panel" style="width:480px"><div class="empty"><div class="big">⧉</div>Nothing copied yet<br><span style="font-size:11.5px;color:#55545E">Copy anything — it lands here, on this Mac only.</span></div></div>
+    <div class="panel" style="width:480px"><div class="deg" style="border-color:var(--danger);color:#D8A29B"><span class="d" style="background:var(--danger)"></span>Screen Recording permission is off — window previews can't render. Open System Settings → Privacy to allow it.</div></div>
+    <div class="panel" style="width:480px"><div class="deg"><span class="d"></span>On-device model unavailable — search still works. AI suggestions return when a rung is detected.</div></div>
+  </div>
+  <div class="notes">
+    <div class="note"><span class="pin">1</span>Error voice: cause + fix, no apology, no raw error codes.</div>
+    <div class="note"><span class="pin">2</span>The consent sheet for model downloads (size stated, explicit fetch) reuses the staged-card frame.</div>
+  </div>
+</section>
+
+<!-- TOKENS -->
+<section id="tokens">
+  <h2>Design tokens</h2>
+  <p class="rule">Source of truth for <span class="mono">Tokens.swift</span> + asset catalog. Amber (<span class="mono">staged</span>) is functionally reserved — it appears only where the user's word is awaited. SF for UI, SF Mono for anything the core executes verbatim. SF Symbols only.</p>
+  <div class="tokgrid" id="tokgrid"></div>
+  <div class="notes" style="margin-top:18px">
+    <div class="note"><span class="pin">1</span>Contrast: all text tokens ≥ 4.5:1 on their surfaces — asserted in a unit test, not a promise.</div>
+    <div class="note"><span class="pin amb">2</span>New theme = one token set swap. No hardcoded colors anywhere.</div>
+  </div>
+</section>
+
+<!-- AGENT -->
+<section id="agent">
+  <h2>Agent face — same core, second door</h2>
+  <p class="rule">CLI + local socket dispatch the same action bus as the hotkey. Off by default; destructive ops are propose-only — they stage in the UI exactly like an AI proposal, because to the core an agent and a model are the same kind of guest.</p>
+  <div class="stage"><div class="term">
+<span class="p">$</span> <span class="c">summon run window.arrange --layout=left-right</span><br>
+ok · 2 windows arranged · journal #4d19 actor=agent<br>
+<span class="p">$</span> <span class="c">summon clipboard search "invoice" --json</span><br>
+[{"id":"c81","preview":"INV-2026-0841 · Netcore PS","src":"Mail"}]<br>
+<span class="p">$</span> <span class="c">summon clipboard clear --before=30d</span><br>
+<span class="amber">staged</span> · destructive — awaiting accept in Summon UI (⌘⏎) · journal #4d1a
+  </div></div>
+  <div class="notes">
+    <div class="note"><span class="pin">1</span>Enabled only via developer settings; socket mode 0600; every call journaled with actor tag.</div>
+    <div class="note"><span class="pin amb">2</span>The staged line closes the loop: human, agent, and model all converge on one accept surface. One mechanism, three doors.</div>
+  </div>
+</section>
+
+</main>
+</div>
+<script>
+// nav
+const nav=document.getElementById('nav');
+nav.addEventListener('click',e=>{
+  const b=e.target.closest('button[data-s]');if(!b)return;
+  nav.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+  document.querySelectorAll('main section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+});
+// launcher states
+const lbody=document.getElementById('lbody'),lq=document.getElementById('lq');
+const states={
+ fuzzy:()=>{lq.value='arrange';return `
+  <div class="list">
+   <div class="row sel"><span class="ic">⊞</span>Arrange Windows: Left / Right<span class="cat">Window</span><span class="k">↩</span></div>
+   <div class="row"><span class="ic">⊞</span>Arrange Windows: Thirds<span class="cat">Window</span></div>
+   <div class="row"><span class="ic">⌘</span>Arrange in Grid — Finder menu<span class="cat">Menu</span></div>
+   <div class="row"><span class="ic">≡</span>arrangement-notes.md<span class="cat">File</span></div>
+  </div>`},
+ staged:()=>{lq.value='put terminal left, xcode right, close the rest';return `
+  <div class="prop">
+    <div class="ph"><span class="dot"></span>staged · on-device · nothing left this mac</div>
+    <pre contenteditable spellcheck="false">window.arrange --left=Ghostty --right=Xcode
+window.close --except=Ghostty,Xcode   # 4 windows</pre>
+    <div class="hint">Editable. Runs exactly this — nothing else, nothing hidden.</div>
+    <div class="acts"><button class="btn pri">Run ↩</button><button class="btn">Edit ⌘E</button><button class="btn ghost">Reject esc</button></div>
+  </div>`},
+ degraded:()=>{lq.value='put terminal left, xcode right';return `
+  <div class="list">
+   <div class="row sel"><span class="ic">⊞</span>Arrange Windows: Left / Right<span class="cat">Window</span><span class="k">↩</span></div>
+  </div>
+  <div class="deg"><span class="d"></span>On-device model unavailable — search still works.</div>`},
+ empty:()=>{lq.value='zzq';return `
+  <div class="empty"><div class="big">◈</div>No matches for “zzq”<br>
+  <span style="font-size:11.5px;color:#55545E">↩ searches your files · ⌘↩ searches the web</span></div>`}
+};
+document.getElementById('ltg').addEventListener('click',e=>{
+  const b=e.target.closest('.tg');if(!b)return;
+  document.querySelectorAll('#ltg .tg').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');lbody.innerHTML=states[b.dataset.m]();
+});
+lbody.innerHTML=states.fuzzy();
+// tokens
+const toks=[['bg.glass','#14151A','launcher panel'],['surface','#1C1E26','sheets, cards'],
+['surface.raised','#24262F','selection, buttons'],['text','#E8E6DF','primary'],
+['text.dim','#9A98A0','secondary'],['accent','#7C6FE8','selection, identity'],
+['staged','#E5A54B','RESERVED: awaiting user'],['ok','#5FB37A','success, lamps'],
+['danger','#E06C5F','destructive, errors'],['hairline','#33353F','borders']];
+document.getElementById('tokgrid').innerHTML=toks.map(([n,h,u])=>
+ `<div class="tok"><div class="sw" style="background:${h}"></div><div class="tn">${n}<span>${h} · ${u}</span></div></div>`).join('');
+</script>
+</body>
+</html>
