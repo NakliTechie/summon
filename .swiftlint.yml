@@ -1,0 +1,55 @@
+# SwiftLint (handoff §8.7). Strict on safety/style that matters; not pedantic on
+# single-letter pattern-match bindings or Package.swift commas.
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - .worktrees
+  - plan
+  - Package.swift
+
+disabled_rules:
+  - trailing_whitespace
+  - trailing_comma
+  - todo
+  - orphaned_doc_comment
+  - identifier_name
+  - type_name
+  - nesting
+  - non_optional_string_data_conversion
+  - large_tuple
+
+opt_in_rules:
+  - empty_count
+  - fatal_error_message
+  - first_where
+  - overridden_super_call
+  - prohibited_super_call
+  - yoda_condition
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+
+file_length:
+  warning: 600
+  error: 900
+
+type_body_length:
+  warning: 400
+  error: 700
+
+function_body_length:
+  warning: 80
+  error: 120
+
+cyclomatic_complexity:
+  warning: 15
+  error: 25
+
+reporter: "xcode"

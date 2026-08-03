@@ -6,7 +6,7 @@
 
 ## Status
 
-**C-spine green (chunk 1)** — spine implemented; `make verify` exit 0 on arm64 (unit+integration, journal replay byte-equal, CLI e2e, stub UI e2e). Full handoff §8 gate still partial (latency/network/shim/lint grow in later chunks).
+**C0 green (synthetic harness) · C-spine green** — JSC shim spike + fixture harness (List, Form, fetch+storage, sandbox-escape) pass under `make verify`. Real unmodified Raycast *store* extensions not yet loaded (synthetic fixtures exercise the Raycast API surface; store-extension polyfill depth is the residual risk).
 
 ## Adopted (from the bundle)
 
@@ -18,43 +18,46 @@
 - **App Intents surface:** M2.
 - **License:** AGPL-3.0. **Distribution:** Homebrew cask (`naklitechie/homebrew-tap`), signed + notarized, Sparkle appcast → GitHub Releases.
 
-## Decisions journaled this run
+## Decisions journaled
 
-- **Actor case name:** Swift enum case is `ActorTag.ext(id:)` (keyword `extension` is reserved); journal label remains `ext:<id>` per vision §2.
-- **Spine store surface:** settings only (`settings.set` / `settings.delete`). Clipboard/snippets land with M1 modules; one store is enough for C-spine replay + e2e.
-- **CLI actor:** `summon-cli` journals `actor=agent` (agent face); stub UI journals `actor=user`.
-- **GRDB:** 7.x (resolved 7.11.1) for SQLite — on allow-list.
-- **Removability seam:** `SUMMON_AI_ENABLED=0` omits the `SummonAI` product/target from `Package.swift` via `Context.environment`.
+- **Actor case name:** `ActorTag.ext(id:)` (keyword `extension` reserved); journal label `ext:<id>`.
+- **Spine store surface:** settings only for C-spine.
+- **CLI actor:** `summon-cli` → `actor=agent`; stub UI → `actor=user`.
+- **GRDB:** 7.x (resolved 7.11.1).
+- **Removability seam:** `SUMMON_AI_ENABLED=0` omits SummonAI product/target.
+- **D2 — JS runtime (provisional at C0):** **JavaScriptCore first.** Evidence: per-extension `JSContext`, CommonJS `require` allow-list (`react`, `@raycast/api` only), filesystem/`fs` denied, fetch entitlement-gated, 3 synthetic fixtures + sandbox escape green. Revisit only if a real store extension needs Node APIs JSC cannot polyfill — evidence then.
+- **C0 scope honesty:** fixtures are synthetic Raycast-API-shaped commands, not yet unmodified store packages. Productionized 10-extension bar is C4.
 
-## Open (resolve with evidence, journal the decision here)
+## Open
 
-- **D2 — JS runtime for shim:** JSC-first vs embedded Node → decided at **C0** with evidence.
-- **D4 — Sparkle vs custom updater:** Sparkle (probe before commit) → **C0**.
-- **D7 — Embedded AI runtime:** llama.cpp+Metal vs MLX-Swift → probe at **chunk-5 open**, latency+memory evidence.
-- **D8 — S3 embedding model:** EmbeddingGemma 308M vs Apache-licensed alt → probe at **chunk-5 open**, license cleanliness wins ties.
+- **D4 — Sparkle vs custom updater:** probe before commit; with C0/C1.
+- **D7 — Embedded AI runtime:** llama.cpp+Metal vs MLX-Swift → chunk-5 open.
+- **D8 — S3 embedding model:** EmbeddingGemma 308M vs alt → chunk-5 open.
+- **Real Raycast store extensions:** load 3 unmodified store packages against the harness; expand polyfills as needed.
 
-## Chunk plan (continuous run — checkpoint green = proceed immediately)
+## Chunk plan
 
 | Chunk | Contents | Checkpoint | State |
 |---|---|---|---|
-| 1 | Spine: action bus, SchemaGate, stores, journal, `summon-cli` skeleton | C-spine | **green** (`make verify` exit 0) |
-| 2 | Shim spike (JSC + reconciler, 3 extensions) | C0 | **next** |
-| 3 | Launcher core (M1), search S1 + object→action grammar | C1 | not started |
-| 4 | Power modules (M2), App Intents, search S2 | C2 | not started |
-| 5 | D7/D8 probe · AI ladder L0–L3 + sidecars (M3), search S3 | C3 | not started |
-| 6 | Shim productionized, Raycast import, sync, i18n (M4) | C4 | not started |
-| 7 | `/walkthrough` all roles, `/guide`, release dry-run | C5 | not started |
+| 1 | Spine | C-spine | **green** |
+| 2 | Shim spike | C0 | **green (synthetic harness)**; real store exts residual |
+| 3 | Launcher core (M1), search S1 | C1 | **next** |
+| 4 | Power modules (M2), App Intents, S2 | C2 | not started |
+| 5 | D7/D8 · AI ladder · S3 | C3 | not started |
+| 6 | Shim productionized, Raycast import, sync, i18n | C4 | not started |
+| 7 | walkthrough, guide, release dry-run | C5 | not started |
 
-## Park walls (build against a stand-in; swap real on arrival; re-verify)
+## Park walls
 
-- **Signing credentials** (Developer ID + notary keys) → build ad-hoc-signed; release chunk parks at `READY-signing.md`.
-- **Apple Foundation Models on CI** → L1 tests against `FakeModelRung`; real-rung re-verified on capable hardware (`READY-l1-hardware.md`).
-- **Homebrew tap cask** → templated + tested against a local tap until the first notarized release exists (`READY-cask.md`).
+- Signing credentials → ad-hoc-signed; `READY-signing.md`.
+- Apple Foundation Models on CI → `FakeModelRung`; `READY-l1-hardware.md`.
+- Homebrew tap cask → `READY-cask.md`.
 
 ## Log
 
-- **2026-08-03** — Scaffolded from bundle rev 006 (`docs/summon-{vision-roadmap,agent-handoff,ux-reference}-006`). Repo `NakliTechie/summon` (public, AGPL-3.0). Root: `README.md`, `CLAUDE.md`, `AGENTS.md`, this file, `LICENSE`. No code yet. Next: Chunk 1 (spine) → C-spine.
-- **2026-08-03** — **C-spine.** Chunk 1 spine landed: `SummonCore` (action bus, SchemaGate, settings store, action journal, GRDB, snapshot export/replay), `summon-cli` skeleton, `SummonUI` stub launcher + tokens, placeholder `SummonShim`/`SummonAI`, Makefile + GitHub Actions CI. Gate: `make verify` exit 0 — 24 unit/integration tests (incl. journal replay byte-equal, stub UI e2e, token contrast ≥4.5:1) + CLI e2e (`settings set/get/list` under temp HOME). Removability probe: `SUMMON_AI_ENABLED=0 swift build` succeeds. Next: Chunk 2 (shim spike) → C0. Prior-art read owed before writing shim: SuperCmd + sol.
+- **2026-08-03** — Scaffolded from bundle rev 006.
+- **2026-08-03** — C-spine. SummonCore + CLI + stub UI. `make verify` exit 0.
+- **2026-08-03** — Autopilot: C0 JSC shim (`ShimRuntime`, bootstrap `@raycast/api` surface, `FixtureHarness`), SwiftLint + removability in gate. `make verify` exit 0 (30 tests + cli-e2e + lint + removability). D2 provisional JSC. Next: Chunk 3 (M1 launcher core) or real store-extension pass.
 
 ## Dead ends
 
