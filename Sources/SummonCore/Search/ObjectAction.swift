@@ -69,6 +69,11 @@ public enum ObjectActionGrammar {
                 ObjectAction(id: "copy", title: "Copy URL", name: "file.copyPath"),
                 ObjectAction(id: "delete", title: "Delete", name: "quicklink.delete", isDestructive: true),
             ]
+        case .emoji:
+            return [
+                ObjectAction(id: "copy", title: "Copy", name: "snippet.copy"),
+                ObjectAction(id: "paste", title: "Paste", name: "snippet.paste"),
+            ]
         }
     }
 }

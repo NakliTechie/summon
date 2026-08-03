@@ -87,7 +87,7 @@ public final class LauncherSession: @unchecked Sendable {
         switch result.kind {
         case .app: return "app.open"
         case .file, .folder: return "file.open"
-        case .snippet, .calculation: return "snippet.copy"
+        case .snippet, .calculation, .emoji: return "snippet.copy"
         case .clipboard: return "clipboard.copy"
         case .quicklink: return "quicklink.open"
         case .setting: return "settings.open"

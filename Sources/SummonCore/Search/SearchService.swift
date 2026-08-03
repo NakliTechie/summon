@@ -7,19 +7,22 @@ public struct SearchService: Sendable {
     public var snippets: SnippetStore?
     public var clipboard: ClipboardStore?
     public var quicklinks: QuicklinkStore?
+    public var emoji: EmojiCatalog
 
     public init(
         apps: AppCatalog = AppCatalog(),
         spotlight: any SpotlightIndexing = FakeSpotlightIndex(),
         snippets: SnippetStore? = nil,
         clipboard: ClipboardStore? = nil,
-        quicklinks: QuicklinkStore? = nil
+        quicklinks: QuicklinkStore? = nil,
+        emoji: EmojiCatalog = EmojiCatalog()
     ) {
         self.apps = apps
         self.spotlight = spotlight
         self.snippets = snippets
         self.clipboard = clipboard
         self.quicklinks = quicklinks
+        self.emoji = emoji
     }
 
     public func search(_ raw: String, limit: Int = 50) throws -> [SearchResult] {
@@ -37,6 +40,7 @@ public struct SearchService: Sendable {
         let wantSnippets = kind == nil || kind == "snippet"
         let wantClipboard = kind == nil || kind == "clipboard"
         let wantQuicklinks = kind == nil || kind == "quicklink"
+        let wantEmoji = kind == nil || kind == "emoji"
 
         // kind:clipboard etc. should not pull unrelated sources.
         let pureKind = kind != nil
@@ -52,7 +56,10 @@ public struct SearchService: Sendable {
         if wantQuicklinks, let quicklinks {
             results.append(contentsOf: try quicklinks.search(query: query, limit: limit))
         }
-        if wantFiles && (!pureKind || kind != "app" && kind != "snippet" && kind != "clipboard" && kind != "quicklink") {
+        if wantEmoji && (!pureKind || kind == "emoji") {
+            results.append(contentsOf: emoji.search(query: query, limit: limit))
+        }
+        if wantFiles && (!pureKind || kind != "app" && kind != "snippet" && kind != "clipboard" && kind != "quicklink" && kind != "emoji") {
             results.append(contentsOf: try spotlight.search(query: query, limit: limit))
         }
 

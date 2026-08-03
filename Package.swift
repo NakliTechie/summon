@@ -11,6 +11,7 @@ var products: [Product] = [
     .library(name: "SummonUI", targets: ["SummonUI"]),
     .library(name: "SummonShim", targets: ["SummonShim"]),
     .executable(name: "summon-cli", targets: ["summon-cli"]),
+    .executable(name: "summon-app", targets: ["summon-app"]),
 ]
 
 var targets: [Target] = [
@@ -41,6 +42,15 @@ var targets: [Target] = [
         name: "summon-cli",
         dependencies: ["SummonCore"],
         path: "Sources/summon-cli"
+    ),
+    .executableTarget(
+        name: "summon-app",
+        dependencies: ["SummonCore", "SummonUI"],
+        path: "Sources/summon-app",
+        linkerSettings: [
+            .linkedFramework("AppKit"),
+            .linkedFramework("Carbon"),
+        ]
     ),
     .testTarget(
         name: "SummonCoreTests",

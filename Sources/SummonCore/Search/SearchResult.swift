@@ -12,6 +12,7 @@ public struct SearchResult: Sendable, Hashable, Codable, Equatable, Identifiable
         case command
         case clipboard
         case quicklink
+        case emoji
     }
 
     public let id: String
