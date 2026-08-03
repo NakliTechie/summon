@@ -29,7 +29,13 @@ var targets: [Target] = [
     .target(
         name: "SummonShim",
         dependencies: ["SummonCore"],
-        path: "Sources/SummonShim"
+        path: "Sources/SummonShim",
+        resources: [
+            .process("Resources"),
+        ],
+        linkerSettings: [
+            .linkedFramework("JavaScriptCore"),
+        ]
     ),
     .executableTarget(
         name: "summon-cli",
@@ -45,6 +51,13 @@ var targets: [Target] = [
         name: "SummonUITests",
         dependencies: ["SummonUI", "SummonCore"],
         path: "Tests/SummonUITests"
+    ),
+    .testTarget(
+        name: "SummonShimTests",
+        dependencies: ["SummonShim", "SummonCore"],
+        path: "Tests/SummonShimTests",
+        // Fixtures loaded from disk via #filePath (SPM flattens nested package.json names).
+        exclude: ["Fixtures"]
     ),
 ]
 

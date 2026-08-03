@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "name": "fixture.fetch-storage",
+  "title": "Fetch + Storage Fixture",
+  "commands": [
+    { "name": "index", "title": "Sync", "mode": "view" }
+  ],
+  "entitlements": ["network"]
+}

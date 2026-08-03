@@ -7,10 +7,10 @@ BUILD_FLAGS :=
 # Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
 export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e help
+.PHONY: build test verify release clean cli-e2e lint removability help
 
 help:
-	@echo "Targets: build test verify release clean cli-e2e"
+	@echo "Targets: build test verify release clean cli-e2e lint removability"
 
 build:
 	$(SWIFT) build $(BUILD_FLAGS)
@@ -18,10 +18,31 @@ build:
 test:
 	$(SWIFT) test $(BUILD_FLAGS)
 
-# Partial gate for C-spine; grows per chunk toward full handoff §8.
-verify: test cli-e2e
-	@echo "verify: unit+integration + journal-replay + cli-e2e + stub-ui (C-spine subset)"
-	@echo "verify: latency/network/shim/removability/lint not yet in gate (later chunks)"
+lint:
+	@if command -v swiftlint >/dev/null 2>&1; then \
+		swiftlint lint --strict --config .swiftlint.yml; \
+	else \
+		echo "lint: swiftlint not installed (brew install swiftlint) — FAIL"; \
+		exit 1; \
+	fi
+
+# Handoff §8.4 — full suite build without SummonAI product.
+removability:
+	@set -euo pipefail; \
+	SUMMON_AI_ENABLED=0 $(SWIFT) package dump-package >/tmp/summon-pkg-noai.json; \
+	if python3 -c "import json;d=json.load(open('/tmp/summon-pkg-noai.json')); names=[p['name'] for p in d['products']]; assert 'SummonAI' not in names, names"; then \
+		echo "removability: SummonAI product absent when SUMMON_AI_ENABLED=0"; \
+	else \
+		echo "removability: FAIL SummonAI still present"; exit 1; \
+	fi; \
+	SUMMON_AI_ENABLED=0 $(SWIFT) build $(BUILD_FLAGS); \
+	SUMMON_AI_ENABLED=0 $(SWIFT) test $(BUILD_FLAGS); \
+	echo "removability: build+test green without SummonAI"
+
+# C-spine + C0 shim fixtures + lint + removability. Latency/network grow later.
+verify: test cli-e2e lint removability
+	@echo "verify: unit+integration + journal-replay + cli-e2e + stub-ui + shim fixtures + lint + removability"
+	@echo "verify: latency/network/i18n not yet in gate (later chunks)"
 
 # One action end-to-end via the real CLI binary (C-spine).
 cli-e2e: build

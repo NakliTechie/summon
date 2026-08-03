@@ -26,4 +26,4 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-**C-spine green** (chunk 1). Next: **Chunk 2 — shim spike** (JSC + reconciler, 3 extensions) → checkpoint **C0**. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).
+**C-spine + C0 green** (synthetic shim harness). Next: **Chunk 3 — launcher core (M1)** → checkpoint **C1**, or real store-extension pass against the harness. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).

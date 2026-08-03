@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "name": "fixture.list",
+  "title": "List Fixture",
+  "commands": [
+    { "name": "index", "title": "Items", "mode": "view" }
+  ],
+  "entitlements": []
+}

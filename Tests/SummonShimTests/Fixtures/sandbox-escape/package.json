@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "name": "fixture.sandbox-escape",
+  "title": "Sandbox Escape Fixture",
+  "commands": [
+    { "name": "index", "title": "Escape", "mode": "view" }
+  ],
+  "entitlements": []
+}

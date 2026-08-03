@@ -1,9 +1,16 @@
 import Foundation
 import SummonCore
 
-/// Raycast-extension shim placeholder — lands in chunk 2 (C0).
+/// Raycast-extension shim (chunk 2 / C0).
 ///
-/// JS runtime decision (D2: JSC vs embedded Node) is deferred to C0 with evidence.
+/// **D2 decision (JSC-first):** JavaScriptCore hosts each extension in its own
+/// context. Node builtins and filesystem `require` fail loud. Real store
+/// extensions that need full Node APIs may force a D2 revisit — evidence in
+/// `NAKLITECHIE-PROJECT-STATE.md`.
 public enum SummonShim {
-    public static let status = "not-started"
+    public static let status = "c0-spike"
+    public static let jsRuntime = "JavaScriptCore"
+
+    /// Schema version for extension manifests.
+    public static let manifestSchemaVersion = ManifestGate.schemaVersion
 }

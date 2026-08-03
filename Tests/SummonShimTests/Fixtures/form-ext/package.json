@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "name": "fixture.form",
+  "title": "Form Fixture",
+  "commands": [
+    { "name": "index", "title": "Compose", "mode": "view" }
+  ],
+  "entitlements": []
+}
