@@ -100,4 +100,25 @@ final class SearchServiceTests: XCTestCase {
         XCTAssertEqual(results.first?.kind, .emoji)
         XCTAssertTrue(results.first?.title.contains("🚀") == true)
     }
+
+    func testSystemCommandSearch() throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let results = try core.search.search("lock kind:command")
+        XCTAssertTrue(results.contains { $0.id == "command:lock" })
+    }
+
+    func testSystemCommandOpenSettingsViaExecutor() throws {
+        let exec = RecordingModuleExecutor()
+        let core = try SummonCore.inMemory(appSearchPaths: [], executor: exec)
+        let result = SearchResult(
+            id: "command:prefs",
+            title: "System Settings",
+            kind: .command,
+            path: "x-apple.systempreferences:",
+            payload: ["url": .string("x-apple.systempreferences:")]
+        )
+        _ = try core.invoke(actionName: "command.run", result: result, actor: .user)
+        XCTAssertEqual(exec.calls.last?.op, "open")
+        XCTAssertEqual(exec.calls.last?.value, "x-apple.systempreferences:")
+    }
 }

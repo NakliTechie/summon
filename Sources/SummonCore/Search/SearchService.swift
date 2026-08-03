@@ -1,6 +1,6 @@
 import Foundation
 
-/// Composes S1 sources: calculator, apps, snippets, clipboard, quicklinks, Spotlight.
+/// Composes S1 sources: calculator, apps, snippets, clipboard, quicklinks, emoji, system, Spotlight.
 public struct SearchService: Sendable {
     public var apps: AppCatalog
     public var spotlight: any SpotlightIndexing
@@ -8,6 +8,7 @@ public struct SearchService: Sendable {
     public var clipboard: ClipboardStore?
     public var quicklinks: QuicklinkStore?
     public var emoji: EmojiCatalog
+    public var system: SystemCommands
 
     public init(
         apps: AppCatalog = AppCatalog(),
@@ -15,7 +16,8 @@ public struct SearchService: Sendable {
         snippets: SnippetStore? = nil,
         clipboard: ClipboardStore? = nil,
         quicklinks: QuicklinkStore? = nil,
-        emoji: EmojiCatalog = EmojiCatalog()
+        emoji: EmojiCatalog = EmojiCatalog(),
+        system: SystemCommands = SystemCommands()
     ) {
         self.apps = apps
         self.spotlight = spotlight
@@ -23,6 +25,7 @@ public struct SearchService: Sendable {
         self.clipboard = clipboard
         self.quicklinks = quicklinks
         self.emoji = emoji
+        self.system = system
     }
 
     public func search(_ raw: String, limit: Int = 50) throws -> [SearchResult] {
@@ -41,8 +44,8 @@ public struct SearchService: Sendable {
         let wantClipboard = kind == nil || kind == "clipboard"
         let wantQuicklinks = kind == nil || kind == "quicklink"
         let wantEmoji = kind == nil || kind == "emoji"
+        let wantSystem = kind == nil || kind == "command" || kind == "system"
 
-        // kind:clipboard etc. should not pull unrelated sources.
         let pureKind = kind != nil
         if wantApps && (!pureKind || kind == "app") {
             results.append(contentsOf: apps.search(query: query, limit: limit))
@@ -59,7 +62,10 @@ public struct SearchService: Sendable {
         if wantEmoji && (!pureKind || kind == "emoji") {
             results.append(contentsOf: emoji.search(query: query, limit: limit))
         }
-        if wantFiles && (!pureKind || kind != "app" && kind != "snippet" && kind != "clipboard" && kind != "quicklink" && kind != "emoji") {
+        if wantSystem && (!pureKind || kind == "command" || kind == "system") {
+            results.append(contentsOf: system.search(query: query, limit: limit))
+        }
+        if wantFiles && (!pureKind || !["app", "snippet", "clipboard", "quicklink", "emoji", "command", "system"].contains(kind ?? "")) {
             results.append(contentsOf: try spotlight.search(query: query, limit: limit))
         }
 

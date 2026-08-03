@@ -129,6 +129,16 @@ public enum ModuleRouter {
                 throw CoreError.store("quicklink.open requires url")
             }
             try executor.open(pathOrURL: url)
+        case "command.run":
+            let url: String
+            if case .string(let u) = result.payload["url"] {
+                url = u
+            } else if let path = result.path {
+                url = path
+            } else {
+                throw CoreError.store("command.run requires url/path")
+            }
+            try SystemEffects.perform(url: url, executor: executor)
         default:
             throw CoreError.unknownAction(actionName)
         }
