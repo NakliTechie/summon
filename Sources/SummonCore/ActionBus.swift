@@ -36,6 +36,16 @@ public final class ActionBus: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
+        // Agents: destructive ops are propose-only (RC-42)
+        if !DestructiveGuard.agentMayApply(actor: envelope.actor, action: envelope.action) {
+            let outcome = ActionResult.Outcome.rejected(
+                reason: "agent propose-only: destructive action \(envelope.action.name) requires user accept"
+            )
+            let result = ActionResult(envelopeID: envelope.id, outcome: outcome)
+            try journal.append(envelope: envelope, outcome: outcome)
+            return result
+        }
+
         let outcome: ActionResult.Outcome
         do {
             try apply(envelope.action)

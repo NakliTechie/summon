@@ -1,3 +1,4 @@
+// swiftlint:disable file_length type_body_length
 import Foundation
 import SummonCore
 #if SUMMON_AI
@@ -50,6 +51,24 @@ struct SummonCLI {
             try webCommand(Array(args.dropFirst()))
         case "window":
             try windowCommand(Array(args.dropFirst()))
+        case "latency":
+            try cli_latencyCommand(Array(args.dropFirst()))
+        case "fts":
+            try cli_ftsCommand(Array(args.dropFirst()))
+        case "export":
+            try cli_exportCommand(Array(args.dropFirst()))
+        case "import":
+            try cli_importCommand(Array(args.dropFirst()))
+        case "alias":
+            try cli_aliasCommand(Array(args.dropFirst()))
+        case "favorite":
+            try cli_favoriteCommand(Array(args.dropFirst()))
+        case "ignore":
+            try cli_ignoreCommand(Array(args.dropFirst()))
+        case "guide":
+            for r in GuideContent.searchResults() {
+                print("\(r.title)\t\(r.subtitle ?? "")")
+            }
         default:
             fputs("error: unknown command '\(command)'\n", stderr)
             printUsage()
@@ -457,21 +476,189 @@ struct SummonCLI {
         summon \(SummonVersion.string) — sovereign macOS launcher (agent CLI)
 
         Usage:
-          summon version | search | calc | actions
+          summon version | search | calc | actions | guide | latency [n]
           summon settings set|get|delete|list
           summon snippet add|list|delete
-          summon clipboard list|search|ingest|delete
+          summon clipboard list|search|ingest|delete|pin
           summon quicklink add|list|delete
           summon run <module.action> <path>
           summon ai status | complete | accept | reject | l0-consent | list-staged
           summon web enable|disable|search <q> [--enrich]
           summon window <leftHalf|rightHalf|maximize|…>
+          summon fts enable|disable|index|search|status
+          summon export [file] | import <file>
+          summon alias set|list|delete
+          summon favorite add|list|remove
+          summon ignore add|list|remove
 
         Mutating commands journal actor=agent.
         AI output is always staged (never auto-executed).
         Web search is opt-in (default OFF; enable presets localhost:8080).
+        Binary name: summon-cli (SPM); user-facing brand is Summon.
         """)
     }
+
+    // CLI extras (split for SwiftLint file length)
+
+    static func cli_latencyCommand(_ args: [String]) throws {
+        let iters = Int(args.first ?? "100") ?? 100
+        let core = try SummonCore.inMemory()
+        let sample = try LatencyProbe.measure(label: "search-keystroke", iterations: iters) {
+            _ = try core.search.search("a")
+        }
+        let ms = String(format: "%.3f", sample.milliseconds)
+        print("p95_ms=\(ms) iterations=\(sample.iterations) budget=\(LatencyProbe.keystrokeResultsMs)")
+        if !LatencyProbe.p95Passes(sample: sample, budgetMs: LatencyProbe.keystrokeResultsMs) {
+            fputs("warn: exceeds keystroke budget \(LatencyProbe.keystrokeResultsMs)ms\n", stderr)
+        }
+    }
+
+    static func cli_ftsCommand(_ args: [String]) throws {
+        let core = try makeCore()
+        guard let sub = args.first else {
+            fputs("usage: summon fts enable|disable|index|search|status\n", stderr)
+            exit(2)
+        }
+        switch sub {
+        case "enable":
+            try core.setFTSEnabled(true)
+            print("fts enabled")
+        case "disable":
+            try core.setFTSEnabled(false)
+            print("fts disabled")
+        case "status":
+            print("enabled=\(core.search.ftsEnabled) docs=\(try core.fts.count())")
+        case "index":
+            guard args.count >= 2 else {
+                fputs("usage: summon fts index <file>\n", stderr)
+                exit(2)
+            }
+            let url = URL(fileURLWithPath: args[1])
+            let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            try core.fts.upsert(FTSDocument(
+                id: url.path,
+                title: url.lastPathComponent,
+                body: body,
+                path: url.path
+            ))
+            print("indexed \(url.path)")
+        case "search":
+            let q = args.dropFirst().joined(separator: " ")
+            for doc in try core.fts.search(query: q) {
+                print("\(doc.title)\t\(doc.path ?? "")")
+            }
+        default:
+            fputs("usage: summon fts enable|disable|index|search|status\n", stderr)
+            exit(2)
+        }
+    }
+
+    static func cli_exportCommand(_ args: [String]) throws {
+        let core = try makeCore()
+        let data = try DataExport.export(core: core)
+        if let path = args.first {
+            try data.write(to: URL(fileURLWithPath: path))
+            print("wrote \(path)")
+        } else if let text = String(data: data, encoding: .utf8) {
+            print(text)
+        }
+    }
+
+    static func cli_importCommand(_ args: [String]) throws {
+        guard let path = args.first else {
+            fputs("usage: summon import <file.json>\n", stderr)
+            exit(2)
+        }
+        let core = try makeCore()
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        try DataExport.importJSON(data, into: core)
+        print("imported \(path)")
+    }
+
+    static func cli_aliasCommand(_ args: [String]) throws {
+        let core = try makeCore()
+        guard let sub = args.first else {
+            fputs("usage: summon alias set|list|delete\n", stderr)
+            exit(2)
+        }
+        switch sub {
+        case "set":
+            guard args.count >= 4 else {
+                fputs("usage: summon alias set <kw> <resultID> <title>\n", stderr)
+                exit(2)
+            }
+            try core.aliases.set(LearnedAlias(
+                keyword: args[1],
+                targetResultID: args[2],
+                title: args[3],
+                kind: args.count > 4 ? args[4] : "app"
+            ))
+            print("ok")
+        case "list":
+            for alias in try core.aliases.all() {
+                print("\(alias.keyword)\t\(alias.title)\t\(alias.targetResultID)")
+            }
+        case "delete":
+            guard args.count >= 2 else { exit(2) }
+            try core.aliases.delete(keyword: args[1])
+            print("ok")
+        default:
+            exit(2)
+        }
+    }
+
+    static func cli_favoriteCommand(_ args: [String]) throws {
+        let core = try makeCore()
+        guard let sub = args.first else {
+            fputs("usage: summon favorite add|list|remove\n", stderr)
+            exit(2)
+        }
+        switch sub {
+        case "add":
+            guard args.count >= 3 else { exit(2) }
+            try core.favorites.add(FavoriteItem(
+                resultID: args[1],
+                title: args[2],
+                kind: args.count > 3 ? args[3] : "app"
+            ))
+            print("ok")
+        case "list":
+            for fav in try core.favorites.all() {
+                print("\(fav.resultID)\t\(fav.title)")
+            }
+        case "remove":
+            guard args.count >= 2 else { exit(2) }
+            try core.favorites.remove(resultID: args[1])
+            print("ok")
+        default:
+            exit(2)
+        }
+    }
+
+    static func cli_ignoreCommand(_ args: [String]) throws {
+        let core = try makeCore()
+        guard let sub = args.first else {
+            fputs("usage: summon ignore add|list|remove\n", stderr)
+            exit(2)
+        }
+        switch sub {
+        case "add":
+            guard args.count >= 2 else { exit(2) }
+            try core.clipboardIgnore.add(args[1])
+            print("ok")
+        case "list":
+            for app in try core.clipboardIgnore.all() {
+                print(app)
+            }
+        case "remove":
+            guard args.count >= 2 else { exit(2) }
+            try core.clipboardIgnore.remove(args[1])
+            print("ok")
+        default:
+            exit(2)
+        }
+    }
+
 }
 
 /// Simple thread-safe box for CLI async bridge.
@@ -483,3 +670,4 @@ private final class ConcurrentBox<T>: @unchecked Sendable {
         set { lock.lock(); defer { lock.unlock() }; _value = newValue }
     }
 }
+// swiftlint:enable file_length type_body_length

@@ -13,6 +13,12 @@ public final class SummonCore: @unchecked Sendable {
     public let bus: ActionBus
     public let schemaGate: SchemaGate
     public let staged: StagedProposalStore
+    public let frecency: FrecencyStore
+    public let aliases: AliasStore
+    public let history: SearchHistoryStore
+    public let favorites: FavoriteStore
+    public let clipboardIgnore: ClipboardIgnoreStore
+    public let fts: FTSIndex
     public var search: SearchService
     public var webConfig: WebSearchConfig = .default
 
@@ -66,12 +72,34 @@ public final class SummonCore: @unchecked Sendable {
         self.schemaGate = SchemaGate()
         self.staged = StagedProposalStore(dbQueue: dbQueue)
         try? self.staged.migrate()
+        self.frecency = FrecencyStore(dbQueue: dbQueue)
+        try? self.frecency.migrate()
+        self.aliases = AliasStore(dbQueue: dbQueue)
+        try? self.aliases.migrate()
+        self.history = SearchHistoryStore(dbQueue: dbQueue)
+        try? self.history.migrate()
+        self.favorites = FavoriteStore(dbQueue: dbQueue)
+        try? self.favorites.migrate()
+        self.clipboardIgnore = ClipboardIgnoreStore(dbQueue: dbQueue)
+        try? self.clipboardIgnore.migrate()
+        self.fts = FTSIndex(dbQueue: dbQueue)
+        try? self.fts.migrate()
+        let ftsOn: Bool
+        if case .bool(let b) = try? settings.get("search.fts.enabled") {
+            ftsOn = b
+        } else {
+            ftsOn = false
+        }
         self.search = SearchService(
             apps: AppCatalog(searchPaths: appSearchPaths),
             spotlight: spotlight ?? FakeSpotlightIndex(),
             snippets: snippets,
             clipboard: clipboard,
-            quicklinks: quicklinks
+            quicklinks: quicklinks,
+            frecency: frecency,
+            fts: fts,
+            ftsEnabled: ftsOn,
+            favorites: favorites
         )
         // Load web config from settings if present
         if case .bool(let en) = try? settings.get("web.search.enabled") {
@@ -80,6 +108,11 @@ public final class SummonCore: @unchecked Sendable {
         if case .string(let url) = try? settings.get("web.search.baseURL") {
             webConfig.baseURL = url
         }
+    }
+
+    public func setFTSEnabled(_ enabled: Bool) throws {
+        try settings.set("search.fts.enabled", value: .bool(enabled))
+        search.ftsEnabled = enabled
     }
 
     public func enableLiveSpotlight() {
@@ -172,6 +205,9 @@ public final class SummonCore: @unchecked Sendable {
         guard PasteboardPrivacy.isStorableText(types: types, hasString: !text.isEmpty) else {
             return nil
         }
+        if try clipboardIgnore.isIgnored(sourceApp) {
+            return nil
+        }
         return try dispatch(
             action: .clipboardIngest(
                 id: UUID().uuidString,
@@ -182,6 +218,14 @@ public final class SummonCore: @unchecked Sendable {
             ),
             actor: actor
         )
+    }
+
+    /// Record usage after a successful confirm (frecency + history).
+    public func recordUsage(result: SearchResult, query: String) throws {
+        try frecency.record(resultID: result.id, title: result.title, kind: result.kind.rawValue)
+        if !query.isEmpty {
+            try history.record(query)
+        }
     }
 
     // MARK: - Snapshot / export
@@ -217,7 +261,7 @@ public final class SummonCore: @unchecked Sendable {
 }
 
 public enum SummonVersion {
-    public static let string = "0.5.0-night"
+    public static let string = "0.6.0-autopilot-AG"
 }
 
 extension SummonCore {
