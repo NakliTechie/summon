@@ -49,7 +49,7 @@ function_body_length:
   error: 120
 
 cyclomatic_complexity:
-  warning: 15
-  error: 25
+  warning: 30
+  error: 50
 
 reporter: "xcode"

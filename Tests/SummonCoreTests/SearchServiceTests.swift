@@ -92,4 +92,12 @@ final class SearchServiceTests: XCTestCase {
         let snipActions = ObjectActionGrammar.actions(for: snip)
         XCTAssertTrue(snipActions.contains { $0.isDestructive && $0.name == "snippet.delete" })
     }
+
+    func testEmojiSearch() throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let results = try core.search.search("rocket kind:emoji")
+        XCTAssertFalse(results.isEmpty)
+        XCTAssertEqual(results.first?.kind, .emoji)
+        XCTAssertTrue(results.first?.title.contains("🚀") == true)
+    }
 }

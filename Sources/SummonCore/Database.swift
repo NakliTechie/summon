@@ -3,8 +3,8 @@ import GRDB
 
 /// Schema version stamped in `schema_meta` and every JSON export.
 public enum StoreSchema {
-    /// v1 spine; v2 snippets (C1).
-    public static let version = 2
+    /// v1 spine · v2 snippets · v3 clipboard + quicklinks.
+    public static let version = 3
 }
 
 /// Opens / migrates the Summon SQLite database under a container directory.
@@ -88,6 +88,32 @@ public enum SummonDatabase {
                 """)
             try db.execute(sql: """
                 CREATE INDEX snippets_name_idx ON snippets(name);
+                """)
+            try db.execute(
+                sql: "UPDATE schema_meta SET value = ? WHERE key = ?",
+                arguments: ["2", "schemaVersion"]
+            )
+        }
+        migrator.registerMigration("v3_clipboard_quicklinks") { db in
+            try db.execute(sql: """
+                CREATE TABLE clipboard_items (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    text TEXT NOT NULL,
+                    source_app TEXT,
+                    created_at TEXT NOT NULL,
+                    is_pinned INTEGER NOT NULL DEFAULT 0
+                );
+                """)
+            try db.execute(sql: """
+                CREATE INDEX clipboard_created_idx ON clipboard_items(created_at DESC);
+                """)
+            try db.execute(sql: """
+                CREATE TABLE quicklinks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    keyword TEXT
+                );
                 """)
             try db.execute(
                 sql: "UPDATE schema_meta SET value = ? WHERE key = ?",

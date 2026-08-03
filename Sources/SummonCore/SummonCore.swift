@@ -7,6 +7,8 @@ public final class SummonCore: @unchecked Sendable {
     public let dbQueue: DatabaseQueue
     public let settings: SettingsStore
     public let snippets: SnippetStore
+    public let clipboard: ClipboardStore
+    public let quicklinks: QuicklinkStore
     public let journal: ActionJournal
     public let bus: ActionBus
     public let schemaGate: SchemaGate
@@ -24,14 +26,16 @@ public final class SummonCore: @unchecked Sendable {
 
     public static func inMemory(
         spotlight: (any SpotlightIndexing)? = nil,
-        appSearchPaths: [URL]? = nil
+        appSearchPaths: [URL]? = nil,
+        executor: (any ModuleExecuting)? = nil
     ) throws -> SummonCore {
         let dbQueue = try SummonDatabase.openInMemory()
         return SummonCore(
             dbQueue: dbQueue,
             containerURL: nil,
             spotlight: spotlight,
-            appSearchPaths: appSearchPaths
+            appSearchPaths: appSearchPaths,
+            executor: executor
         )
     }
 
@@ -39,28 +43,43 @@ public final class SummonCore: @unchecked Sendable {
         dbQueue: DatabaseQueue,
         containerURL: URL?,
         spotlight: (any SpotlightIndexing)? = nil,
-        appSearchPaths: [URL]? = nil
+        appSearchPaths: [URL]? = nil,
+        executor: (any ModuleExecuting)? = nil
     ) {
         self.dbQueue = dbQueue
         self.containerURL = containerURL
         self.settings = SettingsStore(dbQueue: dbQueue)
         self.snippets = SnippetStore(dbQueue: dbQueue)
+        self.clipboard = ClipboardStore(dbQueue: dbQueue)
+        self.quicklinks = QuicklinkStore(dbQueue: dbQueue)
         self.journal = ActionJournal(dbQueue: dbQueue)
-        self.bus = ActionBus(settings: settings, snippets: snippets, journal: journal)
+        self.bus = ActionBus(
+            settings: settings,
+            snippets: snippets,
+            clipboard: clipboard,
+            quicklinks: quicklinks,
+            journal: journal,
+            executor: executor ?? RecordingModuleExecutor()
+        )
         self.schemaGate = SchemaGate()
         self.search = SearchService(
             apps: AppCatalog(searchPaths: appSearchPaths),
             spotlight: spotlight ?? FakeSpotlightIndex(),
-            snippets: snippets
+            snippets: snippets,
+            clipboard: clipboard,
+            quicklinks: quicklinks
         )
     }
 
-    /// Wire real mdfind S1 for production cores (not default in unit tests).
     public func enableLiveSpotlight() {
         search.spotlight = MdfindSpotlightIndex()
     }
 
-    // MARK: - Dispatch doors
+    public func setExecutor(_ executor: any ModuleExecuting) {
+        bus.setExecutor(executor)
+    }
+
+    // MARK: - Dispatch
 
     @discardableResult
     public func dispatch(_ envelope: ActionEnvelope) throws -> ActionResult {
@@ -89,10 +108,80 @@ public final class SummonCore: @unchecked Sendable {
         return try bus.dispatch(envelope)
     }
 
+    /// Object→action / default invoke path — journals module.run and executes.
+    @discardableResult
+    public func invoke(
+        actionName: String,
+        result: SearchResult,
+        actor: ActorTag
+    ) throws -> ActionResult {
+        // Store mutations that are also object actions.
+        switch actionName {
+        case "clipboard.delete":
+            if case .string(let cid) = result.payload["clipboardID"] {
+                return try dispatch(action: .clipboardDelete(id: cid), actor: actor)
+            }
+        case "clipboard.pin":
+            if case .string(let cid) = result.payload["clipboardID"] {
+                return try dispatch(action: .clipboardPin(id: cid, pinned: true), actor: actor)
+            }
+        case "snippet.delete":
+            if case .string(let sid) = result.payload["snippetID"] {
+                return try dispatch(action: .snippetDelete(id: sid), actor: actor)
+            }
+        case "quicklink.delete":
+            if case .string(let qid) = result.payload["quicklinkID"] {
+                return try dispatch(action: .quicklinkDelete(id: qid), actor: actor)
+            }
+        default:
+            break
+        }
+
+        var payload = result.payload
+        payload["title"] = .string(result.title)
+        return try dispatch(
+            action: .moduleRun(
+                name: actionName,
+                targetID: result.id,
+                path: result.path,
+                payload: payload
+            ),
+            actor: actor
+        )
+    }
+
+    /// Ingest clipboard text only if privacy gate allows (Maccy parity).
+    @discardableResult
+    public func ingestClipboard(
+        text: String,
+        types: [String],
+        sourceApp: String? = nil,
+        actor: ActorTag = .system
+    ) throws -> ActionResult? {
+        guard PasteboardPrivacy.isStorableText(types: types, hasString: !text.isEmpty) else {
+            return nil
+        }
+        return try dispatch(
+            action: .clipboardIngest(
+                id: UUID().uuidString,
+                text: text,
+                sourceApp: sourceApp,
+                createdAt: Date(),
+                pinned: false
+            ),
+            actor: actor
+        )
+    }
+
     // MARK: - Snapshot / export
 
     public func snapshot() throws -> CoreSnapshot {
-        CoreSnapshot(settings: try settings.all(), snippets: try snippets.all())
+        CoreSnapshot(
+            settings: try settings.all(),
+            snippets: try snippets.all(),
+            clipboard: try clipboard.all(),
+            quicklinks: try quicklinks.all()
+        )
     }
 
     public func exportJSON() throws -> Data {
@@ -103,6 +192,8 @@ public final class SummonCore: @unchecked Sendable {
 
     public func replay(entries: [JournalEntry]) throws {
         for entry in entries where entry.outcome == "applied" {
+            // Side-effecting module runs are not re-executed on replay (store rebuild only).
+            if case .moduleRun = entry.action { continue }
             _ = try bus.dispatch(entry.envelope)
         }
     }
@@ -114,8 +205,6 @@ public final class SummonCore: @unchecked Sendable {
     }
 }
 
-// MARK: - Version
-
 public enum SummonVersion {
-    public static let string = "0.2.0-c1"
+    public static let string = "0.3.0-m1"
 }
