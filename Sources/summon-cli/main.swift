@@ -1,5 +1,8 @@
 import Foundation
 import SummonCore
+#if SUMMON_AI
+import SummonAI
+#endif
 
 @main
 struct SummonCLI {
@@ -41,6 +44,8 @@ struct SummonCLI {
             try actionsCommand(Array(args.dropFirst()))
         case "run":
             try runCommand(Array(args.dropFirst()))
+        case "ai":
+            try aiCommand(Array(args.dropFirst()))
         default:
             fputs("error: unknown command '\(command)'\n", stderr)
             printUsage()
@@ -261,6 +266,68 @@ struct SummonCLI {
         print("ok \(name) \(target)")
     }
 
+    static func aiCommand(_ args: [String]) throws {
+        #if SUMMON_AI
+        guard let sub = args.first else {
+            fputs("usage: summon ai status|complete <prompt>\n", stderr)
+            exit(2)
+        }
+        let core = try makeCore()
+        let service = SummonAIService(core: core)
+        switch sub {
+        case "status":
+            let rows = try awaitOrRun { await service.ladder.status() }
+            for row in rows {
+                let mark = row.available ? "on " : "off"
+                print("\(mark)  \(row.id.rawValue)\t\(row.displayName)\t\(row.detail)")
+            }
+        case "complete":
+            let prompt = args.dropFirst().joined(separator: " ")
+            guard !prompt.isEmpty else {
+                fputs("usage: summon ai complete <prompt>\n", stderr)
+                exit(2)
+            }
+            let proposal = try awaitOrRun {
+                try await service.completeAndStage(prompt: prompt, actor: .agent)
+            }
+            print("staged \(proposal.id.uuidString)")
+            print("rung \(proposal.rung.rawValue)")
+            if !proposal.egressSummary.isEmpty {
+                print("egress \(proposal.egressSummary)")
+            }
+            print("---")
+            print(proposal.output)
+            print("---")
+            print("state \(proposal.state.rawValue) (not executed — accept in UI later)")
+        default:
+            fputs("error: unknown ai subcommand '\(sub)'\n", stderr)
+            exit(2)
+        }
+        #else
+        fputs("error: AI target compiled out (SUMMON_AI_ENABLED=0)\n", stderr)
+        exit(1)
+        #endif
+    }
+
+    /// Bridge async AI calls into the sync CLI entrypoint.
+    static func awaitOrRun<T>(_ body: @escaping () async throws -> T) throws -> T {
+        let box = ConcurrentBox<Result<T, Error>>()
+        let sem = DispatchSemaphore(value: 0)
+        Task {
+            do {
+                box.value = .success(try await body())
+            } catch {
+                box.value = .failure(error)
+            }
+            sem.signal()
+        }
+        sem.wait()
+        switch box.value! {
+        case .success(let v): return v
+        case .failure(let e): throw e
+        }
+    }
+
     static func printUsage() {
         print("""
         summon \(SummonVersion.string) — sovereign macOS launcher (agent CLI)
@@ -272,8 +339,20 @@ struct SummonCLI {
           summon clipboard list|search|ingest|delete
           summon quicklink add|list|delete
           summon run <module.action> <path>
+          summon ai status | complete <prompt>
 
         Mutating commands journal actor=agent.
+        AI output is always staged (never auto-executed).
         """)
+    }
+}
+
+/// Simple thread-safe box for CLI async bridge.
+private final class ConcurrentBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: T?
+    var value: T? {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
     }
 }

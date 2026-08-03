@@ -1,6 +1,6 @@
 // swift-tools-version: 5.9
 // Summon — SPM workspace. Targets mirror handoff §1.
-// SummonAI is compiled out for the removability gate via SUMMON_AI_ENABLED.
+// SummonAI is compiled out for the removability gate via SUMMON_AI_ENABLED=0.
 
 import PackageDescription
 
@@ -13,6 +13,18 @@ var products: [Product] = [
     .executable(name: "summon-cli", targets: ["summon-cli"]),
     .executable(name: "summon-app", targets: ["summon-app"]),
 ]
+
+var cliDeps: [Target.Dependency] = ["SummonCore"]
+var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
+var cliSettings: [SwiftSetting] = []
+var appSettings: [SwiftSetting] = []
+
+if summonAIEnabled {
+    cliDeps.append("SummonAI")
+    appDeps.append("SummonAI")
+    cliSettings.append(.define("SUMMON_AI"))
+    appSettings.append(.define("SUMMON_AI"))
+}
 
 var targets: [Target] = [
     .target(
@@ -40,13 +52,15 @@ var targets: [Target] = [
     ),
     .executableTarget(
         name: "summon-cli",
-        dependencies: ["SummonCore"],
-        path: "Sources/summon-cli"
+        dependencies: cliDeps,
+        path: "Sources/summon-cli",
+        swiftSettings: cliSettings
     ),
     .executableTarget(
         name: "summon-app",
-        dependencies: ["SummonCore", "SummonUI"],
+        dependencies: appDeps,
         path: "Sources/summon-app",
+        swiftSettings: appSettings,
         linkerSettings: [
             .linkedFramework("AppKit"),
             .linkedFramework("Carbon"),
@@ -66,7 +80,6 @@ var targets: [Target] = [
         name: "SummonShimTests",
         dependencies: ["SummonShim", "SummonCore"],
         path: "Tests/SummonShimTests",
-        // Fixtures loaded from disk via #filePath (SPM flattens nested package.json names).
         exclude: ["Fixtures"]
     ),
 ]
@@ -77,7 +90,17 @@ if summonAIEnabled {
         .target(
             name: "SummonAI",
             dependencies: ["SummonCore"],
-            path: "Sources/SummonAI"
+            path: "Sources/SummonAI",
+            linkerSettings: [
+                .linkedFramework("FoundationModels"),
+            ]
+        )
+    )
+    targets.append(
+        .testTarget(
+            name: "SummonAITests",
+            dependencies: ["SummonAI", "SummonCore"],
+            path: "Tests/SummonAITests"
         )
     )
 }
