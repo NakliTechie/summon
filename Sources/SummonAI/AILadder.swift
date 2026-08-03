@@ -21,9 +21,9 @@ public final class AILadder: @unchecked Sendable {
         } else {
             list.append(UnavailableAppleFoundationModelRung())
         }
-        // L0 packaged small model — fallback for 8GB / no Apple Intelligence.
+        // L0 packaged MLX model — fallback for 8GB / no Apple Intelligence (D7=MLX).
         if let store = try? FileL0WeightStore() {
-            list.append(L0PackagedModelRung(store: store))
+            list.append(L0PackagedModelRung.production(store: store))
         }
         return list
     }
@@ -202,6 +202,16 @@ public final class SummonAIService: @unchecked Sendable {
         )
         staging.stage(proposal)
         if let core {
+            try? core.staged.migrate()
+            try? core.staged.upsert(PersistedStagedProposal(
+                id: proposal.id.uuidString,
+                createdAt: proposal.createdAt,
+                rung: completion.rung.rawValue,
+                prompt: prompt,
+                output: completion.text,
+                egressSummary: completion.egressSummary,
+                state: "staged"
+            ))
             _ = try? core.dispatch(
                 action: .settingsSet(
                     key: "ai.lastInvocation",
@@ -216,5 +226,21 @@ public final class SummonAIService: @unchecked Sendable {
             )
         }
         return proposal
+    }
+
+    public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {
+        guard let p = staging.accept(id) else { return nil }
+        try? core?.staged.setState(id: id.uuidString, state: "accepted")
+        _ = try? core?.dispatch(
+            action: .settingsSet(key: "ai.lastAccept", value: .string(id.uuidString)),
+            actor: actor
+        )
+        return p
+    }
+
+    public func reject(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {
+        guard let p = staging.reject(id) else { return nil }
+        try? core?.staged.setState(id: id.uuidString, state: "rejected")
+        return p
     }
 }

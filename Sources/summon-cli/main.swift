@@ -46,6 +46,10 @@ struct SummonCLI {
             try runCommand(Array(args.dropFirst()))
         case "ai":
             try aiCommand(Array(args.dropFirst()))
+        case "web":
+            try webCommand(Array(args.dropFirst()))
+        case "window":
+            try windowCommand(Array(args.dropFirst()))
         default:
             fputs("error: unknown command '\(command)'\n", stderr)
             printUsage()
@@ -300,14 +304,13 @@ struct SummonCLI {
             print("---")
             print("state \(proposal.state.rawValue) (not executed — accept in UI later)")
         case "l0-consent":
-            // Explicit consent for packaged model download (does not fetch yet).
             let store = try FileL0WeightStore()
-            let rung = L0PackagedModelRung(store: store)
+            let rung = L0PackagedModelRung.production(store: store)
             rung.grantConsent()
-            print("ok L0 consent granted for \(rung.manifest.modelID)")
-            print("note weights not downloaded yet — fetch lands with D7 engine")
+            print("ok L0 consent granted for \(rung.manifest.modelID) (MLX)")
+            print("note: place model dir at ~/Library/Application Support/Summon/Models/\(rung.manifest.modelID)/")
+            print("      or fetch HF repo \(rung.manifest.hfRepo)")
         case "parse-command":
-            // Grade staged NL→command JSON (deterministic schema check).
             let text = args.dropFirst().joined(separator: " ")
             guard !text.isEmpty else {
                 fputs("usage: summon ai parse-command <json-or-prose-with-json>\n", stderr)
@@ -315,6 +318,30 @@ struct SummonCLI {
             }
             let parsed = try NLCommandSidecar.parse(output: text)
             print("ok \(parsed.actionName)")
+        case "list-staged":
+            try core.staged.migrate()
+            for p in try core.staged.list(state: "staged") {
+                print("\(p.id)\t\(p.rung)\t\(p.prompt.prefix(40))")
+            }
+        case "accept":
+            guard args.count >= 2, let id = UUID(uuidString: args[1]) else {
+                fputs("usage: summon ai accept <proposal-uuid>\n", stderr); exit(2)
+            }
+            if let p = try service.accept(id: id, actor: .agent) {
+                print("accepted \(p.id)")
+                print(p.output)
+            } else {
+                // Fall back to persisted store
+                try core.staged.setState(id: args[1], state: "accepted")
+                print("accepted \(args[1])")
+            }
+        case "reject":
+            guard args.count >= 2, let id = UUID(uuidString: args[1]) else {
+                fputs("usage: summon ai reject <proposal-uuid>\n", stderr); exit(2)
+            }
+            _ = try service.reject(id: id, actor: .agent)
+            try? core.staged.setState(id: args[1], state: "rejected")
+            print("rejected \(args[1])")
         default:
             fputs("error: unknown ai subcommand '\(sub)'\n", stderr)
             exit(2)
@@ -323,6 +350,76 @@ struct SummonCLI {
         fputs("error: AI target compiled out (SUMMON_AI_ENABLED=0)\n", stderr)
         exit(1)
         #endif
+    }
+
+    static func webCommand(_ args: [String]) throws {
+        #if SUMMON_AI
+        guard let sub = args.first else {
+            fputs("usage: summon web enable|disable|search <q> [--enrich]\n", stderr); exit(2)
+        }
+        let core = try makeCore()
+        switch sub {
+        case "enable":
+            core.webConfig.enableWithLocalhostPreset()
+            try core.persistWebConfig()
+            print("ok web enabled baseURL=\(core.webConfig.baseURL)")
+        case "disable":
+            core.webConfig.enabled = false
+            try core.persistWebConfig()
+            print("ok web disabled")
+        case "search":
+            var enrich = false
+            var qParts: [String] = []
+            for a in args.dropFirst() {
+                if a == "--enrich" { enrich = true } else { qParts.append(a) }
+            }
+            let q = qParts.joined(separator: " ")
+            guard !q.isEmpty else { fputs("usage: summon web search <query> [--enrich]\n", stderr); exit(2) }
+            guard core.webConfig.enabled else {
+                fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
+            }
+            let client = SearXNGClient(config: core.webConfig)
+            let hits = try awaitOrRun { try await client.search(query: q) }
+            if hits.isEmpty {
+                print("(no hits)")
+                exit(1)
+            }
+            print(WebEnrich.formatHitsOnly(hits))
+            _ = try? core.dispatch(
+                action: .settingsSet(
+                    key: "web.lastEgressHost",
+                    value: .string(URL(string: core.webConfig.baseURL)?.host ?? "unknown")
+                ),
+                actor: .agent
+            )
+            if enrich {
+                let service = SummonAIService(core: core)
+                let prompt = WebEnrich.enrichPrompt(question: q, hits: hits)
+                let proposal = try awaitOrRun {
+                    try await service.completeAndStage(prompt: prompt, actor: .agent)
+                }
+                print("---")
+                print("staged enrich \(proposal.id.uuidString) rung=\(proposal.rung.rawValue)")
+                print(proposal.output)
+            }
+        default:
+            fputs("error: unknown web subcommand\n", stderr); exit(2)
+        }
+        #else
+        fputs("error: AI/web compiled out\n", stderr); exit(1)
+        #endif
+    }
+
+    static func windowCommand(_ args: [String]) throws {
+        guard let layoutRaw = args.first, let layout = WindowLayout(rawValue: layoutRaw) else {
+            fputs("usage: summon window <leftHalf|rightHalf|maximize|...>\n", stderr); exit(2)
+        }
+        // Geometry always available; AX apply is UI-side (print frame for agent)
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let frame = WindowGeometry.frame(layout: layout, screen: screen, gap: 8)
+        print("layout \(layout.rawValue)")
+        print("frame \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))")
+        print("note: apply via Accessibility in summon-app (WindowApplicator)")
     }
 
     /// Bridge async AI calls into the sync CLI entrypoint.
@@ -355,10 +452,13 @@ struct SummonCLI {
           summon clipboard list|search|ingest|delete
           summon quicklink add|list|delete
           summon run <module.action> <path>
-          summon ai status | complete <prompt>
+          summon ai status | complete | accept | reject | l0-consent | list-staged
+          summon web enable|disable|search <q> [--enrich]
+          summon window <leftHalf|rightHalf|maximize|…>
 
         Mutating commands journal actor=agent.
         AI output is always staged (never auto-executed).
+        Web search is opt-in (default OFF; enable presets localhost:8080).
         """)
     }
 }

@@ -2,19 +2,23 @@
 
 ## Status
 
-**Full autopilot 1–5 slice shipped to branch.**  
-L0 fallback seam (consent + Fake engine) · M2 surfaces (window math, FTS5, App Intents fake) · NL→command grading · i18n/hyperkey seams · walkthrough harness.  
-`make verify` includes walkthrough. Forward-pass: `plan/forward-pass-2026-08-03.md`.
-
-## Ladder preference
-
-L1 (Apple) → L0 (packaged llama.cpp path; Fake engine until D7) → L2/L3 later.  
-8GB / no Apple AI: L0 after consent+weights; deterministic floor always works.
-
-## Residual (forward-pass H1–H3)
-
-Real llama.cpp · live AppIntents · Accessibility window apply · real store exts · notarized cask · Dev ID last.
+**Overnight autopilot (2026-08-04)** — max-until-wall.  
+D7=**MLX** (`mlx_lm.generate` bridge) · W1 SearXNG opt-in (localhost preset) · staged persist accept/reject · window AX applicator · paste-plain · web CLI.  
+`make verify` green (walkthrough ALL ROLES OK).
 
 ## Decisions
 
-Dev ID last · cask-first · socket ON · ⌥Space · L1 day-1 · M4 = L1 gate · L0 for non-AI Macs.
+| When | Decision |
+|---|---|
+| 2026-08-03 | Dev ID last · cask first · socket ON · ⌥Space · L1 day-1 · M4=L1 gate |
+| 2026-08-04 | **D7 = MLX** (process bridge now; pure mlx-swift LLM later) |
+| 2026-08-04 | **W1** OFF + after enable preset `http://127.0.0.1:8080`; hits always; enrich if L1/L0 |
+| 2026-08-04 | Overnight stop: **maximum code until wall** |
+
+## Residual
+
+Real HF model fetch/hash pin · pure mlx-swift embed · live AppIntents · menu-item AX · full Raycast store exts · notarized cask · Dev ID
+
+## Ladder
+
+L1 Apple → L0 MLX packaged → (L2/L3 later). 8GB: L0 after consent+model dir.

@@ -12,7 +12,9 @@ public final class SummonCore: @unchecked Sendable {
     public let journal: ActionJournal
     public let bus: ActionBus
     public let schemaGate: SchemaGate
+    public let staged: StagedProposalStore
     public var search: SearchService
+    public var webConfig: WebSearchConfig = .default
 
     public convenience init(containerURL: URL) throws {
         let dbQueue = try SummonDatabase.open(in: containerURL)
@@ -62,6 +64,8 @@ public final class SummonCore: @unchecked Sendable {
             executor: executor ?? RecordingModuleExecutor()
         )
         self.schemaGate = SchemaGate()
+        self.staged = StagedProposalStore(dbQueue: dbQueue)
+        try? self.staged.migrate()
         self.search = SearchService(
             apps: AppCatalog(searchPaths: appSearchPaths),
             spotlight: spotlight ?? FakeSpotlightIndex(),
@@ -69,6 +73,13 @@ public final class SummonCore: @unchecked Sendable {
             clipboard: clipboard,
             quicklinks: quicklinks
         )
+        // Load web config from settings if present
+        if case .bool(let en) = try? settings.get("web.search.enabled") {
+            webConfig.enabled = en
+        }
+        if case .string(let url) = try? settings.get("web.search.baseURL") {
+            webConfig.baseURL = url
+        }
     }
 
     public func enableLiveSpotlight() {
@@ -206,5 +217,18 @@ public final class SummonCore: @unchecked Sendable {
 }
 
 public enum SummonVersion {
-    public static let string = "0.4.0-l1"
+    public static let string = "0.5.0-night"
+}
+
+extension SummonCore {
+    public func persistWebConfig() throws {
+        _ = try dispatch(
+            action: .settingsSet(key: "web.search.enabled", value: .bool(webConfig.enabled)),
+            actor: .user
+        )
+        _ = try dispatch(
+            action: .settingsSet(key: "web.search.baseURL", value: .string(webConfig.baseURL)),
+            actor: .user
+        )
+    }
 }
