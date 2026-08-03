@@ -2,33 +2,32 @@
 
 ## Status
 
-**Overnight autopilot (2026-08-04)** — max-until-wall.  
-D7=**MLX** (`mlx_lm.generate` bridge) · W1 SearXNG opt-in (localhost preset) · staged persist accept/reject · window AX applicator · paste-plain · web CLI.  
-`make verify` green (walkthrough ALL ROLES OK).
+**Autopilot A–G (2026-08-04)** — MERGED to main `dacfe56` + pushed.  
+`make verify` green on worktree before ship (tests · lint · removability · walkthrough).
 
-## Roadmap (2026-08-04)
+## Roadmap
 
-Full write-up: local `plan/2026-08-04-roadmap-ready.md` (research, gaps, R0/R1/R2, phases A–E).
+**Phases A–G implemented** (workplan checkboxes). Phase H (notarize / Dev ID) deferred — stop-line.
 
-**ASAP finish line = R0 (daily driver):** bar loop + search usable + clipboard usable + L1/L0 paths + verify green — **not** full M1–M4 inventory.
+Inventory: `plan/pending.md` · workplan: `plan/workplan.md` · report: `plan/2026-08-04-autopilot-AG.md`
 
-**Order:** A bar/UX/latency → B S2+L0 → C one parity kill → D App Intents/agent → E notarized cask (Dev ID last).
+**R0 depth:** bar chrome + search + frecency + staged AI strip + latency probe exist; claim daily-driver only after human soak.
 
-**Diagnosis:** architecture ahead of product; re-center on ⌥Space → results → act.
+**Order remaining:** polish R0 · rev 007 · deepen live AX/EventKit/browser · Phase H last.
 
 ## Decisions
 
 | When | Decision |
 |---|---|
 | 2026-08-03 | Dev ID last · cask first · socket ON · ⌥Space · L1 day-1 · M4=L1 gate |
-| 2026-08-04 | **D7 = MLX** (process bridge now; pure mlx-swift LLM later) |
-| 2026-08-04 | **W1** OFF + after enable preset `http://127.0.0.1:8080`; hits always; enrich if L1/L0 |
-| 2026-08-04 | Overnight stop: **maximum code until wall** |
+| 2026-08-04 | **D7 = MLX** |
+| 2026-08-04 | **W1** OFF + localhost preset |
+| 2026-08-04 | Autopilot scope **A–G** (not H); C1a Maccy-first; F/G headless-first seams |
 
 ## Residual
 
-Real HF model fetch/hash pin · pure mlx-swift embed · live AppIntents · menu-item AX · full Raycast store exts · notarized cask · Dev ID
+Real HF model UX · pure mlx-swift embed · live AppIntents deep · menu AX · real store packages · notarized cask · Dev ID · latency hard gate in verify
 
 ## Ladder
 
-L1 Apple → L0 MLX packaged → (L2/L3 later). 8GB: L0 after consent+model dir.
+L1 Apple → L0 MLX packaged → L2/L3 detect structs present.
