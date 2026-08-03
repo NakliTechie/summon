@@ -2,48 +2,49 @@
 
 ## Status
 
-**M1 advanced (continuous autopilot)** · C0 · C-spine.  
-`make verify` green (58 tests + cli-e2e + lint + removability). HEAD on origin: see `git log -1`.
+**M1 advanced + cask-local path + agent socket default ON.**  
+Gate: `make verify`. Distribution: **cask first**, Developer ID **last** in queue.
 
-### Landed this continuous run
+## Decisions (2026-08-03 Chirag)
 
-- Spine, SchemaGate, journal replay, GRDB stores
-- JSC shim + synthetic C0 fixtures
-- Filter grammar, S1 search, object→action, apps, calc, snippets
-- Clipboard (Maccy privacy types), quicklinks
-- Module executor open/reveal/copy; system commands
-- LauncherSession + AppKit panel; emoji seed
-- Agent UNIX socket protocol (off by default)
-- `summon-app` menu-bar host + ⌥Space Carbon hotkey
-- CLI expanded (search/calc/snippet/clipboard/quicklink/run)
+| Decision | Choice |
+|---|---|
+| Developer ID / notary | **Later — last in queue** |
+| Homebrew cask | **First** among distribution tracks — template + local dry-run now; public PR after notarized zip |
+| Global hotkey | **⌥Space OK** (locked) |
+| Agent socket | **Default ON** — disable via `agent.socket.enabled=false` |
+| L1 AI on CI | Not a product question — see below |
 
-### Residual M1 (engineering, no Chirag required)
+### What was the “AI question”?
 
-- Menu-item search (Accessibility API)
-- Hyperkey / double-tap modifiers
-- More Maccy parity (paste-as-plain, ignore lists, pinning UI)
-- Packed `.app` / Info.plist / ad-hoc sign dry-run
-- Latency + network sovereignty gates
-- Real Raycast store extensions on C0 harness
+Not “should Summon have AI?” (ladder is already adopted). It was a **CI park wall**:
 
-### Needs Chirag (park walls / product)
+- Apple Foundation Models (L1) only run on Apple Intelligence–capable Macs + recent OS.
+- GitHub Actions macOS runners often **cannot** exercise the real L1 rung.
+- Plan: unit tests use `FakeModelRung`; real L1 re-verified on capable hardware → `READY-l1-hardware.md` when AI chunk lands.
+- **No decision needed from you** until chunk 5 unless you want a specific machine listed as the L1 gate host.
 
-- Developer ID + notary credentials → release
-- Homebrew tap first notarized cask
-- L1 Apple Intelligence hardware for real-rung CI
-- Hotkey default if ⌥Space conflicts with your setup
-- When agent socket is enabled by default in developer settings
+## Cask path
+
+- Template: `packaging/homebrew/Casks/summon.rb`
+- Local dry-run: `make cask-local` (ad-hoc `Summon.app` zip + file:// cask)
+- Park wall notes: `READY-cask.md`
+- Unblocked for **public** brew install by: notarized GitHub Release zip (after Dev ID)
+
+## Residual eng (no human)
+
+Menu-item search, hyperkey, more Maccy parity, latency/network gates, real Raycast store exts.
 
 ## Chunk plan
 
-| 1 C-spine | green |
-| 2 C0 | green (synthetic) |
-| 3 M1 | **advanced** — residual above |
-| 4–7 | not started |
+| 1–2 | C-spine, C0 | green |
+| 3 M1 | advanced | residual above |
+| Dist | cask-local ready | public cask waits notarization |
+| 4–7 | not started | |
 
 ## Log
 
-- 2026-08-03 continuous: C-spine → C0 → C1-core → M1 panel/clipboard/socket/app/system commands. All shipped to `main`.
+- 2026-08-03 — Continuous M1. Decisions: cask-first, socket ON, ⌥Space OK, Dev ID last. Cask packaging + READY-cask.md.
 
 ## Dead ends
 *(none)*

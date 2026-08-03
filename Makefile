@@ -7,10 +7,18 @@ BUILD_FLAGS :=
 # Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
 export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e lint removability help
+.PHONY: build test verify release clean cli-e2e lint removability app cask-local help
 
 help:
-	@echo "Targets: build test verify release clean cli-e2e lint removability"
+	@echo "Targets: build test verify app cask-local release clean cli-e2e lint removability"
+
+# Ad-hoc Summon.app under dist/ (no Developer ID).
+app:
+	bash packaging/macos/build-app.sh
+
+# Local Homebrew cask dry-run against ad-hoc app zip (handoff READY-cask).
+cask-local: app
+	bash packaging/homebrew/test-local-cask.sh
 
 build:
 	$(SWIFT) build $(BUILD_FLAGS)

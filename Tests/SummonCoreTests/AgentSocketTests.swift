@@ -40,4 +40,8 @@ final class AgentSocketTests: XCTestCase {
         let server = AgentSocketServer(core: core)
         XCTAssertThrowsError(try server.handleRequest(Data(#"{"op":"teleport"}"#.utf8)))
     }
+
+    func testDefaultEnabledSettingKey() {
+        XCTAssertEqual(AgentSocketServer.enabledSettingKey, "agent.socket.enabled")
+    }
 }

@@ -1,11 +1,15 @@
 import Foundation
 import Network
 
-/// Agent face: UNIX domain socket (handoff §6). **Off by default.**
+/// Agent face: UNIX domain socket (handoff §6).
 ///
-/// Default path: `~/Library/Application Support/Summon/summon.sock`.
+/// **Default ON** (decision 2026-08-03): host app starts the socket unless
+/// `agent.socket.enabled` is set false. Path: `…/Summon/summon.sock` (mode 0600).
 /// Wire: one JSON line request → one JSON line response. Actor is always `.agent`.
 public final class AgentSocketServer: @unchecked Sendable {
+    /// Settings key; missing key means enabled.
+    public static let enabledSettingKey = "agent.socket.enabled"
+
     public enum State: Sendable, Equatable {
         case stopped
         case listening
@@ -35,7 +39,7 @@ public final class AgentSocketServer: @unchecked Sendable {
             try FileManager.default.removeItem(at: url)
         }
 
-        var params = NWParameters()
+        let params = NWParameters()
         params.requiredLocalEndpoint = NWEndpoint.unix(path: path)
         params.allowLocalEndpointReuse = true
 
