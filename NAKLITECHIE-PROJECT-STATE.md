@@ -2,49 +2,40 @@
 
 ## Status
 
-**M1 advanced + cask-local path + agent socket default ON.**  
-Gate: `make verify`. Distribution: **cask first**, Developer ID **last** in queue.
+**L1 day-1 live on M4 Pro** · M1 advanced · C0 · C-spine.  
+`make verify` green. `make l1-probe` → L1 **available** on this host.
 
-## Decisions (2026-08-03 Chirag)
+## Decisions (Chirag 2026-08-03)
 
 | Decision | Choice |
 |---|---|
-| Developer ID / notary | **Later — last in queue** |
-| Homebrew cask | **First** among distribution tracks — template + local dry-run now; public PR after notarized zip |
-| Global hotkey | **⌥Space OK** (locked) |
-| Agent socket | **Default ON** — disable via `agent.socket.enabled=false` |
-| L1 AI on CI | Not a product question — see below |
+| Dev ID / notary | Last in queue |
+| Homebrew cask | First dist track (`make cask-local` ready) |
+| ⌥Space | Locked OK |
+| Agent socket | Default ON |
+| Apple Foundation Models | **Day-1 L1**, capability-gated; this **M4 Pro** is the real-rung gate host |
+| macOS floor | Still 14; L1 requires 26+ AI-capable hardware at runtime |
 
-### What was the “AI question”?
+## L1 hardware gate
 
-Not “should Summon have AI?” (ladder is already adopted). It was a **CI park wall**:
+See `READY-l1-hardware.md`. CI uses `FakeModelRung`. This machine runs real `SystemLanguageModel`.
 
-- Apple Foundation Models (L1) only run on Apple Intelligence–capable Macs + recent OS.
-- GitHub Actions macOS runners often **cannot** exercise the real L1 rung.
-- Plan: unit tests use `FakeModelRung`; real L1 re-verified on capable hardware → `READY-l1-hardware.md` when AI chunk lands.
-- **No decision needed from you** until chunk 5 unless you want a specific machine listed as the L1 gate host.
+## AI architecture (day-1)
 
-## Cask path
+- `ModelRung` protocol (ours) — never Apple’s protocol as the core
+- `AppleFoundationModelRung` adapter (`FoundationModels`)
+- `FakeModelRung` for CI / removability
+- `AILadder` detection + `SummonAIService` staged completions (never auto-exec)
+- CLI: `summon ai status|complete`
+- L0/L2/L3 still deferred to chunk 5 probes
 
-- Template: `packaging/homebrew/Casks/summon.rb`
-- Local dry-run: `make cask-local` (ad-hoc `Summon.app` zip + file:// cask)
-- Park wall notes: `READY-cask.md`
-- Unblocked for **public** brew install by: notarized GitHub Release zip (after Dev ID)
+## Residual
 
-## Residual eng (no human)
-
-Menu-item search, hyperkey, more Maccy parity, latency/network gates, real Raycast store exts.
-
-## Chunk plan
-
-| 1–2 | C-spine, C0 | green |
-| 3 M1 | advanced | residual above |
-| Dist | cask-local ready | public cask waits notarization |
-| 4–7 | not started | |
+Menu-item search, hyperkey, Maccy parity depth, public cask after notarization, L0 pack, latency/network gates.
 
 ## Log
 
-- 2026-08-03 — Continuous M1. Decisions: cask-first, socket ON, ⌥Space OK, Dev ID last. Cask packaging + READY-cask.md.
+- 2026-08-03 — L1 day-1 scaffold; live probe green on M4 Pro.
 
 ## Dead ends
 *(none)*

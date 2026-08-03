@@ -206,5 +206,5 @@ public final class SummonCore: @unchecked Sendable {
 }
 
 public enum SummonVersion {
-    public static let string = "0.3.0-m1"
+    public static let string = "0.4.0-l1"
 }

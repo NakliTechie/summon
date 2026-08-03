@@ -7,10 +7,20 @@ BUILD_FLAGS :=
 # Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
 export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e lint removability app cask-local help
+.PHONY: build test verify release clean cli-e2e lint removability app cask-local l1-probe help
 
 help:
-	@echo "Targets: build test verify app cask-local release clean cli-e2e lint removability"
+	@echo "Targets: build test verify app cask-local l1-probe release clean cli-e2e lint removability"
+
+# Live Apple Foundation Models probe on the designated M4 host (READY-l1-hardware).
+l1-probe: build
+	@set -euo pipefail; \
+	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
+	echo "l1-probe: ai status"; \
+	"$$BIN" ai status; \
+	echo "l1-probe: ai complete (staged)"; \
+	"$$BIN" ai complete "Reply with exactly one word: pong" || true; \
+	echo "l1-probe: done (skips are OK if Apple Intelligence is off)"
 
 # Ad-hoc Summon.app under dist/ (no Developer ID).
 app:
@@ -58,7 +68,7 @@ cli-e2e: build
 	TMP=$$(mktemp -d); \
 	export HOME="$$TMP"; \
 	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
-	"$$BIN" version | grep -E -q 'spine|c1|m1'; \
+	"$$BIN" version | grep -E -q 'spine|c1|m1|l1'; \
 	"$$BIN" settings set cspine.cli true; \
 	OUT=$$("$$BIN" settings get cspine.cli); \
 	test "$$OUT" = "true"; \

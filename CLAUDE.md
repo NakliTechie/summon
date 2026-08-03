@@ -26,5 +26,5 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-**M1 advanced · cask-local ready · agent socket default ON.** Dev ID last. ⌥Space locked. See state file + `READY-cask.md`.
+**L1 day-1 live** on designated M4 Pro gate host. `ModelRung` + Apple Foundation Models adapter + staged AI CLI. See `READY-l1-hardware.md`.
 
