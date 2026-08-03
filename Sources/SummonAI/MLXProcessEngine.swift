@@ -49,13 +49,8 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
     public func isReady(weightsURL: URL) -> Bool {
         var isDir: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: weightsURL.path, isDirectory: &isDir)
-        // MLX models are directories; also accept a marker file for tests.
-        if exists && isDir.boolValue { return true }
-        if exists && weightsURL.pathExtension == "gguf" {
-            // Wrong format for MLX process engine
-            return false
-        }
-        // Marker for Fake-compatible local test dirs
+        guard exists, isDir.boolValue else { return false }
+        // Require config.json so empty dirs are not "ready".
         let config = weightsURL.appendingPathComponent("config.json")
         return FileManager.default.fileExists(atPath: config.path)
     }
