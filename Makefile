@@ -50,12 +50,14 @@ cli-e2e: build
 	TMP=$$(mktemp -d); \
 	export HOME="$$TMP"; \
 	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
-	"$$BIN" version | grep -q 'spine'; \
+	"$$BIN" version | grep -E -q 'spine|c1'; \
 	"$$BIN" settings set cspine.cli true; \
 	OUT=$$("$$BIN" settings get cspine.cli); \
 	test "$$OUT" = "true"; \
 	"$$BIN" settings list | grep -q 'cspine.cli=true'; \
-	echo "cli-e2e: ok (settings set/get/list under temp HOME)"
+	"$$BIN" calc "2+2" | grep -q '^4$$'; \
+	"$$BIN" actions app | grep -q 'app.open'; \
+	echo "cli-e2e: ok (settings + calc + actions under temp HOME)"
 
 release:
 	@echo "release: not implemented until C5 (sign/notarize/staple/appcast)"

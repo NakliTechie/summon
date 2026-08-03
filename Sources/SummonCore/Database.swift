@@ -3,7 +3,8 @@ import GRDB
 
 /// Schema version stamped in `schema_meta` and every JSON export.
 public enum StoreSchema {
-    public static let version = 1
+    /// v1 spine; v2 snippets (C1).
+    public static let version = 2
 }
 
 /// Opens / migrates the Summon SQLite database under a container directory.
@@ -75,6 +76,23 @@ public enum SummonDatabase {
             try db.execute(sql: """
                 CREATE INDEX action_journal_actor_idx ON action_journal(actor);
                 """)
+        }
+        migrator.registerMigration("v2_snippets") { db in
+            try db.execute(sql: """
+                CREATE TABLE snippets (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    keyword TEXT
+                );
+                """)
+            try db.execute(sql: """
+                CREATE INDEX snippets_name_idx ON snippets(name);
+                """)
+            try db.execute(
+                sql: "UPDATE schema_meta SET value = ? WHERE key = ?",
+                arguments: ["\(StoreSchema.version)", "schemaVersion"]
+            )
         }
         return migrator
     }

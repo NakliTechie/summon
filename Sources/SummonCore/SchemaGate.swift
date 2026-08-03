@@ -1,35 +1,39 @@
 import Foundation
 
 /// One ingress for every external payload (invariant 6).
-///
-/// Validates and decodes extension-facing / CLI-JSON / socket messages into
-/// typed `CoreAction` values before they reach the bus. The door supplies the
-/// `ActorTag`; SchemaGate never trusts an actor claim inside the payload.
 public struct SchemaGate: Sendable {
     public static let schemaVersion = 1
 
     public init() {}
 
-    /// Wire format for external actions (JSON).
-    ///
-    /// ```json
-    /// { "v": 1, "action": "settings.set", "key": "theme", "value": "dark" }
-    /// ```
     public struct ExternalActionDocument: Codable, Equatable, Sendable {
         public let v: Int
         public let action: String
         public let key: String?
         public let value: JSONValue?
+        public let id: String?
+        public let body: String?
+        public let keyword: String?
 
-        public init(v: Int = SchemaGate.schemaVersion, action: String, key: String? = nil, value: JSONValue? = nil) {
+        public init(
+            v: Int = SchemaGate.schemaVersion,
+            action: String,
+            key: String? = nil,
+            value: JSONValue? = nil,
+            id: String? = nil,
+            body: String? = nil,
+            keyword: String? = nil
+        ) {
             self.v = v
             self.action = action
             self.key = key
             self.value = value
+            self.id = id
+            self.body = body
+            self.keyword = keyword
         }
     }
 
-    /// Decode and validate raw external JSON into a `CoreAction`.
     public func decodeAction(from data: Data) throws -> CoreAction {
         let doc: ExternalActionDocument
         do {
@@ -60,12 +64,27 @@ public struct SchemaGate: Sendable {
                 throw CoreError.schemaValidation("settings.delete requires non-empty key")
             }
             return .settingsDelete(key: key)
+        case "snippet.upsert":
+            guard let id = doc.id, !id.isEmpty else {
+                throw CoreError.schemaValidation("snippet.upsert requires id")
+            }
+            guard let name = doc.key, !name.isEmpty else {
+                throw CoreError.schemaValidation("snippet.upsert requires key (name)")
+            }
+            guard let body = doc.body else {
+                throw CoreError.schemaValidation("snippet.upsert requires body")
+            }
+            return .snippetUpsert(id: id, name: name, body: body, keyword: doc.keyword)
+        case "snippet.delete":
+            guard let id = doc.id, !id.isEmpty else {
+                throw CoreError.schemaValidation("snippet.delete requires id")
+            }
+            return .snippetDelete(id: id)
         default:
             throw CoreError.unknownAction(doc.action)
         }
     }
 
-    /// Build an envelope from external data + door-supplied actor.
     public func envelope(
         from data: Data,
         actor: ActorTag,
@@ -76,7 +95,6 @@ public struct SchemaGate: Sendable {
         return ActionEnvelope(id: id, actor: actor, timestamp: timestamp, action: action)
     }
 
-    /// Encode a CoreAction to the external document form (for fixtures / CLI JSON).
     public func encodeDocument(_ action: CoreAction) throws -> Data {
         let doc: ExternalActionDocument
         switch action {
@@ -84,6 +102,16 @@ public struct SchemaGate: Sendable {
             doc = ExternalActionDocument(action: "settings.set", key: key, value: value)
         case .settingsDelete(let key):
             doc = ExternalActionDocument(action: "settings.delete", key: key)
+        case .snippetUpsert(let id, let name, let body, let keyword):
+            doc = ExternalActionDocument(
+                action: "snippet.upsert",
+                key: name,
+                id: id,
+                body: body,
+                keyword: keyword
+            )
+        case .snippetDelete(let id):
+            doc = ExternalActionDocument(action: "snippet.delete", id: id)
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

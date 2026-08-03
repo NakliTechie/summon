@@ -1,63 +1,46 @@
 # NAKLITECHIE-PROJECT-STATE — Summon
 
-*The resumability spine. Every run and every checkpoint/park-wall event writes here. This is the committed state of record; local `plan/` is gitignored scratch.*
+*The resumability spine. Every run and every checkpoint/park-wall event writes here.*
 
 ---
 
 ## Status
 
-**C0 green (synthetic harness) · C-spine green** — JSC shim spike + fixture harness (List, Form, fetch+storage, sandbox-escape) pass under `make verify`. Real unmodified Raycast *store* extensions not yet loaded (synthetic fixtures exercise the Raycast API surface; store-extension polyfill depth is the residual risk).
+**C1-core green · C0 · C-spine** — filter grammar, S1 search seam (FakeSpotlight + mdfind adapter), object→action grammar, app catalog, calculator, snippet store on the bus. Full M1 inventory (clipboard/hotkeys/UI panel/emoji/…) still open. `make verify` green (45 tests + cli-e2e + lint + removability).
 
-## Adopted (from the bundle)
+## Adopted
 
-- **D1 — Name:** Summon (closed).
-- **D5 — macOS floor:** 14.0 (L1 AI rung capability-gated at runtime).
-- **D3 — Apple Foundation Models:** adopted as L1; ladder degrades to L2/L3 below floor by detection, not a setting.
-- **D6 — Packaged model (L0):** Gemma 4 E2B default, E4B auto-offered ≥16GB. Apache 2.0, multimodal.
-- **Search:** full ladder S1 (Spotlight) → S2 (own FTS5, consented) → S3 (semantic embeddings) in v1.
-- **App Intents surface:** M2.
-- **License:** AGPL-3.0. **Distribution:** Homebrew cask (`naklitechie/homebrew-tap`), signed + notarized, Sparkle appcast → GitHub Releases.
+- D1 Summon · D5 macOS 14 · D3 L1 AFMs · D6 Gemma 4 E2B · Search ladder S1–S3 · App Intents M2 · AGPL-3.0 + Homebrew cask.
 
 ## Decisions journaled
 
-- **Actor case name:** `ActorTag.ext(id:)` (keyword `extension` reserved); journal label `ext:<id>`.
-- **Spine store surface:** settings only for C-spine.
-- **CLI actor:** `summon-cli` → `actor=agent`; stub UI → `actor=user`.
-- **GRDB:** 7.x (resolved 7.11.1).
-- **Removability seam:** `SUMMON_AI_ENABLED=0` omits SummonAI product/target.
-- **D2 — JS runtime (provisional at C0):** **JavaScriptCore first.** Evidence: per-extension `JSContext`, CommonJS `require` allow-list (`react`, `@raycast/api` only), filesystem/`fs` denied, fetch entitlement-gated, 3 synthetic fixtures + sandbox escape green. Revisit only if a real store extension needs Node APIs JSC cannot polyfill — evidence then.
-- **C0 scope honesty:** fixtures are synthetic Raycast-API-shaped commands, not yet unmodified store packages. Productionized 10-extension bar is C4.
+- ActorTag.ext · GRDB 7.x · SUMMON_AI_ENABLED=0 removability.
+- D2 provisional JSC (synthetic C0).
+- **C1 store schema v2:** `snippets` table; snapshot includes snippets for byte-equal replay.
+- **S1 seam:** `SpotlightIndexing` protocol; tests use `FakeSpotlightIndex`; production CLI calls `enableLiveSpotlight()` → `mdfind`.
+- **C1-core vs full M1:** this checkpoint is the search+grammar+snippet spine, not the full SuperCmd-class module list (clipboard/hotkeys/window UI deferred to continued M1).
 
 ## Open
 
-- **D4 — Sparkle vs custom updater:** probe before commit; with C0/C1.
-- **D7 — Embedded AI runtime:** llama.cpp+Metal vs MLX-Swift → chunk-5 open.
-- **D8 — S3 embedding model:** EmbeddingGemma 308M vs alt → chunk-5 open.
-- **Real Raycast store extensions:** load 3 unmodified store packages against the harness; expand polyfills as needed.
+- D4 Sparkle · D7/D8 chunk-5 · real Raycast store extensions · remainder of M1 modules.
 
 ## Chunk plan
 
-| Chunk | Contents | Checkpoint | State |
-|---|---|---|---|
-| 1 | Spine | C-spine | **green** |
-| 2 | Shim spike | C0 | **green (synthetic harness)**; real store exts residual |
-| 3 | Launcher core (M1), search S1 | C1 | **next** |
-| 4 | Power modules (M2), App Intents, S2 | C2 | not started |
-| 5 | D7/D8 · AI ladder · S3 | C3 | not started |
-| 6 | Shim productionized, Raycast import, sync, i18n | C4 | not started |
-| 7 | walkthrough, guide, release dry-run | C5 | not started |
+| Chunk | Checkpoint | State |
+|---|---|---|
+| 1 | C-spine | green |
+| 2 | C0 | green (synthetic) |
+| 3 | C1 | **C1-core green**; full M1 inventory residual |
+| 4–7 | C2–C5 | not started |
 
 ## Park walls
 
-- Signing credentials → ad-hoc-signed; `READY-signing.md`.
-- Apple Foundation Models on CI → `FakeModelRung`; `READY-l1-hardware.md`.
-- Homebrew tap cask → `READY-cask.md`.
+Signing · L1 CI hardware · Homebrew cask.
 
 ## Log
 
-- **2026-08-03** — Scaffolded from bundle rev 006.
-- **2026-08-03** — C-spine. SummonCore + CLI + stub UI. `make verify` exit 0.
-- **2026-08-03** — Autopilot: C0 JSC shim (`ShimRuntime`, bootstrap `@raycast/api` surface, `FixtureHarness`), SwiftLint + removability in gate. `make verify` exit 0 (30 tests + cli-e2e + lint + removability). D2 provisional JSC. Next: Chunk 3 (M1 launcher core) or real store-extension pass.
+- 2026-08-03 — Scaffolded; C-spine; C0 JSC shim.
+- 2026-08-03 — **C1-core:** FilterGrammar, SearchService, AppCatalog, Calculator, ObjectActionGrammar, SnippetStore, CLI search/calc/snippet/actions. Verify 45 tests. Next: continue M1 modules or AppKit launcher panel against UX reference.
 
 ## Dead ends
 

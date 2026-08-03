@@ -26,4 +26,5 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-**C-spine + C0 green** (synthetic shim harness). Next: **Chunk 3 — launcher core (M1)** → checkpoint **C1**, or real store-extension pass against the harness. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).
+**C1-core green** (filter grammar · S1 · object→action · apps/calc/snippets). Full M1 inventory residual. Next: continue M1 modules / AppKit launcher panel → full C1. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).
+
