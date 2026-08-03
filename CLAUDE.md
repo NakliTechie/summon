@@ -26,5 +26,5 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-**M1 advanced** — panel, clipboard, quicklinks, emoji, agent socket, summon-app + ⌥Space. Residual: signed .app, full Maccy parity, hyperkey, real store exts. See state file.
+**M1 advanced on main** — panel, clipboard, system commands, summon-app, agent socket. Residual: menu-item search, hyperkey, signed .app, real store exts. See state file.
 
