@@ -48,4 +48,8 @@ public struct StubLauncher: Sendable {
             actor: .user
         )
     }
+
+    public func session() -> LauncherSession {
+        LauncherSession(core: core)
+    }
 }

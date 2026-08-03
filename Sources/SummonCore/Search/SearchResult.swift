@@ -10,6 +10,8 @@ public struct SearchResult: Sendable, Hashable, Codable, Equatable, Identifiable
         case calculation
         case setting
         case command
+        case clipboard
+        case quicklink
     }
 
     public let id: String

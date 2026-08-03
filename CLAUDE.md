@@ -26,5 +26,5 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-**C1-core green** (filter grammar · S1 · object→action · apps/calc/snippets). Full M1 inventory residual. Next: continue M1 modules / AppKit launcher panel → full C1. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).
+**M1 in progress** — clipboard (privacy), quicklinks, module executor, AppKit launcher panel. Next: agent UNIX socket, global hotkey, app target. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).
 

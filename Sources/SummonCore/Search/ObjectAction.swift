@@ -1,10 +1,9 @@
 import Foundation
 
-/// Object→action grammar (LaunchBar/Raycast Tab-on-result): actions available for a selected object.
+/// Object→action grammar (LaunchBar/Raycast Tab-on-result).
 public struct ObjectAction: Sendable, Hashable, Codable, Equatable, Identifiable {
     public let id: String
     public let title: String
-    /// Machine name for CLI (`app.open`, `file.reveal`, …).
     public let name: String
     public let isDestructive: Bool
 
@@ -17,7 +16,6 @@ public struct ObjectAction: Sendable, Hashable, Codable, Equatable, Identifiable
 }
 
 public enum ObjectActionGrammar {
-    /// Actions available for a result kind. Deterministic; modules append later.
     public static func actions(for result: SearchResult) -> [ObjectAction] {
         switch result.kind {
         case .app:
@@ -57,6 +55,19 @@ public enum ObjectActionGrammar {
         case .command:
             return [
                 ObjectAction(id: "run", title: "Run", name: "command.run"),
+            ]
+        case .clipboard:
+            return [
+                ObjectAction(id: "copy", title: "Copy", name: "clipboard.copy"),
+                ObjectAction(id: "paste", title: "Paste", name: "clipboard.paste"),
+                ObjectAction(id: "pin", title: "Pin", name: "clipboard.pin"),
+                ObjectAction(id: "delete", title: "Delete", name: "clipboard.delete", isDestructive: true),
+            ]
+        case .quicklink:
+            return [
+                ObjectAction(id: "open", title: "Open", name: "quicklink.open"),
+                ObjectAction(id: "copy", title: "Copy URL", name: "file.copyPath"),
+                ObjectAction(id: "delete", title: "Delete", name: "quicklink.delete", isDestructive: true),
             ]
         }
     }
