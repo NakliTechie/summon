@@ -6,6 +6,16 @@
 D7=**MLX** (`mlx_lm.generate` bridge) · W1 SearXNG opt-in (localhost preset) · staged persist accept/reject · window AX applicator · paste-plain · web CLI.  
 `make verify` green (walkthrough ALL ROLES OK).
 
+## Roadmap (2026-08-04)
+
+Full write-up: local `plan/2026-08-04-roadmap-ready.md` (research, gaps, R0/R1/R2, phases A–E).
+
+**ASAP finish line = R0 (daily driver):** bar loop + search usable + clipboard usable + L1/L0 paths + verify green — **not** full M1–M4 inventory.
+
+**Order:** A bar/UX/latency → B S2+L0 → C one parity kill → D App Intents/agent → E notarized cask (Dev ID last).
+
+**Diagnosis:** architecture ahead of product; re-center on ⌥Space → results → act.
+
 ## Decisions
 
 | When | Decision |
