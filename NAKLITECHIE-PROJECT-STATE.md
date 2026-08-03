@@ -2,40 +2,19 @@
 
 ## Status
 
-**L1 day-1 live on M4 Pro** · M1 advanced · C0 · C-spine.  
-`make verify` green. `make l1-probe` → L1 **available** on this host.
+**Full autopilot 1–5 slice shipped to branch.**  
+L0 fallback seam (consent + Fake engine) · M2 surfaces (window math, FTS5, App Intents fake) · NL→command grading · i18n/hyperkey seams · walkthrough harness.  
+`make verify` includes walkthrough. Forward-pass: `plan/forward-pass-2026-08-03.md`.
 
-## Decisions (Chirag 2026-08-03)
+## Ladder preference
 
-| Decision | Choice |
-|---|---|
-| Dev ID / notary | Last in queue |
-| Homebrew cask | First dist track (`make cask-local` ready) |
-| ⌥Space | Locked OK |
-| Agent socket | Default ON |
-| Apple Foundation Models | **Day-1 L1**, capability-gated; this **M4 Pro** is the real-rung gate host |
-| macOS floor | Still 14; L1 requires 26+ AI-capable hardware at runtime |
+L1 (Apple) → L0 (packaged llama.cpp path; Fake engine until D7) → L2/L3 later.  
+8GB / no Apple AI: L0 after consent+weights; deterministic floor always works.
 
-## L1 hardware gate
+## Residual (forward-pass H1–H3)
 
-See `READY-l1-hardware.md`. CI uses `FakeModelRung`. This machine runs real `SystemLanguageModel`.
+Real llama.cpp · live AppIntents · Accessibility window apply · real store exts · notarized cask · Dev ID last.
 
-## AI architecture (day-1)
+## Decisions
 
-- `ModelRung` protocol (ours) — never Apple’s protocol as the core
-- `AppleFoundationModelRung` adapter (`FoundationModels`)
-- `FakeModelRung` for CI / removability
-- `AILadder` detection + `SummonAIService` staged completions (never auto-exec)
-- CLI: `summon ai status|complete`
-- L0/L2/L3 still deferred to chunk 5 probes
-
-## Residual
-
-Menu-item search, hyperkey, Maccy parity depth, public cask after notarization, L0 pack, latency/network gates.
-
-## Log
-
-- 2026-08-03 — L1 day-1 scaffold; live probe green on M4 Pro.
-
-## Dead ends
-*(none)*
+Dev ID last · cask-first · socket ON · ⌥Space · L1 day-1 · M4 = L1 gate · L0 for non-AI Macs.

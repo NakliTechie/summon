@@ -15,12 +15,28 @@ public final class AILadder: @unchecked Sendable {
 
     public static func defaultProductionRungs() -> [any ModelRung] {
         var list: [any ModelRung] = []
+        // L1 first where hardware allows.
         if #available(macOS 26.0, *) {
             list.append(AppleFoundationModelRung())
         } else {
             list.append(UnavailableAppleFoundationModelRung())
         }
+        // L0 packaged small model — fallback for 8GB / no Apple Intelligence.
+        if let store = try? FileL0WeightStore() {
+            list.append(L0PackagedModelRung(store: store))
+        }
         return list
+    }
+
+    /// Test ladder: L1 fake-unavailable + L0 with consent+weights for degrade path.
+    public static func testingL0Fallback(
+        l0: L0PackagedModelRung,
+        l1Available: Bool = false
+    ) -> AILadder {
+        let l1: any ModelRung = l1Available
+            ? FakeModelRung(cannedText: "L1")
+            : FakeUnavailableL1()
+        return AILadder(rungs: [l1, l0])
     }
 
     public static func testing(fake: FakeModelRung = FakeModelRung()) -> AILadder {
@@ -66,9 +82,21 @@ public final class AILadder: @unchecked Sendable {
 
     public func complete(prompt: String) async throws -> ModelCompletion {
         guard let rung = await preferredRung() else {
-            throw ModelRungError.unavailable(.l1Apple, "no AI rung available")
+            throw ModelRungError.unavailable(.l1Apple, "no AI rung available (L0 needs consent+weights)")
         }
         return try await rung.complete(prompt: prompt)
+    }
+}
+
+/// Marks L1 as down so tests exercise L0 fallback.
+struct FakeUnavailableL1: ModelRung, Sendable {
+    let id: ModelRungID = .l1Apple
+    let displayName = "Apple Foundation Models"
+    func availability() async -> RungAvailability {
+        .unavailable(reason: "deviceNotEligible")
+    }
+    func complete(prompt: String) async throws -> ModelCompletion {
+        throw ModelRungError.unavailable(.l1Apple, "deviceNotEligible")
     }
 }
 

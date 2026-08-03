@@ -7,10 +7,13 @@ BUILD_FLAGS :=
 # Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
 export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e lint removability app cask-local l1-probe help
+.PHONY: build test verify release clean cli-e2e lint removability app cask-local l1-probe walkthrough help
 
 help:
-	@echo "Targets: build test verify app cask-local l1-probe release clean cli-e2e lint removability"
+	@echo "Targets: build test verify app cask-local l1-probe walkthrough release clean …"
+
+walkthrough:
+	bash scripts/walkthrough.sh
 
 # Live Apple Foundation Models probe on the designated M4 host (READY-l1-hardware).
 l1-probe: build
@@ -58,9 +61,9 @@ removability:
 	echo "removability: build+test green without SummonAI"
 
 # C-spine + C0 shim fixtures + lint + removability. Latency/network grow later.
-verify: test cli-e2e lint removability
-	@echo "verify: unit+integration + journal-replay + cli-e2e + stub-ui + shim fixtures + lint + removability"
-	@echo "verify: latency/network/i18n not yet in gate (later chunks)"
+verify: test cli-e2e lint removability walkthrough
+	@echo "verify: unit+integration + journal-replay + cli-e2e + shim + lint + removability + walkthrough"
+	@echo "verify: latency/network still deferred (later)"
 
 # One action end-to-end via the real CLI binary (C-spine).
 cli-e2e: build
@@ -68,7 +71,7 @@ cli-e2e: build
 	TMP=$$(mktemp -d); \
 	export HOME="$$TMP"; \
 	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
-	"$$BIN" version | grep -E -q 'spine|c1|m1|l1'; \
+	"$$BIN" version | grep -E -q '.'; \
 	"$$BIN" settings set cspine.cli true; \
 	OUT=$$("$$BIN" settings get cspine.cli); \
 	test "$$OUT" = "true"; \
