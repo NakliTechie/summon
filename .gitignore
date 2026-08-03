@@ -18,6 +18,7 @@ Icon
 .swiftpm/
 Package.resolved
 DerivedData/
+dist/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 xcuserdata/
