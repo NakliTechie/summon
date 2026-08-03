@@ -299,6 +299,22 @@ struct SummonCLI {
             print(proposal.output)
             print("---")
             print("state \(proposal.state.rawValue) (not executed — accept in UI later)")
+        case "l0-consent":
+            // Explicit consent for packaged model download (does not fetch yet).
+            let store = try FileL0WeightStore()
+            let rung = L0PackagedModelRung(store: store)
+            rung.grantConsent()
+            print("ok L0 consent granted for \(rung.manifest.modelID)")
+            print("note weights not downloaded yet — fetch lands with D7 engine")
+        case "parse-command":
+            // Grade staged NL→command JSON (deterministic schema check).
+            let text = args.dropFirst().joined(separator: " ")
+            guard !text.isEmpty else {
+                fputs("usage: summon ai parse-command <json-or-prose-with-json>\n", stderr)
+                exit(2)
+            }
+            let parsed = try NLCommandSidecar.parse(output: text)
+            print("ok \(parsed.actionName)")
         default:
             fputs("error: unknown ai subcommand '\(sub)'\n", stderr)
             exit(2)
