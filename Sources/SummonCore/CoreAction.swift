@@ -2,18 +2,19 @@ import Foundation
 
 /// Typed actions that enter the single action bus (invariant 7).
 ///
-/// Chunk-1 surface is the settings store. Modules append cases as they land;
-/// every door (UI, CLI, socket, shim) dispatches the same enum.
+/// Every door (UI, CLI, socket, shim) dispatches the same enum.
 public enum CoreAction: Sendable, Hashable, Codable, Equatable {
-    /// Set a settings key to a JSON-compatible value.
     case settingsSet(key: String, value: JSONValue)
-    /// Remove a settings key (no-op if absent).
     case settingsDelete(key: String)
+    case snippetUpsert(id: String, name: String, body: String, keyword: String?)
+    case snippetDelete(id: String)
 
     public var name: String {
         switch self {
         case .settingsSet: return "settings.set"
         case .settingsDelete: return "settings.delete"
+        case .snippetUpsert: return "snippet.upsert"
+        case .snippetDelete: return "snippet.delete"
         }
     }
 
@@ -21,6 +22,9 @@ public enum CoreAction: Sendable, Hashable, Codable, Equatable {
         case name
         case key
         case value
+        case id
+        case body
+        case keyword
     }
 
     public init(from decoder: Decoder) throws {
@@ -34,6 +38,15 @@ public enum CoreAction: Sendable, Hashable, Codable, Equatable {
         case "settings.delete":
             let key = try c.decode(String.self, forKey: .key)
             self = .settingsDelete(key: key)
+        case "snippet.upsert":
+            let id = try c.decode(String.self, forKey: .id)
+            let key = try c.decode(String.self, forKey: .key) // name stored under key for brevity
+            let body = try c.decode(String.self, forKey: .body)
+            let keyword = try c.decodeIfPresent(String.self, forKey: .keyword)
+            self = .snippetUpsert(id: id, name: key, body: body, keyword: keyword)
+        case "snippet.delete":
+            let id = try c.decode(String.self, forKey: .id)
+            self = .snippetDelete(id: id)
         default:
             throw CoreError.unknownAction(name)
         }
@@ -48,6 +61,13 @@ public enum CoreAction: Sendable, Hashable, Codable, Equatable {
             try c.encode(value, forKey: .value)
         case .settingsDelete(let key):
             try c.encode(key, forKey: .key)
+        case .snippetUpsert(let id, let name, let body, let keyword):
+            try c.encode(id, forKey: .id)
+            try c.encode(name, forKey: .key)
+            try c.encode(body, forKey: .body)
+            try c.encodeIfPresent(keyword, forKey: .keyword)
+        case .snippetDelete(let id):
+            try c.encode(id, forKey: .id)
         }
     }
 }

@@ -1,16 +1,15 @@
 import Foundation
 
 /// Single action bus (invariant 7). All doors dispatch here; no parallel write paths.
-///
-/// The bus applies the action to stores, then journals the outcome. Callers never
-/// touch stores for mutation outside this path.
 public final class ActionBus: @unchecked Sendable {
     private let settings: SettingsStore
+    private let snippets: SnippetStore
     private let journal: ActionJournal
     private let lock = NSLock()
 
-    public init(settings: SettingsStore, journal: ActionJournal) {
+    public init(settings: SettingsStore, snippets: SnippetStore, journal: ActionJournal) {
         self.settings = settings
+        self.snippets = snippets
         self.journal = journal
     }
 
@@ -35,7 +34,6 @@ public final class ActionBus: @unchecked Sendable {
         return result
     }
 
-    /// Apply without journaling — used only by journal replay into a fresh core.
     public func applyForReplay(_ action: CoreAction) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -54,6 +52,13 @@ public final class ActionBus: @unchecked Sendable {
                 throw CoreError.store("settings key must be non-empty")
             }
             try settings.delete(key)
+        case .snippetUpsert(let id, let name, let body, let keyword):
+            try snippets.upsert(Snippet(id: id, name: name, body: body, keyword: keyword))
+        case .snippetDelete(let id):
+            guard !id.isEmpty else {
+                throw CoreError.store("snippet id must be non-empty")
+            }
+            try snippets.delete(id: id)
         }
     }
 }
