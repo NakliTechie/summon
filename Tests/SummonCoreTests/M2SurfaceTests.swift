@@ -56,4 +56,13 @@ final class M2SurfaceTests: XCTestCase {
     func testHyperkeyDefaults() {
         XCTAssertFalse(HyperkeyConfig.default.enabled)
     }
+
+    func testMenuItemSearch() throws {
+        let hits = try MenuItemSearch().search(query: "paste")
+        XCTAssertTrue(hits.contains { $0.title == "Paste" })
+    }
+
+    func testFTSConsentDefaultOff() {
+        XCTAssertFalse(FTSConsent.default.granted)
+    }
 }
