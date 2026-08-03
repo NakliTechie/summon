@@ -29,12 +29,16 @@ public enum ObjectActionGrammar {
                 ObjectAction(id: "open", title: "Open", name: "file.open"),
                 ObjectAction(id: "reveal", title: "Reveal in Finder", name: "file.reveal"),
                 ObjectAction(id: "copy-path", title: "Copy Path", name: "file.copyPath"),
+                ObjectAction(id: "trash", title: "Move to Trash", name: "file.trash", isDestructive: true),
+                ObjectAction(id: "get-info", title: "Get Info", name: "file.getInfo"),
+                ObjectAction(id: "open-with", title: "Open With…", name: "file.openWith"),
             ]
         case .folder:
             return [
                 ObjectAction(id: "open", title: "Open", name: "file.open"),
                 ObjectAction(id: "reveal", title: "Reveal in Finder", name: "file.reveal"),
                 ObjectAction(id: "copy-path", title: "Copy Path", name: "file.copyPath"),
+                ObjectAction(id: "trash", title: "Move to Trash", name: "file.trash", isDestructive: true),
             ]
         case .snippet:
             return [

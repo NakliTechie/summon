@@ -31,7 +31,26 @@ public final class LauncherSession: @unchecked Sendable {
         query = raw
         objectMode = false
         objectActions = []
-        results = try core.search.search(raw)
+        // Learned alias exact match elevates a synthetic top hit
+        var list = try core.search.search(raw)
+        let head = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !head.contains(" "), let alias = try core.aliases.get(keyword: head) {
+            let kind = SearchResult.Kind(rawValue: alias.kind) ?? .command
+            let hit = SearchResult(
+                id: alias.targetResultID,
+                title: alias.title,
+                subtitle: "alias · \(alias.keyword)",
+                kind: kind,
+                score: 1.0
+            )
+            list.removeAll { $0.id == hit.id }
+            list.insert(hit, at: 0)
+        }
+        // Help guide root
+        if head == "?" || head == "help" {
+            list = GuideContent.searchResults()
+        }
+        results = list
         selectedIndex = 0
         objectTargetIndex = 0
         return results
@@ -73,6 +92,7 @@ public final class LauncherSession: @unchecked Sendable {
             }
             let action = objectActions[selectedIndex]
             try core.invoke(actionName: action.name, result: target, actor: actor)
+            try? core.recordUsage(result: target, query: query)
             return action.name
         }
         guard let item = selected else {
@@ -80,6 +100,7 @@ public final class LauncherSession: @unchecked Sendable {
         }
         let name = defaultActionName(for: item)
         try core.invoke(actionName: name, result: item, actor: actor)
+        try? core.recordUsage(result: item, query: query)
         return name
     }
 
