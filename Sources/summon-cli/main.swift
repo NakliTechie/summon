@@ -308,8 +308,19 @@ struct SummonCLI {
             let rung = L0PackagedModelRung.production(store: store)
             rung.grantConsent()
             print("ok L0 consent granted for \(rung.manifest.modelID) (MLX)")
-            print("note: place model dir at ~/Library/Application Support/Summon/Models/\(rung.manifest.modelID)/")
-            print("      or fetch HF repo \(rung.manifest.hfRepo)")
+            print("note: summon ai l0-fetch  OR place model at Models/\(rung.manifest.modelID)/")
+        case "l0-fetch":
+            let store = try FileL0WeightStore()
+            let rung = L0PackagedModelRung.production(store: store)
+            if !store.consent().granted { rung.grantConsent() }
+            do {
+                let url = try L0ModelFetch.fetch(rung: rung, store: store)
+                print("ok fetched \(url.path)")
+            } catch {
+                fputs("error: \(error.localizedDescription)\n", stderr)
+                fputs("hint: pip install -U huggingface_hub\n", stderr)
+                exit(1)
+            }
         case "parse-command":
             let text = args.dropFirst().joined(separator: " ")
             guard !text.isEmpty else {

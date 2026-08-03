@@ -84,9 +84,14 @@ cli-e2e: build
 	"$$BIN" quicklink list | grep -q 'Example'; \
 	echo "cli-e2e: ok (settings + calc + clipboard + quicklink under temp HOME)"
 
-release:
-	@echo "release: not implemented until C5 (sign/notarize/staple/appcast)"
-	@exit 1
+# Ad-hoc release zip (not notarized — Dev ID last in queue).
+release: app
+	@set -euo pipefail; \
+	VERSION="0.5.0-night"; \
+	mkdir -p dist; \
+	( cd dist && ditto -c -k --keepParent Summon.app "Summon-$${VERSION}.zip" ); \
+	shasum -a 256 "dist/Summon-$${VERSION}.zip"; \
+	echo "release: dry-run artifact dist/Summon-$${VERSION}.zip (ad-hoc)"
 
 clean:
 	$(SWIFT) package clean
