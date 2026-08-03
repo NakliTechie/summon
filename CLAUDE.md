@@ -26,4 +26,4 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-Scaffolded from bundle rev 006. Next: **Chunk 1 — the spine** (action bus, SchemaGate, stores, journal, `summon-cli` skeleton) → checkpoint **C-spine**. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).
+**C-spine green** (chunk 1). Next: **Chunk 2 — shim spike** (JSC + reconciler, 3 extensions) → checkpoint **C0**. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).

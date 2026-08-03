@@ -1,0 +1,81 @@
+import Foundation
+import GRDB
+
+/// Schema version stamped in `schema_meta` and every JSON export.
+public enum StoreSchema {
+    public static let version = 1
+}
+
+/// Opens / migrates the Summon SQLite database under a container directory.
+public enum SummonDatabase {
+    public static let fileName = "summon.sqlite"
+
+    /// Default container: `~/Library/Application Support/Summon/`.
+    public static func defaultContainerURL() throws -> URL {
+        let fm = FileManager.default
+        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw CoreError.io("Application Support directory unavailable")
+        }
+        let dir = base.appendingPathComponent("Summon", isDirectory: true)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    public static func open(in container: URL) throws -> DatabaseQueue {
+        let fm = FileManager.default
+        try fm.createDirectory(at: container, withIntermediateDirectories: true)
+        let dbURL = container.appendingPathComponent(fileName)
+        var config = Configuration()
+        config.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA foreign_keys = ON")
+        }
+        let dbQueue = try DatabaseQueue(path: dbURL.path, configuration: config)
+        try migrator.migrate(dbQueue)
+        return dbQueue
+    }
+
+    /// In-memory database for tests.
+    public static func openInMemory() throws -> DatabaseQueue {
+        let dbQueue = try DatabaseQueue()
+        try migrator.migrate(dbQueue)
+        return dbQueue
+    }
+
+    private static var migrator: DatabaseMigrator {
+        var migrator = DatabaseMigrator()
+        migrator.registerMigration("v1_spine") { db in
+            try db.execute(sql: """
+                CREATE TABLE schema_meta (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    value TEXT NOT NULL
+                );
+                """)
+            try db.execute(
+                sql: "INSERT INTO schema_meta (key, value) VALUES (?, ?)",
+                arguments: ["schemaVersion", "\(StoreSchema.version)"]
+            )
+
+            try db.execute(sql: """
+                CREATE TABLE settings (
+                    key TEXT PRIMARY KEY NOT NULL,
+                    value_json TEXT NOT NULL
+                );
+                """)
+
+            try db.execute(sql: """
+                CREATE TABLE action_journal (
+                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id TEXT NOT NULL UNIQUE,
+                    actor TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    action_json TEXT NOT NULL,
+                    outcome TEXT NOT NULL
+                );
+                """)
+            try db.execute(sql: """
+                CREATE INDEX action_journal_actor_idx ON action_journal(actor);
+                """)
+        }
+        return migrator
+    }
+}

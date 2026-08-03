@@ -6,7 +6,7 @@
 
 ## Status
 
-**specced (bundle rev 006) · scaffolded** — repo created, spec bundle in `/docs`, no code yet.
+**C-spine green (chunk 1)** — spine implemented; `make verify` exit 0 on arm64 (unit+integration, journal replay byte-equal, CLI e2e, stub UI e2e). Full handoff §8 gate still partial (latency/network/shim/lint grow in later chunks).
 
 ## Adopted (from the bundle)
 
@@ -17,6 +17,14 @@
 - **Search:** full ladder S1 (Spotlight) → S2 (own FTS5, consented) → S3 (semantic embeddings) in v1.
 - **App Intents surface:** M2.
 - **License:** AGPL-3.0. **Distribution:** Homebrew cask (`naklitechie/homebrew-tap`), signed + notarized, Sparkle appcast → GitHub Releases.
+
+## Decisions journaled this run
+
+- **Actor case name:** Swift enum case is `ActorTag.ext(id:)` (keyword `extension` is reserved); journal label remains `ext:<id>` per vision §2.
+- **Spine store surface:** settings only (`settings.set` / `settings.delete`). Clipboard/snippets land with M1 modules; one store is enough for C-spine replay + e2e.
+- **CLI actor:** `summon-cli` journals `actor=agent` (agent face); stub UI journals `actor=user`.
+- **GRDB:** 7.x (resolved 7.11.1) for SQLite — on allow-list.
+- **Removability seam:** `SUMMON_AI_ENABLED=0` omits the `SummonAI` product/target from `Package.swift` via `Context.environment`.
 
 ## Open (resolve with evidence, journal the decision here)
 
@@ -29,8 +37,8 @@
 
 | Chunk | Contents | Checkpoint | State |
 |---|---|---|---|
-| 1 | Spine: action bus, SchemaGate, stores, journal, `summon-cli` skeleton | C-spine | **next** |
-| 2 | Shim spike (JSC + reconciler, 3 extensions) | C0 | not started |
+| 1 | Spine: action bus, SchemaGate, stores, journal, `summon-cli` skeleton | C-spine | **green** (`make verify` exit 0) |
+| 2 | Shim spike (JSC + reconciler, 3 extensions) | C0 | **next** |
 | 3 | Launcher core (M1), search S1 + object→action grammar | C1 | not started |
 | 4 | Power modules (M2), App Intents, search S2 | C2 | not started |
 | 5 | D7/D8 probe · AI ladder L0–L3 + sidecars (M3), search S3 | C3 | not started |
@@ -46,6 +54,7 @@
 ## Log
 
 - **2026-08-03** — Scaffolded from bundle rev 006 (`docs/summon-{vision-roadmap,agent-handoff,ux-reference}-006`). Repo `NakliTechie/summon` (public, AGPL-3.0). Root: `README.md`, `CLAUDE.md`, `AGENTS.md`, this file, `LICENSE`. No code yet. Next: Chunk 1 (spine) → C-spine.
+- **2026-08-03** — **C-spine.** Chunk 1 spine landed: `SummonCore` (action bus, SchemaGate, settings store, action journal, GRDB, snapshot export/replay), `summon-cli` skeleton, `SummonUI` stub launcher + tokens, placeholder `SummonShim`/`SummonAI`, Makefile + GitHub Actions CI. Gate: `make verify` exit 0 — 24 unit/integration tests (incl. journal replay byte-equal, stub UI e2e, token contrast ≥4.5:1) + CLI e2e (`settings set/get/list` under temp HOME). Removability probe: `SUMMON_AI_ENABLED=0 swift build` succeeds. Next: Chunk 2 (shim spike) → C0. Prior-art read owed before writing shim: SuperCmd + sol.
 
 ## Dead ends
 
