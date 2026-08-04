@@ -202,8 +202,8 @@ public final class SummonAIService: @unchecked Sendable {
         )
         staging.stage(proposal)
         if let core {
-            try? core.staged.migrate()
-            try? core.staged.upsert(PersistedStagedProposal(
+            try core.staged.migrate()
+            try core.staged.upsert(PersistedStagedProposal(
                 id: proposal.id.uuidString,
                 createdAt: proposal.createdAt,
                 rung: completion.rung.rawValue,
@@ -212,7 +212,7 @@ public final class SummonAIService: @unchecked Sendable {
                 egressSummary: completion.egressSummary,
                 state: "staged"
             ))
-            _ = try? core.dispatch(
+            _ = try core.dispatch(
                 action: .settingsSet(
                     key: "ai.lastInvocation",
                     value: .object([
@@ -230,17 +230,21 @@ public final class SummonAIService: @unchecked Sendable {
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {
         guard let p = staging.accept(id) else { return nil }
-        try? core?.staged.setState(id: id.uuidString, state: "accepted")
-        _ = try? core?.dispatch(
-            action: .settingsSet(key: "ai.lastAccept", value: .string(id.uuidString)),
-            actor: actor
-        )
+        if let core {
+            try core.staged.setState(id: id.uuidString, state: "accepted")
+            _ = try core.dispatch(
+                action: .settingsSet(key: "ai.lastAccept", value: .string(id.uuidString)),
+                actor: actor
+            )
+        }
         return p
     }
 
     public func reject(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {
         guard let p = staging.reject(id) else { return nil }
-        try? core?.staged.setState(id: id.uuidString, state: "rejected")
+        if let core {
+            try core.staged.setState(id: id.uuidString, state: "rejected")
+        }
         return p
     }
 }

@@ -343,13 +343,19 @@ struct SummonCLI {
         case "l0-fetch":
             let store = try FileL0WeightStore()
             let rung = L0PackagedModelRung.production(store: store)
-            if !store.consent().granted { rung.grantConsent() }
+            guard store.consent().granted else {
+                fputs("error: consent required — run: summon ai l0-consent\n", stderr)
+                exit(1)
+            }
             do {
                 let url = try L0ModelFetch.fetch(rung: rung, store: store)
                 print("ok fetched \(url.path)")
+                if let pin = L0ModelFetch.readPin(modelDir: url) {
+                    print("pin \(pin)")
+                }
             } catch {
                 fputs("error: \(error.localizedDescription)\n", stderr)
-                fputs("hint: pip install -U huggingface_hub\n", stderr)
+                fputs("hint: pip install -U huggingface_hub && mlx-lm; absolute mlx path required\n", stderr)
                 exit(1)
             }
         case "parse-command":
@@ -537,6 +543,9 @@ struct SummonCLI {
             exit(2)
         }
         switch sub {
+        case "consent":
+            try core.grantFTSConsent()
+            print("ok fts consent granted")
         case "enable":
             try core.setFTSEnabled(true)
             print("fts enabled")
@@ -544,11 +553,17 @@ struct SummonCLI {
             try core.setFTSEnabled(false)
             print("fts disabled")
         case "status":
-            print("enabled=\(core.search.ftsEnabled) docs=\(try core.fts.count())")
+            print(
+                "enabled=\(core.search.ftsEnabled) consent=\(core.ftsConsentGranted()) docs=\(try core.fts.count())"
+            )
         case "index":
             guard args.count >= 2 else {
                 fputs("usage: summon fts index <file>\n", stderr)
                 exit(2)
+            }
+            guard core.ftsConsentGranted() || core.search.ftsEnabled else {
+                fputs("error: FTS consent required — run: summon fts consent && summon fts enable\n", stderr)
+                exit(1)
             }
             let url = URL(fileURLWithPath: args[1])
             let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
@@ -565,7 +580,7 @@ struct SummonCLI {
                 print("\(doc.title)\t\(doc.path ?? "")")
             }
         default:
-            fputs("usage: summon fts enable|disable|index|search|status\n", stderr)
+            fputs("usage: summon fts consent|enable|disable|index|search|status\n", stderr)
             exit(2)
         }
     }

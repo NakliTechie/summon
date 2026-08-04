@@ -11,7 +11,9 @@ final class MLXEngineTests: XCTestCase {
     }
 
     func testIsReadyRequiresConfigJSON() throws {
-        let engine = MLXProcessL0Engine()
+        let engine = MLXProcessL0Engine(
+            generateBinary: MLXProcessL0Engine.detectBinary() ?? "/opt/homebrew/bin/mlx_lm.generate"
+        )
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("mlx-ready-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
