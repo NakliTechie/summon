@@ -8,15 +8,25 @@ Read the spec bundle in [`/docs`](docs/) before any change — see [`CLAUDE.md`]
 
 ## The gate — what "done" means
 
-`make verify` is the merge gate and the only definition of done. It runs, machine-checkable and human-free (handoff §8):
+`make verify` is the merge gate and the only definition of done for a merge.
 
-1. Unit + integration green across targets.
-2. **Replay** — action journal replayed into a fresh core reconstructs store state byte-equal.
-3. **Latency** — invoke-to-visible < 50 ms, keystroke-to-results < 16 ms, p95 over 100 runs (arm64 CI).
-4. **Removability** — full suite minus `SummonAI` (build flag): everything green with the AI target absent.
-5. **Sovereignty/network** — instrumented walkthrough asserts the only egress is the appcast fetch (plus user-invoked AI calls, each matched to a journal record).
-6. **Shim fixtures** — unmodified store extensions execute headlessly; sandbox-escape fixtures fail loud.
-7. Lint (SwiftLint strict) + token contrast test + i18n completeness.
+### Current verify recipe (what actually runs)
+
+Machine-checkable, human-free:
+
+1. **Unit + integration** — `swift test` (includes journal-replay, shim fixtures, token contrast).
+2. **CLI e2e** — settings / calc / clipboard / quicklink under temp `HOME`.
+3. **Lint** — SwiftLint strict.
+4. **Removability** — `SUMMON_AI_ENABLED=0` package dump + build + test (AI product absent).
+5. **Walkthrough** — CLI role walk (`scripts/walkthrough.sh`); not a browser / full AppKit soak.
+6. **Latency-soft** — `summon latency` probe (prints p95 vs budget; **does not fail the gate**).
+
+### Deferred (vision / handoff still list; not yet hard-gated)
+
+- Hard **latency** fail (p95 < 50 ms invoke / < 16 ms keystroke on arm64 CI).
+- **Network sovereignty** instrumented egress assert (only appcast + journaled user AI/web).
+- **i18n completeness** as a separate gate line (L10n keys exist; SuperCmd-class locales not gated).
+- Unmodified **Raycast store** packages (fixtures are synthetic).
 
 ## Working rhythm
 
