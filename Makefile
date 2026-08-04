@@ -7,7 +7,7 @@ BUILD_FLAGS :=
 # Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
 export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e lint removability app cask-local l1-probe walkthrough help
+.PHONY: build test verify release clean cli-e2e lint removability app cask-local l1-probe walkthrough latency-soft help
 
 help:
 	@echo "Targets: build test verify app cask-local l1-probe walkthrough release clean …"
@@ -60,10 +60,18 @@ removability:
 	SUMMON_AI_ENABLED=0 $(SWIFT) test $(BUILD_FLAGS); \
 	echo "removability: build+test green without SummonAI"
 
-# C-spine + C0 shim fixtures + lint + removability. Latency/network grow later.
-verify: test cli-e2e lint removability walkthrough
-	@echo "verify: unit+integration + journal-replay + cli-e2e + shim + lint + removability + walkthrough"
-	@echo "verify: latency/network still deferred (later)"
+# Merge gate (honest subset of AGENTS.md §gate — see AGENTS.md "Current verify recipe").
+# Soft latency probe: measures in-memory search p95; does not fail the gate (host variance).
+verify: test cli-e2e lint removability walkthrough latency-soft
+	@echo "verify: unit+integration + journal-replay + cli-e2e + shim + lint + removability + walkthrough + latency-soft"
+	@echo "verify: network-sovereignty hard gate still deferred (no egress instrument yet)"
+
+# Soft p95 sample (Batch F) — always exit 0; prints budget comparison.
+latency-soft: build
+	@set -euo pipefail; \
+	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
+	"$$BIN" latency 50; \
+	echo "latency-soft: probe only (not a hard fail)"
 
 # One action end-to-end via the real CLI binary (C-spine).
 cli-e2e: build
@@ -85,9 +93,10 @@ cli-e2e: build
 	echo "cli-e2e: ok (settings + calc + clipboard + quicklink under temp HOME)"
 
 # Ad-hoc release zip (not notarized — Dev ID last in queue).
+# Version must match SummonVersion.string (Sources/SummonCore/SummonCore.swift).
 release: app
 	@set -euo pipefail; \
-	VERSION="0.5.0-night"; \
+	VERSION="$${SUMMON_VERSION:-0.6.0}"; \
 	mkdir -p dist; \
 	( cd dist && ditto -c -k --keepParent Summon.app "Summon-$${VERSION}.zip" ); \
 	shasum -a 256 "dist/Summon-$${VERSION}.zip"; \

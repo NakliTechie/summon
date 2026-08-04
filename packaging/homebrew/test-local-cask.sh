@@ -11,7 +11,7 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-VERSION="${SUMMON_VERSION:-0.3.0}"
+VERSION="${SUMMON_VERSION:-0.6.0}"
 DIST="$ROOT/dist"
 ZIP="$DIST/Summon-${VERSION}.zip"
 # Homebrew requires casks to live in a tap under Library/Taps.

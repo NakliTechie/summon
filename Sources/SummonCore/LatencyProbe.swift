@@ -30,7 +30,10 @@ public enum LatencyProbe {
             times.append(Double(end - start) / 1_000_000.0)
         }
         times.sort()
-        let idx = max(0, min(times.count - 1, Int(Double(times.count) * 0.95) - 1))
+        // p95 = value at 1-based rank ceil(0.95 * n)
+        let n = times.count
+        let rank = max(1, Int((0.95 * Double(n)).rounded(.up)))
+        let idx = min(n - 1, rank - 1)
         let p95 = times[idx]
         return LatencySample(label: label, milliseconds: p95, iterations: iterations)
     }
