@@ -45,8 +45,8 @@ public enum Calculator {
     }
 
     public static func format(_ value: Double) -> String {
-        if value.rounded() == value, abs(value) <= Double(Int64.max) {
-            return String(Int64(value))
+        if value.rounded() == value, let intValue = Int64(exactly: value) {
+            return String(intValue)
         }
         return String(value)
     }

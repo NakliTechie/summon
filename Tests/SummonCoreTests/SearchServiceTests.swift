@@ -220,4 +220,24 @@ final class SearchServiceTests: XCTestCase {
         XCTAssertNotNil(Calculator.result(for: "2+2"))
         XCTAssertNil(Calculator.result(for: "2 +"))
     }
+
+    func testCalculatorFormatDoesNotOverflow() {
+        // C1 regression: format(2^63) used to trap. The `Double(Int64.max)`
+        // guard rounds up to 2^63, so `Int64(value)` was out of range. Reached
+        // per keystroke via SearchService inline calc, so typing a ~19-digit
+        // number aborted the whole launcher.
+        XCTAssertEqual(Calculator.format(4), "4")
+        XCTAssertEqual(Calculator.format(1024), "1024")
+        XCTAssertEqual(Calculator.format(9_223_372_036_854_775_808.0), "9.223372036854776e+18")
+        XCTAssertNotNil(Calculator.result(for: "9223372036854775807"))
+    }
+
+    func testJSONValueNumberDoesNotOverflow() {
+        // H1 regression: encode/description of .number(2^63) used to trap on
+        // Int64(n). Reachable via `summon settings set <big>` and journal
+        // re-encode. Small integers still render as integers.
+        XCTAssertNoThrow(try JSONEncoder().encode(JSONValue.number(9_223_372_036_854_775_808.0)))
+        XCTAssertEqual(JSONValue.number(9_223_372_036_854_775_808.0).description, "9.223372036854776e+18")
+        XCTAssertEqual(JSONValue.number(8080).description, "8080")
+    }
 }

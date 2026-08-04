@@ -41,8 +41,8 @@ public enum JSONValue: Sendable, Hashable, Codable, Equatable {
         case .bool(let b):
             try container.encode(b)
         case .number(let n):
-            if n.rounded() == n, n >= Double(Int64.min), n <= Double(Int64.max) {
-                try container.encode(Int64(n))
+            if n.rounded() == n, let intValue = Int64(exactly: n) {
+                try container.encode(intValue)
             } else {
                 try container.encode(n)
             }
@@ -82,8 +82,8 @@ extension JSONValue: CustomStringConvertible {
         case .null: return "null"
         case .bool(let b): return b ? "true" : "false"
         case .number(let n):
-            if n.rounded() == n, n >= Double(Int64.min), n <= Double(Int64.max) {
-                return String(Int64(n))
+            if n.rounded() == n, let intValue = Int64(exactly: n) {
+                return String(intValue)
             }
             return String(n)
         case .string(let s): return s
