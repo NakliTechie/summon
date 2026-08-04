@@ -362,7 +362,8 @@ public final class SummonCore: @unchecked Sendable {
 }
 
 public enum SummonVersion {
-    public static let string = "0.6.0-autopilot-AG"
+    /// Single product version — packaging (cask, Info.plist, release zip) must match.
+    public static let string = "0.6.0"
 }
 
 extension SummonCore {

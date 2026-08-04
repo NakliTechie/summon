@@ -9,7 +9,7 @@
 # First public install waits on notarized artifact; until then use make cask-local.
 
 cask "summon" do
-  version "0.3.0"
+  version "0.6.0"
   # Placeholder — `make cask-local` injects the real sha256 of the local zip.
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
