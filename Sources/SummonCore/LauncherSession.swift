@@ -105,6 +105,10 @@ public final class LauncherSession: @unchecked Sendable {
     }
 
     private func defaultActionName(for result: SearchResult) -> String {
+        // Prefer explicit payload action (kill, screenshot, power modules, …)
+        if case .string(let action) = result.payload["action"], !action.isEmpty {
+            return action
+        }
         switch result.kind {
         case .app: return "app.open"
         case .file, .folder: return "file.open"

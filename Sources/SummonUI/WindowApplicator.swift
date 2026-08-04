@@ -23,34 +23,52 @@ public enum WindowApplicator {
         guard err == .success, let window = windowRef else {
             throw CoreError.io("no focused window")
         }
-        // AXUIElement is a CFType; bridge without force-cast operator.
         let axWindow = unsafeBitCast(window, to: AXUIElement.self)
 
-        guard let screen = NSScreen.main?.visibleFrame else {
-            throw CoreError.io("no main screen")
-        }
-        // Cocoa y is bottom-up; AX uses top-left. Convert.
+        let screenFrame = activeScreenVisibleFrame(for: app)
         let screenCG = CGRect(
-            x: screen.origin.x,
-            y: screen.origin.y,
-            width: screen.width,
-            height: screen.height
+            x: screenFrame.origin.x,
+            y: screenFrame.origin.y,
+            width: screenFrame.width,
+            height: screenFrame.height
         )
         let target = WindowGeometry.frame(layout: layout, screen: screenCG, gap: gap)
 
-        var pos = CGPoint(x: target.minX, y: flipY(target.maxY, screen: screen))
+        var pos = CGPoint(x: target.minX, y: flipY(target.maxY))
         var size = CGSize(width: target.width, height: target.height)
-        if let posVal = AXValueCreate(.cgPoint, &pos) {
-            AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, posVal)
+
+        guard let posVal = AXValueCreate(.cgPoint, &pos) else {
+            throw CoreError.io("AX position value create failed")
         }
-        if let sizeVal = AXValueCreate(.cgSize, &size) {
-            AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sizeVal)
+        let posErr = AXUIElementSetAttributeValue(axWindow, kAXPositionAttribute as CFString, posVal)
+        guard posErr == .success else {
+            throw CoreError.io("AX set position failed (\(posErr.rawValue))")
+        }
+
+        guard let sizeVal = AXValueCreate(.cgSize, &size) else {
+            throw CoreError.io("AX size value create failed")
+        }
+        let sizeErr = AXUIElementSetAttributeValue(axWindow, kAXSizeAttribute as CFString, sizeVal)
+        guard sizeErr == .success else {
+            throw CoreError.io("AX set size failed (\(sizeErr.rawValue))")
         }
     }
 
-    private static func flipY(_ axTopY: CGFloat, screen: NSRect) -> CGFloat {
-        // AX global y from top of main display; simplify using screen maxY
+    /// Prefer the screen containing the mouse, then main.
+    public static func activeScreenVisibleFrame(for app: NSRunningApplication? = nil) -> NSRect {
+        let mouse = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) {
+            return screen.visibleFrame
+        }
+        if let main = NSScreen.main {
+            return main.visibleFrame
+        }
+        return NSScreen.screens.first?.visibleFrame ?? .zero
+    }
+
+    /// AX global y from top of the display union.
+    private static func flipY(_ axTopY: CGFloat) -> CGFloat {
         let full = NSScreen.screens.map(\.frame).reduce(CGRect.null) { $0.union($1) }
-        return full.height - axTopY
+        return full.maxY - axTopY
     }
 }

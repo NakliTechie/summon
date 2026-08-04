@@ -14,7 +14,7 @@ var products: [Product] = [
     .executable(name: "summon-app", targets: ["summon-app"]),
 ]
 
-var cliDeps: [Target.Dependency] = ["SummonCore"]
+var cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
 var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
 var cliSettings: [SwiftSetting] = []
 var appSettings: [SwiftSetting] = []
@@ -54,7 +54,11 @@ var targets: [Target] = [
         name: "summon-cli",
         dependencies: cliDeps,
         path: "Sources/summon-cli",
-        swiftSettings: cliSettings
+        swiftSettings: cliSettings,
+        linkerSettings: [
+            .linkedFramework("AppKit"),
+            .linkedFramework("Carbon"),
+        ]
     ),
     .executableTarget(
         name: "summon-app",
