@@ -1,6 +1,7 @@
 // swiftlint:disable file_length type_body_length
 import Foundation
 import SummonCore
+import SummonUI
 #if SUMMON_AI
 import SummonAI
 #endif
@@ -453,14 +454,19 @@ struct SummonCLI {
 
     static func windowCommand(_ args: [String]) throws {
         guard let layoutRaw = args.first, let layout = WindowLayout(rawValue: layoutRaw) else {
-            fputs("usage: summon window <leftHalf|rightHalf|maximize|...>\n", stderr); exit(2)
+            fputs("usage: summon window <leftHalf|rightHalf|maximize|...> [--apply]\n", stderr); exit(2)
         }
-        // Geometry always available; AX apply is UI-side (print frame for agent)
+        let apply = args.contains("--apply")
         let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
         let frame = WindowGeometry.frame(layout: layout, screen: screen, gap: 8)
         print("layout \(layout.rawValue)")
         print("frame \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))")
-        print("note: apply via Accessibility in summon-app (WindowApplicator)")
+        if apply {
+            try WindowApplicator.apply(layout: layout, gap: 8)
+            print("applied via Accessibility")
+        } else {
+            print("note: pass --apply to set frontmost window (requires Accessibility)")
+        }
     }
 
     /// Bridge async AI calls into the sync CLI entrypoint.

@@ -255,9 +255,20 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         let text = searchField.stringValue
         do {
             _ = try session.setQuery(text)
+            showError(nil)
             reloadUI()
         } catch {
-            // Keep last good results
+            showError((error as? CoreError)?.message ?? error.localizedDescription)
+        }
+    }
+
+    private func showError(_ message: String?) {
+        if let message, !message.isEmpty {
+            bannerLabel.stringValue = message
+            bannerLabel.isHidden = false
+            bannerLabel.textColor = Tokens.Color.danger.nsColor
+        } else {
+            refreshPermissionBanner()
         }
     }
 
@@ -324,9 +335,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         case 36: // return
             do {
                 _ = try session.confirm(actor: .user)
+                showError(nil)
                 hide()
             } catch {
-                // stay open
+                showError((error as? CoreError)?.message ?? error.localizedDescription)
             }
             return nil
         case 48: // tab
