@@ -3,13 +3,15 @@ import Foundation
 import SummonCore
 
 /// Spotlight-style launcher: compact search bar until the user types, then expands for results.
-public final class LauncherPanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     public let session: LauncherSession
     public let panel: KeyablePanel
 
     private let rootView: NSView
     private var effectView: NSVisualEffectView?
-    private let searchField: NSSearchField
+    /// Leading magnifying glass (separate from the text field so they never overlap).
+    private let searchIconView: NSImageView
+    private let searchField: NSTextField
     private let searchDivider: NSBox
     private let scrollView: NSScrollView
     private let tableView: NSTableView
@@ -81,9 +83,17 @@ public final class LauncherPanelController: NSObject, NSSearchFieldDelegate, NST
             effectView = effect
         }
 
-        // Spotlight: large clear field, no heavy bezel.
-        searchField = NSSearchField(frame: .zero)
-        searchField.placeholderString = "Search"
+        // Icon + plain text field (NSSearchField borderless stacks glyph on text).
+        searchIconView = NSImageView(frame: .zero)
+        searchIconView.imageScaling = .scaleProportionallyUpOrDown
+        searchIconView.contentTintColor = Tokens.System.secondaryLabel
+        if let img = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil) {
+            let cfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+            searchIconView.image = img.withSymbolConfiguration(cfg)
+        }
+        rootView.addSubview(searchIconView)
+
+        searchField = NSTextField(frame: .zero)
         searchField.font = NSFont.systemFont(ofSize: 20, weight: .regular)
         searchField.focusRingType = .none
         searchField.isBordered = false
@@ -91,13 +101,16 @@ public final class LauncherPanelController: NSObject, NSSearchFieldDelegate, NST
         searchField.drawsBackground = false
         searchField.isEditable = true
         searchField.isSelectable = true
-        searchField.sendsSearchStringImmediately = true
-        searchField.sendsWholeSearchString = false
+        searchField.backgroundColor = .clear
+        searchField.textColor = Tokens.System.label
+        searchField.placeholderAttributedString = NSAttributedString(
+            string: "Search",
+            attributes: [
+                .foregroundColor: Tokens.System.secondaryLabel,
+                .font: NSFont.systemFont(ofSize: 20, weight: .regular),
+            ]
+        )
         searchField.setAccessibilityLabel("Search")
-        if let cell = searchField.cell as? NSSearchFieldCell {
-            cell.cancelButtonCell?.isTransparent = false
-            cell.searchButtonCell?.isTransparent = false
-        }
         rootView.addSubview(searchField)
 
         searchDivider = NSBox(frame: .zero)
@@ -303,11 +316,20 @@ public final class LauncherPanelController: NSObject, NSSearchFieldDelegate, NST
             self.effectView?.frame = self.rootView.bounds
 
             let inset: CGFloat = 14
-            // Search sits at top of bar (AppKit y grows up).
-            self.searchField.frame = NSRect(
+            let iconSize: CGFloat = 18
+            let bandY = height - self.searchBandHeight
+            // Magnifying glass left; text field starts after a clear gap.
+            self.searchIconView.frame = NSRect(
                 x: inset,
-                y: height - self.searchBandHeight + 8,
-                width: self.panelWidth - inset * 2,
+                y: bandY + (self.searchBandHeight - iconSize) / 2,
+                width: iconSize,
+                height: iconSize
+            )
+            let textX = inset + iconSize + 10
+            self.searchField.frame = NSRect(
+                x: textX,
+                y: bandY + 8,
+                width: self.panelWidth - textX - inset,
                 height: 32
             )
 
