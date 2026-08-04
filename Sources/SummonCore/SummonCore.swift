@@ -21,6 +21,8 @@ public final class SummonCore: @unchecked Sendable {
     public let fts: FTSIndex
     public var search: SearchService
     public var webConfig: WebSearchConfig = .default
+    /// In-memory cores keep consent under a private temp dir (not shared).
+    private let ftsConsentContainer: URL?
 
     public convenience init(containerURL: URL) throws {
         let dbQueue = try SummonDatabase.open(in: containerURL)
@@ -56,6 +58,14 @@ public final class SummonCore: @unchecked Sendable {
     ) {
         self.dbQueue = dbQueue
         self.containerURL = containerURL
+        if containerURL == nil {
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("summon-fts-\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+            self.ftsConsentContainer = tmp
+        } else {
+            self.ftsConsentContainer = nil
+        }
         self.settings = SettingsStore(dbQueue: dbQueue)
         self.snippets = SnippetStore(dbQueue: dbQueue)
         self.clipboard = ClipboardStore(dbQueue: dbQueue)
@@ -155,9 +165,36 @@ public final class SummonCore: @unchecked Sendable {
         try staged.setState(id: id, state: "rejected")
     }
 
+    /// Enable S2 FTS only after explicit consent (Batch C).
     public func setFTSEnabled(_ enabled: Bool) throws {
+        if enabled {
+            let consentStore = ftsConsentStore()
+            var consent = consentStore.load()
+            guard consent.granted else {
+                throw CoreError.store(
+                    "FTS consent required — run: summon fts consent"
+                )
+            }
+        }
         try settings.set("search.fts.enabled", value: .bool(enabled))
         search.ftsEnabled = enabled
+    }
+
+    public func ftsConsentStore() -> FTSConsentStore {
+        if let containerURL {
+            return FTSConsentStore(container: containerURL)
+        }
+        return FTSConsentStore(container: ftsConsentContainer!)
+    }
+
+    public func grantFTSConsent() throws {
+        var c = ftsConsentStore().load()
+        c.grant()
+        try ftsConsentStore().save(c)
+    }
+
+    public func ftsConsentGranted() -> Bool {
+        ftsConsentStore().load().granted
     }
 
     public func enableLiveSpotlight() {

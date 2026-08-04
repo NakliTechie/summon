@@ -11,7 +11,7 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
     public var systemPrompt: String
 
     public init(
-        generateBinary: String = MLXProcessL0Engine.detectBinary() ?? "mlx_lm.generate",
+        generateBinary: String,
         maxTokens: Int = 256,
         systemPrompt: String = "You are Summon's on-device sidecar. Be concise. Stage, never claim execution."
     ) {
@@ -20,6 +20,7 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
         self.systemPrompt = systemPrompt
     }
 
+    /// Absolute paths only — no PATH/`env` resolution (supply-chain hardening).
     public static func detectBinary() -> String? {
         let candidates = [
             "/Library/Frameworks/Python.framework/Versions/3.12/bin/mlx_lm.generate",
@@ -28,20 +29,6 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
-        }
-        // PATH lookup
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        task.arguments = ["mlx_lm.generate"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        try? task.run()
-        task.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        if let s = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !s.isEmpty, FileManager.default.isExecutableFile(atPath: s) {
-            return s
         }
         return nil
     }
@@ -56,8 +43,8 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
     }
 
     public func complete(prompt: String, weightsURL: URL) async throws -> String {
-        guard FileManager.default.isExecutableFile(atPath: generateBinary)
-                || generateBinary == "mlx_lm.generate" else {
+        guard generateBinary.hasPrefix("/"),
+              FileManager.default.isExecutableFile(atPath: generateBinary) else {
             throw ModelRungError.generationFailed(
                 "mlx_lm.generate not found — install mlx-lm (D7 MLX path)"
             )
@@ -92,27 +79,17 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
         maxTokens: Int
     ) throws -> String {
         let process = Process()
-        // Prefer absolute binary; else rely on PATH via /usr/bin/env
-        if binary.hasPrefix("/") {
-            process.executableURL = URL(fileURLWithPath: binary)
-            process.arguments = [
-                "--model", modelPath,
-                "--system-prompt", system,
-                "--prompt", prompt,
-                "--max-tokens", String(maxTokens),
-                "--temp", "0.2",
-            ]
-        } else {
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [
-                binary,
-                "--model", modelPath,
-                "--system-prompt", system,
-                "--prompt", prompt,
-                "--max-tokens", String(maxTokens),
-                "--temp", "0.2",
-            ]
+        guard binary.hasPrefix("/") else {
+            throw ModelRungError.generationFailed("MLX binary must be an absolute path")
         }
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = [
+            "--model", modelPath,
+            "--system-prompt", system,
+            "--prompt", prompt,
+            "--max-tokens", String(maxTokens),
+            "--temp", "0.2",
+        ]
         let out = Pipe()
         let err = Pipe()
         process.standardOutput = out

@@ -11,10 +11,36 @@ public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
     public let quant: String
     public let minRAMGB: Int
     public let approxDownloadBytes: Int64
-    /// Content hash of the installed tree or archive (pin at fetch).
+    /// Expected SHA-256 of config.json, or `PENDING_PIN_AFTER_FIRST_FETCH` (pin written on first fetch).
     public let sha256: String
     /// Hugging Face repo id for MLX community models (fetch lands with consent).
     public let hfRepo: String
+    /// Optional HF revision/commit; nil uses repo default.
+    public let hfRevision: String?
+
+    public var hasPendingPin: Bool {
+        sha256 == "PENDING_PIN_AFTER_FIRST_FETCH" || sha256.isEmpty
+    }
+
+    public init(
+        modelID: String,
+        displayName: String,
+        quant: String,
+        minRAMGB: Int,
+        approxDownloadBytes: Int64,
+        sha256: String,
+        hfRepo: String,
+        hfRevision: String? = nil
+    ) {
+        self.modelID = modelID
+        self.displayName = displayName
+        self.quant = quant
+        self.minRAMGB = minRAMGB
+        self.approxDownloadBytes = approxDownloadBytes
+        self.sha256 = sha256
+        self.hfRepo = hfRepo
+        self.hfRevision = hfRevision
+    }
 
     public static let e2bDefault = L0ModelManifest(
         modelID: "gemma-2-2b-it-4bit",
@@ -23,7 +49,8 @@ public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
         minRAMGB: 8,
         approxDownloadBytes: 1_500_000_000,
         sha256: "PENDING_PIN_AFTER_FIRST_FETCH",
-        hfRepo: "mlx-community/gemma-2-2b-it-4bit"
+        hfRepo: "mlx-community/gemma-2-2b-it-4bit",
+        hfRevision: nil
     )
 
     public static let e4bOptional = L0ModelManifest(
@@ -33,7 +60,8 @@ public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
         minRAMGB: 16,
         approxDownloadBytes: 5_000_000_000,
         sha256: "PENDING_PIN_AFTER_FIRST_FETCH",
-        hfRepo: "mlx-community/gemma-2-9b-it-4bit"
+        hfRepo: "mlx-community/gemma-2-9b-it-4bit",
+        hfRevision: nil
     )
 }
 
@@ -141,7 +169,7 @@ public protocol L0InferenceEngine: Sendable {
     func complete(prompt: String, weightsURL: URL) async throws -> String
 }
 
-/// Unit-test stand-in (no MLX binary required).
+/// Unit-test stand-in (no MLX binary required). **Not for production paths.**
 public struct FakeL0InferenceEngine: L0InferenceEngine, Sendable {
     public init() {}
 
@@ -150,6 +178,20 @@ public struct FakeL0InferenceEngine: L0InferenceEngine, Sendable {
     public func complete(prompt: String, weightsURL: URL) async throws -> String {
         let t = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         return "L0-staged: \(t.prefix(160))"
+    }
+}
+
+/// Production stand-in when MLX binary is absent — never fabricates completions.
+public struct UnavailableL0InferenceEngine: L0InferenceEngine, Sendable {
+    public let reason: String
+    public init(reason: String = "mlx_lm.generate not installed") {
+        self.reason = reason
+    }
+
+    public func isReady(weightsURL: URL) -> Bool { false }
+
+    public func complete(prompt: String, weightsURL: URL) async throws -> String {
+        throw ModelRungError.unavailable(.l0Packaged, reason)
     }
 }
 
@@ -175,7 +217,7 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
 
     public init(
         store: any L0WeightStore,
-        engine: any L0InferenceEngine = FakeL0InferenceEngine(),
+        engine: any L0InferenceEngine,
         manifest: L0ModelManifest = MachineMemory.recommendedL0Manifest()
     ) {
         self.store = store
@@ -183,21 +225,29 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
         self.engine = engine
     }
 
-    /// Production default: MLX process bridge when `mlx_lm.generate` is on PATH.
+    /// Production default: MLX process bridge only. Never fakes completions.
     public static func production(
         store: any L0WeightStore,
         manifest: L0ModelManifest = MachineMemory.recommendedL0Manifest()
     ) -> L0PackagedModelRung {
-        let engine: any L0InferenceEngine
-        if MLXProcessL0Engine.detectBinary() != nil {
-            engine = MLXProcessL0Engine()
-        } else {
-            engine = FakeL0InferenceEngine()
+        if let binary = MLXProcessL0Engine.detectBinary() {
+            return L0PackagedModelRung(
+                store: store,
+                engine: MLXProcessL0Engine(generateBinary: binary),
+                manifest: manifest
+            )
         }
-        return L0PackagedModelRung(store: store, engine: engine, manifest: manifest)
+        return L0PackagedModelRung(
+            store: store,
+            engine: UnavailableL0InferenceEngine(),
+            manifest: manifest
+        )
     }
 
     public func availability() async -> RungAvailability {
+        if engine is UnavailableL0InferenceEngine {
+            return .unavailable(reason: "mlx_lm.generate not installed")
+        }
         let c = store.consent()
         guard c.granted else {
             let mb = manifest.approxDownloadBytes / 1_000_000
@@ -210,6 +260,14 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
         }
         guard let url = store.weightsURL(for: manifest.modelID), engine.isReady(weightsURL: url) else {
             return .unavailable(reason: "engine not ready")
+        }
+        // Pin check when weights are a real directory
+        if !(store is MemoryL0WeightStore) {
+            do {
+                try L0ModelFetch.verifyInstalled(modelDir: url, manifest: manifest)
+            } catch {
+                return .unavailable(reason: "pin verify failed: \(error.localizedDescription)")
+            }
         }
         return .available
     }

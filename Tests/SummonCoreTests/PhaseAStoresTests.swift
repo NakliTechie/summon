@@ -75,6 +75,7 @@ final class PhaseAStoresTests: XCTestCase {
 
     func testFTSSearchWhenEnabled() throws {
         let core = try SummonCore.inMemory()
+        try core.grantFTSConsent()
         try core.setFTSEnabled(true)
         try core.fts.upsert(FTSDocument(id: "d1", title: "Report", body: "quarterly revenue figures", path: "/tmp/r.txt"))
         let hits = try core.search.search("revenue")
