@@ -32,6 +32,7 @@ final class PhaseBGModulesTests: XCTestCase {
         )
         let r = try core.dispatch(action: .clipboardDelete(id: "x"), actor: .agent)
         XCTAssertFalse(r.isApplied)
+        XCTAssertTrue(r.isStaged)
         // user may delete
         let r2 = try core.dispatch(action: .clipboardDelete(id: "x"), actor: .user)
         XCTAssertTrue(r2.isApplied)

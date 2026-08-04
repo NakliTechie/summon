@@ -71,13 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Default ON; disable with `summon settings set agent.socket.enabled false`.
+    /// Default OFF (vision/handoff + Batch A). Enable: `summon settings set agent.socket.enabled true`.
     private func startAgentSocketIfEnabled() throws {
         let enabled: Bool
         if case .bool(let b) = try core.settings.get(AgentSocketServer.enabledSettingKey) {
             enabled = b
         } else {
-            enabled = true
+            enabled = false
         }
         guard enabled else { return }
         let server = AgentSocketServer(core: core)

@@ -7,6 +7,9 @@ import SummonAI
 
 @main
 struct SummonCLI {
+    /// Default `.user` for interactive CLI; set via `--actor agent` for automation.
+    static var cliActor: ActorTag = .user
+
     static func main() {
         let args = Array(CommandLine.arguments.dropFirst())
         do {
@@ -21,6 +24,14 @@ struct SummonCLI {
     }
 
     static func run(args: [String]) throws {
+        var args = args
+        // Global: --actor user|agent (default user)
+        if let idx = args.firstIndex(of: "--actor"), args.index(after: idx) < args.endIndex {
+            let label = args[args.index(after: idx)]
+            cliActor = try ActorTag(journalLabel: label)
+            args.remove(at: args.index(after: idx))
+            args.remove(at: idx)
+        }
         guard let command = args.first else {
             printUsage(); exit(2)
         }
@@ -101,7 +112,7 @@ struct SummonCLI {
             fputs("error: settings requires subcommand (set|get|delete|list)\n", stderr); exit(2)
         }
         let core = try makeCore()
-        let actor: ActorTag = .agent
+        let actor: ActorTag = cliActor
         switch sub {
         case "set":
             guard args.count >= 3 else { fputs("usage: summon settings set <key> <value>\n", stderr); exit(2) }
@@ -154,7 +165,7 @@ struct SummonCLI {
             fputs("error: snippet requires subcommand (add|list|delete)\n", stderr); exit(2)
         }
         let core = try makeCore()
-        let actor: ActorTag = .agent
+        let actor: ActorTag = cliActor
         switch sub {
         case "add":
             guard args.count >= 3 else {
@@ -211,7 +222,7 @@ struct SummonCLI {
                 text: text,
                 types: ["public.utf8-plain-text"],
                 sourceApp: "summon-cli",
-                actor: .agent
+                actor: cliActor
             )
             if result == nil {
                 fputs("error: skipped by privacy gate\n", stderr); exit(1)
@@ -219,7 +230,7 @@ struct SummonCLI {
             print("ok ingested")
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon clipboard delete <id>\n", stderr); exit(2) }
-            let result = try core.dispatch(action: .clipboardDelete(id: args[1]), actor: .agent)
+            let result = try core.dispatch(action: .clipboardDelete(id: args[1]), actor: cliActor)
             guard result.isApplied else { exit(1) }
             print("ok deleted \(args[1])")
         default:
@@ -243,7 +254,7 @@ struct SummonCLI {
                     id: id, name: args[1], url: args[2],
                     keyword: args.count >= 4 ? args[3] : nil
                 ),
-                actor: .agent
+                actor: cliActor
             )
             guard result.isApplied else { exit(1) }
             print("ok \(id) \(args[1])")
@@ -253,7 +264,7 @@ struct SummonCLI {
             }
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon quicklink delete <id>\n", stderr); exit(2) }
-            let result = try core.dispatch(action: .quicklinkDelete(id: args[1]), actor: .agent)
+            let result = try core.dispatch(action: .quicklinkDelete(id: args[1]), actor: cliActor)
             guard result.isApplied else { exit(1) }
             print("ok deleted \(args[1])")
         default:
@@ -284,7 +295,7 @@ struct SummonCLI {
             kind: target.hasPrefix("/") ? .file : .app,
             path: target
         )
-        let outcome = try core.invoke(actionName: name, result: result, actor: .agent)
+        let outcome = try core.invoke(actionName: name, result: result, actor: cliActor)
         guard outcome.isApplied else { exit(1) }
         print("ok \(name) \(target)")
     }
@@ -311,7 +322,7 @@ struct SummonCLI {
                 exit(2)
             }
             let proposal = try awaitOrRun {
-                try await service.completeAndStage(prompt: prompt, actor: .agent)
+                try await service.completeAndStage(prompt: prompt, actor: cliActor)
             }
             print("staged \(proposal.id.uuidString)")
             print("rung \(proposal.rung.rawValue)")
@@ -357,7 +368,7 @@ struct SummonCLI {
             guard args.count >= 2, let id = UUID(uuidString: args[1]) else {
                 fputs("usage: summon ai accept <proposal-uuid>\n", stderr); exit(2)
             }
-            if let p = try service.accept(id: id, actor: .agent) {
+            if let p = try service.accept(id: id, actor: cliActor) {
                 print("accepted \(p.id)")
                 print(p.output)
             } else {
@@ -369,7 +380,7 @@ struct SummonCLI {
             guard args.count >= 2, let id = UUID(uuidString: args[1]) else {
                 fputs("usage: summon ai reject <proposal-uuid>\n", stderr); exit(2)
             }
-            _ = try service.reject(id: id, actor: .agent)
+            _ = try service.reject(id: id, actor: cliActor)
             try? core.staged.setState(id: args[1], state: "rejected")
             print("rejected \(args[1])")
         default:
@@ -420,13 +431,13 @@ struct SummonCLI {
                     key: "web.lastEgressHost",
                     value: .string(URL(string: core.webConfig.baseURL)?.host ?? "unknown")
                 ),
-                actor: .agent
+                actor: cliActor
             )
             if enrich {
                 let service = SummonAIService(core: core)
                 let prompt = WebEnrich.enrichPrompt(question: q, hits: hits)
                 let proposal = try awaitOrRun {
-                    try await service.completeAndStage(prompt: prompt, actor: .agent)
+                    try await service.completeAndStage(prompt: prompt, actor: cliActor)
                 }
                 print("---")
                 print("staged enrich \(proposal.id.uuidString) rung=\(proposal.rung.rawValue)")
@@ -491,7 +502,7 @@ struct SummonCLI {
           summon favorite add|list|remove
           summon ignore add|list|remove
 
-        Mutating commands journal actor=agent.
+        Mutating commands journal actor=user by default; pass --actor agent for automation.
         AI output is always staged (never auto-executed).
         Web search is opt-in (default OFF; enable presets localhost:8080).
         Binary name: summon-cli (SPM); user-facing brand is Summon.

@@ -222,8 +222,16 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     @objc private func acceptStaged() {
         guard let id = stagedID else { return }
-        try? session.core.staged.setState(id: id, state: "accepted")
-        if let p = try? session.core.staged.get(id) {
+        guard let p = try? session.core.staged.get(id), p.state == "staged" else {
+            refreshStagedStrip()
+            return
+        }
+        if p.rung == "agent" {
+            // Apply staged CoreAction as user (Batch A propose-only accept)
+            _ = try? session.core.acceptStagedAgentAction(id: id)
+        } else {
+            // AI staged text → pasteboard (never auto-exec)
+            try? session.core.staged.setState(id: id, state: "accepted")
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setString(p.output, forType: .string)
@@ -233,7 +241,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     @objc private func rejectStaged() {
         guard let id = stagedID else { return }
-        try? session.core.staged.setState(id: id, state: "rejected")
+        if let p = try? session.core.staged.get(id), p.rung == "agent" {
+            try? session.core.rejectStagedAgentAction(id: id)
+        } else {
+            try? session.core.staged.setState(id: id, state: "rejected")
+        }
         refreshStagedStrip()
     }
 

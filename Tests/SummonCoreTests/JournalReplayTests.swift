@@ -8,9 +8,10 @@ final class JournalReplayTests: XCTestCase {
 
         let actions: [(ActorTag, CoreAction)] = [
             (.user, .settingsSet(key: "theme", value: .string("dark"))),
-            (.agent, .settingsSet(key: "agent.enabled", value: .bool(false))),
+            (.agent, .settingsSet(key: "feature.agent_ui", value: .bool(false))),
             (.system, .settingsSet(key: "lastAppcastCheck", value: .string("2026-08-03T00:00:00Z"))),
             (.user, .settingsSet(key: "theme", value: .string("light"))),
+            // ext: non-restricted key only (elevated settings stage)
             (.ext(id: "demo"), .settingsSet(key: "ext.demo.flag", value: .number(42))),
             (.user, .settingsDelete(key: "lastAppcastCheck")),
             (.user, .settingsSet(key: "nested", value: .object([
@@ -80,11 +81,11 @@ final class JournalReplayTests: XCTestCase {
         let core = try SummonCore.inMemory()
         let value = JSONValue.parseCLI("true")
         let result = try core.dispatch(
-            action: .settingsSet(key: "agent.enabled", value: value),
+            action: .settingsSet(key: "feature.cli_e2e", value: value),
             actor: .agent
         )
         XCTAssertTrue(result.isApplied)
-        XCTAssertEqual(try core.settings.get("agent.enabled"), .bool(true))
+        XCTAssertEqual(try core.settings.get("feature.cli_e2e"), .bool(true))
 
         let entries = try core.journal.allEntries()
         XCTAssertEqual(entries.count, 1)

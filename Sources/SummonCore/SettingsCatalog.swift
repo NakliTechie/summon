@@ -3,7 +3,7 @@ import Foundation
 /// Minimal settings surface as launcher results (RC-16). Full prefs window later.
 public enum SettingsCatalog {
     public static let keys: [(key: String, title: String, subtitle: String)] = [
-        ("agent.socket.enabled", "Agent socket", "Default ON — UNIX socket for agents"),
+        ("agent.socket.enabled", "Agent socket", "Default OFF — enable for local agent UNIX socket"),
         ("search.fts.enabled", "Content search (S2)", "FTS5 index — consent first"),
         ("web.search.enabled", "Web search (W1)", "User SearXNG only — default OFF"),
         ("web.search.baseURL", "SearXNG base URL", "Preset http://127.0.0.1:8080"),

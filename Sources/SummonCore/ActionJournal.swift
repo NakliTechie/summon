@@ -20,7 +20,7 @@ public struct ActionJournal: Sendable {
         switch outcome {
         case .applied: outcomeLabel = "applied"
         case .rejected(let reason): outcomeLabel = "rejected:\(reason)"
-        case .staged: outcomeLabel = "staged"
+        case .staged(let proposalID): outcomeLabel = "staged:\(proposalID)"
         }
 
         let actionData = try JSONEncoder().encode(envelope.action)
