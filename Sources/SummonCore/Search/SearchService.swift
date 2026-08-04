@@ -103,6 +103,11 @@ public struct SearchService: Sendable {
             results.append(contentsOf: apps.search(query: query, limit: limit))
         }
         if wantSnippets, let snippets {
+            // Exact keyword expansion hit (RC-07)
+            if !free.isEmpty, let snips = try? snippets.all(),
+               let hit = SnippetExpansion.match(typed: free, snippets: snips) {
+                results.append(SnippetExpansion.searchResult(for: hit))
+            }
             results.append(contentsOf: try snippets.search(query: query, limit: limit))
         }
         if wantClipboard, let clipboard {

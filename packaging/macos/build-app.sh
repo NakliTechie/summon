@@ -20,11 +20,9 @@ test -x "$BIN"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-# Stamp version into Info.plist copy
+# Stamp version only on the app copy — never mutate the source-controlled plist
 PLIST_SRC="$ROOT/packaging/macos/Info.plist"
 PLIST_DST="$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST_SRC" 2>/dev/null \
-  || true
 cp "$PLIST_SRC" "$PLIST_DST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST_DST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST_DST"

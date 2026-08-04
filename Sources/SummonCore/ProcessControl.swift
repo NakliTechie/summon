@@ -15,9 +15,7 @@ public struct ProcessInfoRow: Sendable, Equatable, Identifiable {
 
 public enum ProcessControl {
     public static func runningApps() -> [ProcessInfoRow] {
-        #if canImport(AppKit)
-        // Avoid AppKit in Core — use `ps` for headless testability
-        #endif
+        // Headless: parse `ps` (no AppKit). Split on *last* whitespace so names with spaces survive.
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/ps")
         task.arguments = ["-axo", "pid=,comm="]
@@ -32,9 +30,10 @@ public enum ProcessControl {
             var rows: [ProcessInfoRow] = []
             for line in text.split(separator: "\n") {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
-                guard let space = trimmed.firstIndex(of: " ") else { continue }
-                let pidStr = String(trimmed[..<space])
-                let name = String(trimmed[trimmed.index(after: space)...]).trimmingCharacters(in: .whitespaces)
+                guard let space = trimmed.firstIndex(where: { $0.isWhitespace }) else { continue }
+                let pidStr = String(trimmed[..<space]).trimmingCharacters(in: .whitespaces)
+                let name = String(trimmed[trimmed.index(after: space)...])
+                    .trimmingCharacters(in: .whitespaces)
                 guard let pid = Int32(pidStr), !name.isEmpty else { continue }
                 rows.append(ProcessInfoRow(name: name, pid: pid))
             }

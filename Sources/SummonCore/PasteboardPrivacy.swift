@@ -34,4 +34,39 @@ public enum PasteboardPrivacy {
         guard hasString else { return false }
         return !shouldSkip(types: types)
     }
+
+    /// Strip HTML tags / common entities and NFC-normalize for paste-as-plain.
+    public static func asPlainText(_ raw: String) -> String {
+        var s = raw
+        if s.contains("<") {
+            s = s.replacingOccurrences(
+                of: #"<[^>]+>"#,
+                with: "",
+                options: .regularExpression
+            )
+        }
+        // Crude RTF control word strip (`\word` / `{\…}`)
+        if s.contains("\\") && (s.hasPrefix("{") || s.contains("\\rtf")) {
+            s = s.replacingOccurrences(
+                of: #"\\[a-zA-Z]+-?\d*[ ]?"#,
+                with: "",
+                options: .regularExpression
+            )
+            s = s.replacingOccurrences(of: "{", with: "")
+            s = s.replacingOccurrences(of: "}", with: "")
+        }
+        let entities: [(String, String)] = [
+            ("&nbsp;", " "),
+            ("&amp;", "&"),
+            ("&lt;", "<"),
+            ("&gt;", ">"),
+            ("&quot;", "\""),
+            ("&#39;", "'"),
+        ]
+        for (e, r) in entities {
+            s = s.replacingOccurrences(of: e, with: r)
+        }
+        return s.precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
 }

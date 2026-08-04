@@ -223,13 +223,35 @@ public struct AppHotkeyBinding: Sendable, Hashable, Codable, Equatable {
     }
 }
 
-/// Snippet expansion detector (RC-07) — expansion engine registers later.
+/// Snippet expansion detector (RC-07) — used by SearchService for exact keyword hits.
 public enum SnippetExpansion {
     public static func match(typed: String, snippets: [Snippet]) -> Snippet? {
-        snippets.first { snip in
-            guard let kw = snip.keyword, !kw.isEmpty else { return false }
-            return typed.hasSuffix(kw)
+        let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        // Exact keyword match first, then suffix (typing-expansion style)
+        if let exact = snippets.first(where: { ($0.keyword ?? "") == t }) {
+            return exact
         }
+        return snippets.first { snip in
+            guard let kw = snip.keyword, !kw.isEmpty else { return false }
+            return t.hasSuffix(kw)
+        }
+    }
+
+    public static func searchResult(for snippet: Snippet) -> SearchResult {
+        SearchResult(
+            id: "snippet:\(snippet.id)",
+            title: snippet.name,
+            subtitle: snippet.keyword.map { "keyword · \($0)" } ?? "snippet",
+            kind: .snippet,
+            score: 0.98,
+            payload: [
+                "snippetID": .string(snippet.id),
+                "body": .string(snippet.body),
+                "text": .string(snippet.body),
+                "action": .string("snippet.paste"),
+            ]
+        )
     }
 }
 
