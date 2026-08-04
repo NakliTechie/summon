@@ -236,7 +236,7 @@ public enum ModuleRouter {
             raw = result.title
         }
         let text = actionName == "clipboard.pastePlain"
-            ? raw.precomposedStringWithCanonicalMapping
+            ? PasteboardPrivacy.asPlainText(raw)
             : raw
         try executor.copyToPasteboard(text: text)
     }

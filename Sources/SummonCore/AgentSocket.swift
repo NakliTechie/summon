@@ -35,9 +35,23 @@ public final class AgentSocketServer: @unchecked Sendable {
         if case .listening = state { return }
         let url = try socketURL ?? Self.defaultSocketURL()
         let path = url.path
-        if FileManager.default.fileExists(atPath: path) {
-            try FileManager.default.removeItem(at: url)
+        let parent = url.deletingLastPathComponent()
+        // Parent dir mode 0700 so only the user can reach the socket
+        try FileManager.default.createDirectory(
+            at: parent,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        // Only remove an existing socket node, never a regular file
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), !isDir.boolValue {
+            // Prefer unlinking sockets; skip if path looks like a plain file we shouldn't touch
+            try? FileManager.default.removeItem(at: url)
         }
+
+        // Restrict umask during bind so the socket file is not world-readable briefly
+        let previousUmask = umask(0o077)
+        defer { _ = umask(previousUmask) }
 
         let params = NWParameters()
         params.requiredLocalEndpoint = NWEndpoint.unix(path: path)
@@ -61,6 +75,8 @@ public final class AgentSocketServer: @unchecked Sendable {
             }
         }
         real.start(queue: queue)
+        // Best-effort immediate chmod in case ready races
+        chmod(path, 0o600)
         self.listener = real
     }
 

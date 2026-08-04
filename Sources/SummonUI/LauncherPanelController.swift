@@ -107,6 +107,12 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         tableView.selectionHighlightStyle = .regular
         tableView.rowHeight = 36
         tableView.style = .plain
+        // VoiceOver: treat results as a list (Batch G a11y)
+        tableView.setAccessibilityElement(true)
+        tableView.setAccessibilityRole(.list)
+        tableView.setAccessibilityLabel("Search results")
+        tableView.setAccessibilityEnabled(true)
+        searchField.setAccessibilityLabel("Search")
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("main"))
         col.width = panelWidth - 32
         tableView.addTableColumn(col)
@@ -299,9 +305,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             let star = row == 0 && r.score >= 0.9 ? "★ " : ""
             label.stringValue = "\(star)[\(r.kind.rawValue)] \(r.title)\(sub)"
         }
-        // a11y
-        cell.setAccessibilityRole(.row)
+        // a11y: row in list with readable title
+        cell.setAccessibilityElement(true)
+        cell.setAccessibilityRole(.staticText)
         cell.setAccessibilityLabel(label.stringValue)
+        cell.setAccessibilityIndex(row)
         cell.addSubview(label)
         return cell
     }
