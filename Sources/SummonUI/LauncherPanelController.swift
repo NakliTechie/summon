@@ -104,7 +104,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchField.backgroundColor = .clear
         searchField.textColor = Tokens.System.label
         searchField.placeholderAttributedString = NSAttributedString(
-            string: "Search",
+            string: "Summon…",
             attributes: [
                 .foregroundColor: Tokens.System.secondaryLabel,
                 .font: NSFont.systemFont(ofSize: 20, weight: .regular),
