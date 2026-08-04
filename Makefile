@@ -78,6 +78,7 @@ cli-e2e: build
 	@set -euo pipefail; \
 	TMP=$$(mktemp -d); \
 	export HOME="$$TMP"; \
+	export SUMMON_CONTAINER_DIR="$$TMP/container"; \
 	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
 	"$$BIN" version | grep -E -q '.'; \
 	"$$BIN" settings set cspine.cli true; \

@@ -12,8 +12,19 @@ public enum SummonDatabase {
     public static let fileName = "summon.sqlite"
 
     /// Default container: `~/Library/Application Support/Summon/`.
+    ///
+    /// `SUMMON_CONTAINER_DIR` overrides the location. The Application Support
+    /// API ignores `$HOME`, so tooling (`make verify`, cli-e2e) that only sets
+    /// `HOME` would otherwise mutate the user's real store; the override is the
+    /// hermetic seam.
     public static func defaultContainerURL() throws -> URL {
         let fm = FileManager.default
+        if let override = ProcessInfo.processInfo.environment["SUMMON_CONTAINER_DIR"],
+            !override.isEmpty {
+            let dir = URL(fileURLWithPath: override, isDirectory: true)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw CoreError.io("Application Support directory unavailable")
         }
