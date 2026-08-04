@@ -50,16 +50,21 @@ public final class ShimRuntime: @unchecked Sendable {
         }
     }
 
+    /// - Parameter grantedEntitlements: User grants (canonical). Effective = declared ∩ granted.
+    ///   Empty means no elevated host APIs (fetch denied). Tests pass declared set to simulate consent.
     public init(
         manifest: ExtensionManifest,
         commandName: String? = nil,
         storage: ShimStorage = ShimStorage(),
+        grantedEntitlements: Set<String> = [],
         fetchHandler: ((URL, String, [String: String], String?) throws -> FetchResponse)? = nil
     ) throws {
         self.manifest = manifest
         self.commandName = commandName ?? manifest.commands.first?.name ?? "index"
         self.storage = storage
-        self.entitlements = Set(manifest.entitlements)
+        let declared = Set(manifest.entitlements.map { ManifestGate.normalizeEntitlement($0) })
+        let granted = Set(grantedEntitlements.map { ManifestGate.normalizeEntitlement($0) })
+        self.entitlements = declared.intersection(granted)
         self.fetchHandler = fetchHandler ?? { _, _, _, _ in
             FetchResponse(ok: false, status: 404, statusText: "no fetch handler", text: "")
         }
@@ -75,6 +80,7 @@ public final class ShimRuntime: @unchecked Sendable {
 
         try installHostBridges()
         try loadBootstrap()
+        try lockDownHostGlobals()
     }
 
     private func throwIfJSException(_ label: String) throws {
@@ -142,10 +148,21 @@ public final class ShimRuntime: @unchecked Sendable {
         toasts
     }
 
+    /// Effective host entitlements (declared ∩ user-granted).
+    public var effectiveEntitlements: Set<String> { entitlements }
+
     // MARK: - Bootstrap + bridges
 
     private func loadBootstrap() throws {
-        let source = ShimBootstrap.embeddedSource
+        // Prefer bundle resource (Package resources); fall back to embedded SoT.
+        let source: String
+        if let url = Bundle.module.url(forResource: "shim-bootstrap", withExtension: "js"),
+           let disk = try? String(contentsOf: url, encoding: .utf8),
+           !disk.isEmpty {
+            source = disk
+        } else {
+            source = ShimBootstrap.embeddedSource
+        }
         guard !source.isEmpty else { throw RuntimeError.bootstrapMissing }
         _ = context.evaluateScript(source, withSourceURL: URL(string: "summon:///shim-bootstrap.js"))
         if let exc = context.exception {
@@ -163,6 +180,54 @@ public final class ShimRuntime: @unchecked Sendable {
             }
             """
         )
+    }
+
+    /// Capture host blocks in a closure, delete global `__host*`, freeze `require`.
+    private func lockDownHostGlobals() throws {
+        context.evaluateScript(
+            """
+            (function () {
+              var g = {
+                get: globalThis.__hostStorageGet,
+                set: globalThis.__hostStorageSet,
+                remove: globalThis.__hostStorageRemove,
+                clear: globalThis.__hostStorageClear,
+                all: globalThis.__hostStorageAll,
+                fetch: globalThis.__hostFetch,
+                prefs: globalThis.__hostPreferences,
+                selected: globalThis.__hostSelectedText
+              };
+              __summon.hostStorageGet = function(k) { return g.get(k); };
+              __summon.hostStorageSet = function(k,v) { g.set(k,v); };
+              __summon.hostStorageRemove = function(k) { g.remove(k); };
+              __summon.hostStorageClear = function() { g.clear(); };
+              __summon.hostStorageAll = function() { return g.all(); };
+              __summon.hostFetch = function(u,m,h,b) { return g.fetch(u,m,h,b); };
+              __summon.hostPreferences = function() { return g.prefs(); };
+              __summon.hostSelectedText = function() { return g.selected(); };
+              delete globalThis.__hostStorageGet;
+              delete globalThis.__hostStorageSet;
+              delete globalThis.__hostStorageRemove;
+              delete globalThis.__hostStorageClear;
+              delete globalThis.__hostStorageAll;
+              delete globalThis.__hostFetch;
+              delete globalThis.__hostPreferences;
+              delete globalThis.__hostSelectedText;
+              if (typeof require === 'function') {
+                Object.freeze(require);
+                try {
+                  Object.defineProperty(globalThis, 'require', {
+                    value: require, writable: false, configurable: false
+                  });
+                } catch (e) {}
+              }
+            })();
+            """
+        )
+        if let exc = context.exception {
+            context.exception = nil
+            throw RuntimeError.javascript("host lockdown: \(exc.toString() ?? "?")")
+        }
     }
 
     private func installHostBridges() throws {
@@ -195,8 +260,11 @@ public final class ShimRuntime: @unchecked Sendable {
         // Wire bootstrap names onto __summon after bootstrap; pre-bind host fns on global for bootstrap assignment.
         let fetchBlock: @convention(block) (String, String, String, String?) -> String = { urlStr, method, headersJSON, body in
             do {
-                if !entitlements.contains("network") && !entitlements.contains("fetch") {
-                    throw RuntimeError.entitlementDenied("fetch requires entitlement 'network'")
+                // Effective grants only (declared ∩ user-granted); canonical token is `network`
+                if !entitlements.contains("network") {
+                    throw RuntimeError.entitlementDenied(
+                        "fetch requires user-granted entitlement 'network'"
+                    )
                 }
                 guard let url = URL(string: urlStr) else {
                     return Self.encodeFetch(

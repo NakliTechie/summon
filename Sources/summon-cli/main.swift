@@ -2,6 +2,7 @@
 import Foundation
 import SummonCore
 import SummonUI
+import SummonShim
 #if SUMMON_AI
 import SummonAI
 #endif
@@ -81,6 +82,8 @@ struct SummonCLI {
             for r in GuideContent.searchResults() {
                 print("\(r.title)\t\(r.subtitle ?? "")")
             }
+        case "extension", "ext":
+            try extensionCommand(Array(args.dropFirst()))
         default:
             fputs("error: unknown command '\(command)'\n", stderr)
             printUsage()
@@ -513,6 +516,7 @@ struct SummonCLI {
           summon alias set|list|delete
           summon favorite add|list|remove
           summon ignore add|list|remove
+          summon extension install|list|grant <path|id>
 
         Mutating commands journal actor=user by default; pass --actor agent for automation.
         AI output is always staged (never auto-executed).
@@ -522,6 +526,39 @@ struct SummonCLI {
     }
 
     // CLI extras (split for SwiftLint file length)
+
+    static func extensionCommand(_ args: [String]) throws {
+        let reg = try ExtensionRegistry(root: ExtensionRegistry.defaultRoot())
+        guard let sub = args.first else {
+            fputs("usage: summon extension install <dir>|list|grant <id> <entitlement>\n", stderr)
+            exit(2)
+        }
+        switch sub {
+        case "list":
+            for rec in reg.list() {
+                print("\(rec.extensionID)\t\(rec.title)\t\(rec.path)")
+            }
+        case "install":
+            guard args.count >= 2 else {
+                fputs("usage: summon extension install <dir>\n", stderr)
+                exit(2)
+            }
+            let rec = try reg.install(fromDirectory: URL(fileURLWithPath: args[1]))
+            print("ok installed \(rec.extensionID) → \(rec.path)")
+            print("note: grant entitlements with: summon extension grant \(rec.extensionID) network")
+        case "grant":
+            guard args.count >= 3 else {
+                fputs("usage: summon extension grant <id> <entitlement>\n", stderr)
+                exit(2)
+            }
+            let ent = ManifestGate.normalizeEntitlement(args[2])
+            reg.setGrant(extensionID: args[1], entitlement: ent, granted: true)
+            print("ok granted \(ent) to \(args[1])")
+        default:
+            fputs("usage: summon extension install|list|grant\n", stderr)
+            exit(2)
+        }
+    }
 
     static func cli_latencyCommand(_ args: [String]) throws {
         let iters = Int(args.first ?? "100") ?? 100
