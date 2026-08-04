@@ -23,6 +23,8 @@ public final class SummonCore: @unchecked Sendable {
     public var webConfig: WebSearchConfig = .default
     /// In-memory cores keep consent under a private temp dir (not shared).
     private let ftsConsentContainer: URL?
+    /// Migration / startup issues (empty when all optional tables migrated cleanly).
+    public private(set) var startupWarnings: [String] = []
 
     public convenience init(containerURL: URL) throws {
         let dbQueue = try SummonDatabase.open(in: containerURL)
@@ -80,20 +82,37 @@ public final class SummonCore: @unchecked Sendable {
             executor: executor ?? RecordingModuleExecutor()
         )
         self.schemaGate = SchemaGate()
-        self.staged = StagedProposalStore(dbQueue: dbQueue)
-        try? self.staged.migrate()
-        self.frecency = FrecencyStore(dbQueue: dbQueue)
-        try? self.frecency.migrate()
-        self.aliases = AliasStore(dbQueue: dbQueue)
-        try? self.aliases.migrate()
-        self.history = SearchHistoryStore(dbQueue: dbQueue)
-        try? self.history.migrate()
-        self.favorites = FavoriteStore(dbQueue: dbQueue)
-        try? self.favorites.migrate()
-        self.clipboardIgnore = ClipboardIgnoreStore(dbQueue: dbQueue)
-        try? self.clipboardIgnore.migrate()
-        self.fts = FTSIndex(dbQueue: dbQueue)
-        try? self.fts.migrate()
+        let stagedStore = StagedProposalStore(dbQueue: dbQueue)
+        let frecencyStore = FrecencyStore(dbQueue: dbQueue)
+        let aliasStore = AliasStore(dbQueue: dbQueue)
+        let historyStore = SearchHistoryStore(dbQueue: dbQueue)
+        let favoriteStore = FavoriteStore(dbQueue: dbQueue)
+        let ignoreStore = ClipboardIgnoreStore(dbQueue: dbQueue)
+        let ftsIndex = FTSIndex(dbQueue: dbQueue)
+        self.staged = stagedStore
+        self.frecency = frecencyStore
+        self.aliases = aliasStore
+        self.history = historyStore
+        self.favorites = favoriteStore
+        self.clipboardIgnore = ignoreStore
+        self.fts = ftsIndex
+
+        // Collect migration failures instead of swallowing silently (Batch E4)
+        var warnings: [String] = []
+        func runMigrate(_ name: String, _ body: () throws -> Void) {
+            do { try body() } catch {
+                warnings.append("\(name): \(error.localizedDescription)")
+            }
+        }
+        runMigrate("staged") { try stagedStore.migrate() }
+        runMigrate("frecency") { try frecencyStore.migrate() }
+        runMigrate("aliases") { try aliasStore.migrate() }
+        runMigrate("history") { try historyStore.migrate() }
+        runMigrate("favorites") { try favoriteStore.migrate() }
+        runMigrate("clipboardIgnore") { try ignoreStore.migrate() }
+        runMigrate("fts") { try ftsIndex.migrate() }
+        self.startupWarnings = warnings
+
         let ftsOn: Bool
         if case .bool(let b) = try? settings.get("search.fts.enabled") {
             ftsOn = b
@@ -106,10 +125,10 @@ public final class SummonCore: @unchecked Sendable {
             snippets: snippets,
             clipboard: clipboard,
             quicklinks: quicklinks,
-            frecency: frecency,
-            fts: fts,
+            frecency: frecencyStore,
+            fts: ftsIndex,
             ftsEnabled: ftsOn,
-            favorites: favorites
+            favorites: favoriteStore
         )
         // Load web config from settings if present
         if case .bool(let en) = try? settings.get("web.search.enabled") {
@@ -120,7 +139,6 @@ public final class SummonCore: @unchecked Sendable {
         }
 
         // Wire propose-only staging for agent/ext elevated actions
-        let stagedStore = self.staged
         self.bus.stageElevated = { envelope in
             let data = try JSONEncoder().encode(envelope.action)
             guard let json = String(data: data, encoding: .utf8) else {
@@ -327,11 +345,12 @@ public final class SummonCore: @unchecked Sendable {
 
     // MARK: - Replay
 
+    /// Pure store rebuild: applies actions without re-journaling or re-running destructive guard.
     public func replay(entries: [JournalEntry]) throws {
         for entry in entries where entry.outcome == "applied" {
             // Side-effecting module runs are not re-executed on replay (store rebuild only).
             if case .moduleRun = entry.action { continue }
-            _ = try bus.dispatch(entry.envelope)
+            try bus.applyForReplay(entry.action)
         }
     }
 

@@ -18,6 +18,7 @@ public enum DestructiveGuard {
         "agent.socket.enabled",
         "web.search.enabled",
         "web.search.baseURL",
+        "web.search.allowNonLoopback",
         "search.fts.enabled",
     ]
 

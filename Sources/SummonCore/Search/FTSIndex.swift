@@ -58,8 +58,9 @@ public struct FTSIndex: Sendable {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return [] }
         return try dbQueue.read { db in
-            // MATCH with simple phrase; escape quotes
-            let escaped = q.replacingOccurrences(of: "\"", with: "")
+            // Phrase-quote the whole query so FTS5 operators in user input are not syntax
+            let stripped = q.replacingOccurrences(of: "\"", with: "")
+            let phrase = "\"\(stripped)\""
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -67,7 +68,7 @@ public struct FTSIndex: Sendable {
                     WHERE fts_docs MATCH ?
                     LIMIT ?
                     """,
-                arguments: [escaped, limit]
+                arguments: [phrase, limit]
             )
             return rows.map {
                 FTSDocument(

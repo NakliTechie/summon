@@ -5,13 +5,16 @@ public struct WebSearchConfig: Sendable, Hashable, Codable, Equatable {
     public var enabled: Bool
     /// Empty until user sets; after opt-in UI may preset localhost.
     public var baseURL: String
+    /// When false (default), only loopback hosts are allowed.
+    public var allowNonLoopback: Bool
     public static let localhostPreset = "http://127.0.0.1:8080"
 
-    public static let `default` = WebSearchConfig(enabled: false, baseURL: "")
+    public static let `default` = WebSearchConfig(enabled: false, baseURL: "", allowNonLoopback: false)
 
-    public init(enabled: Bool = false, baseURL: String = "") {
+    public init(enabled: Bool = false, baseURL: String = "", allowNonLoopback: Bool = false) {
         self.enabled = enabled
         self.baseURL = baseURL
+        self.allowNonLoopback = allowNonLoopback
     }
 
     /// Apply Chirag 2026-08-04 default: after enabling, preset localhost if URL empty.
@@ -20,6 +23,17 @@ public struct WebSearchConfig: Sendable, Hashable, Codable, Equatable {
         if baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             baseURL = Self.localhostPreset
         }
+    }
+
+    public static func isLoopbackHost(_ host: String) -> Bool {
+        let h = host.lowercased()
+        return h == "127.0.0.1" || h == "localhost" || h == "::1" || h == "[::1]"
+    }
+
+    public static func isAllowedHost(_ url: URL, allowNonLoopback: Bool) -> Bool {
+        guard let host = url.host, !host.isEmpty else { return false }
+        if isLoopbackHost(host) { return true }
+        return allowNonLoopback
     }
 }
 
@@ -70,6 +84,10 @@ public struct SearXNGClient: WebSearchProviding, Sendable {
         let base = config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let root = URL(string: base), let scheme = root.scheme,
               scheme == "http" || scheme == "https" else {
+            throw WebSearchError.invalidBaseURL
+        }
+        // Loopback-only by default (SSRF mitigation). Set web.search.allowNonLoopback for advanced.
+        guard WebSearchConfig.isAllowedHost(root, allowNonLoopback: config.allowNonLoopback) else {
             throw WebSearchError.invalidBaseURL
         }
         var components = URLComponents(
