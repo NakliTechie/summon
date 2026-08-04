@@ -8,6 +8,8 @@ public final class ActionBus: @unchecked Sendable {
     private let quicklinks: QuicklinkStore
     private let journal: ActionJournal
     private var executor: any ModuleExecuting
+    /// Persist agent/ext elevated ops for human accept. Returns proposal id.
+    public var stageElevated: ((ActionEnvelope) throws -> String)?
     private let lock = NSLock()
 
     public init(
@@ -36,11 +38,22 @@ public final class ActionBus: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        // Agents: destructive ops are propose-only (RC-42)
-        if !DestructiveGuard.agentMayApply(actor: envelope.actor, action: envelope.action) {
-            let outcome = ActionResult.Outcome.rejected(
-                reason: "agent propose-only: destructive action \(envelope.action.name) requires user accept"
-            )
+        // Agent/ext: elevated ops are propose-only (RC-42) — stage for human accept
+        if DestructiveGuard.requiresUserApproval(actor: envelope.actor, action: envelope.action) {
+            let outcome: ActionResult.Outcome
+            if let stageElevated {
+                do {
+                    let proposalID = try stageElevated(envelope)
+                    outcome = .staged(proposalID: proposalID)
+                } catch {
+                    let reason = (error as? CoreError)?.message ?? error.localizedDescription
+                    outcome = .rejected(reason: "stage failed: \(reason)")
+                }
+            } else {
+                outcome = .rejected(
+                    reason: "propose-only: \(envelope.action.name) requires user accept (no staging store)"
+                )
+            }
             let result = ActionResult(envelopeID: envelope.id, outcome: outcome)
             try journal.append(envelope: envelope, outcome: outcome)
             return result

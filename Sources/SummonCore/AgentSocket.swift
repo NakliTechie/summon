@@ -3,11 +3,11 @@ import Network
 
 /// Agent face: UNIX domain socket (handoff §6).
 ///
-/// **Default ON** (decision 2026-08-03): host app starts the socket unless
-/// `agent.socket.enabled` is set false. Path: `…/Summon/summon.sock` (mode 0600).
+/// **Default OFF** (Batch A 2026-08-04; aligns vision/handoff). Host starts the socket only when
+/// `agent.socket.enabled` is true. Path: `…/Summon/summon.sock` (mode 0600).
 /// Wire: one JSON line request → one JSON line response. Actor is always `.agent`.
 public final class AgentSocketServer: @unchecked Sendable {
-    /// Settings key; missing key means enabled.
+    /// Settings key; missing key means **disabled**.
     public static let enabledSettingKey = "agent.socket.enabled"
 
     public enum State: Sendable, Equatable {

@@ -25,8 +25,8 @@ public struct ActionResult: Sendable, Hashable, Equatable {
     public enum Outcome: Sendable, Hashable, Equatable {
         case applied
         case rejected(reason: String)
-        /// Reserved for propose-don't-dispose (AI / agent destructive). Not used in chunk 1.
-        case staged
+        /// Propose-don't-dispose: destructive/restricted agent·ext ops staged for human accept.
+        case staged(proposalID: String)
     }
 
     public let envelopeID: UUID
@@ -40,5 +40,15 @@ public struct ActionResult: Sendable, Hashable, Equatable {
     public var isApplied: Bool {
         if case .applied = outcome { return true }
         return false
+    }
+
+    public var isStaged: Bool {
+        if case .staged = outcome { return true }
+        return false
+    }
+
+    public var stagedProposalID: String? {
+        if case .staged(let id) = outcome { return id }
+        return nil
     }
 }

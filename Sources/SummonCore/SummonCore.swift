@@ -108,6 +108,51 @@ public final class SummonCore: @unchecked Sendable {
         if case .string(let url) = try? settings.get("web.search.baseURL") {
             webConfig.baseURL = url
         }
+
+        // Wire propose-only staging for agent/ext elevated actions
+        let stagedStore = self.staged
+        self.bus.stageElevated = { envelope in
+            let data = try JSONEncoder().encode(envelope.action)
+            guard let json = String(data: data, encoding: .utf8) else {
+                throw CoreError.store("failed to encode staged action")
+            }
+            let proposalID = UUID().uuidString
+            let proposal = PersistedStagedProposal(
+                id: proposalID,
+                rung: "agent",
+                prompt: "\(envelope.actor.journalLabel) proposed \(envelope.action.name)",
+                output: json,
+                egressSummary: "local-stage",
+                state: "staged"
+            )
+            try stagedStore.upsert(proposal)
+            return proposalID
+        }
+    }
+
+    /// Human accept of an agent/ext staged CoreAction (rung `agent`). Re-dispatches as `.user`.
+    @discardableResult
+    public func acceptStagedAgentAction(id: String) throws -> ActionResult {
+        guard let proposal = try staged.get(id), proposal.state == "staged" else {
+            throw CoreError.store("no staged proposal \(id)")
+        }
+        guard proposal.rung == "agent" else {
+            throw CoreError.store("proposal \(id) is not an agent action (rung=\(proposal.rung))")
+        }
+        guard let data = proposal.output.data(using: .utf8) else {
+            throw CoreError.store("staged action payload not UTF-8")
+        }
+        let action = try JSONDecoder().decode(CoreAction.self, from: data)
+        try staged.setState(id: id, state: "accepted")
+        return try dispatch(action: action, actor: .user)
+    }
+
+    /// Human reject of a staged agent action.
+    public func rejectStagedAgentAction(id: String) throws {
+        guard let proposal = try staged.get(id), proposal.state == "staged" else {
+            throw CoreError.store("no staged proposal \(id)")
+        }
+        try staged.setState(id: id, state: "rejected")
     }
 
     public func setFTSEnabled(_ enabled: Bool) throws {
