@@ -26,5 +26,5 @@ Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make
 
 ## Current position
 
-**L1 day-1 live** on designated M4 Pro gate host. `ModelRung` + Apple Foundation Models adapter + staged AI CLI. See `READY-l1-hardware.md`.
+Daily-driver shell on `main` (v0.6.x): compact ⌥Space launcher, ⌥⇧V clipboard history (text), agent socket default OFF. See [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md). L1 live on designated M4 Pro gate host when hardware allows (`READY-l1-hardware.md`).
 

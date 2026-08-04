@@ -69,7 +69,7 @@ UX reference:
   (derived data). Declining L0 is a first-class path: ladder rides L1+.
   **Residency policy:** weights lazy-load (mmap) on first sidecar invocation
   and unload after an idle TTL — automatic, never a setting; the launcher's
-  own footprint stays SuperCmd-class when AI is idle. **Intel honesty:**
+  own footprint stays lean when AI is idle. **Intel honesty:**
   where CPU-only inference misses the sidecar latency floor, detection ranks
   that machine L2/L3-first with L0 available-but-not-default — per the
   Edge-First honesty rule, decided silently per machine. The engine is
@@ -159,7 +159,7 @@ doc are **labels on checkpoints only**.
 | 3 | Launcher core modules (M1 list), search S1 (Spotlight index + filter grammar) + object→action grammar | **C1**: gate suite §8.1–5 + filter-grammar fixture parse tests |
 | 4 | Power modules (M2 list), App Intents surface, search S2 (FTS5 index, consent sheet, invisible/unindexed coverage) | **C2**: per-module fixtures + annotator round-trip + App Intents enumeration fixture + S2 index/rebuild round-trip on a fixture corpus |
 | 5 | **Opens with D7/D8 probe** (llama.cpp-Metal vs MLX-Swift on the pinned E2B quant: latency, memory, multimodal paths — evidence written to state file, decision journaled) · AI ladder L0–L3 + sidecars (M3 list), search S3 (embeddings over S2) | **C3**: removability (S1/S2 fully green with `SummonAI` compiled out) + both ladder-detection matrices + egress assertions + **golden sidecar fixtures against the hash-pinned L0 quant** (NL→command and screenshot-ask outputs graded by deterministic checks — parseable action, schema-valid — not string equality) |
-| 6 | Shim productionized, Raycast import, sync, i18n passes (M4 list) | **C4**: 10-extension harness + sandbox suite + backup round-trip |
+| 6 | Shim productionized, package import, sync, i18n passes (M4 list) | **C4**: 10-extension harness + sandbox suite + backup round-trip |
 | 7 | `/walkthrough` all roles (human, agent-via-socket, extension), `/guide` generation, release dry-run | **C5**: walkthrough log clean + `make release` produces an installable artifact |
 
 `/forward-pass` in fresh context after every chunk; the fix-list closes before
@@ -187,33 +187,31 @@ swap real on arrival, re-verify):
    dictation quality floor — evidence at chunk 5, not assumption. (Anti-NIH
    still applies — propose the mature OSS candidate at the interrupt, don't
    hand-roll.)
-3. Genuine scope ambiguity that changes the product (e.g., a Raycast API the
+3. Genuine scope ambiguity that changes the product (e.g., an extension API the
    shim cannot honor without violating the sandbox row — that's a product
    call, not an engineering call).
 
 Everything else: decide, journal the decision in the state file, proceed.
 
-## 11. Parity references — embrace-and-extend, don't reinvent
+## 11. Module reference implementations — embrace-and-extend, don't reinvent
 
-Two modules have named parity bars, both MIT-licensed OSS —
-license-compatible with this AGPL codebase. Read their source before writing
-these modules; port the hard-won logic with attribution headers rather than
-rediscovering the edge cases:
+Two modules should learn from mature MIT-licensed OSS (license-compatible with
+this AGPL codebase). Read their source before writing these modules; port the
+hard-won logic with attribution headers rather than rediscovering edge cases:
 
-- **Clipboard ← Maccy** (`p0deje/Maccy`). Port the behaviors that took years:
-  keyboard-only flow, pinning, paste-as-plain-text, per-app and per-pattern
-  ignore lists, and — **non-negotiable privacy invariant** — honoring
-  `org.nspasteboard.ConcealedType` and transient pasteboard types so password
-  managers' copies are never stored. A clipboard history that captures
-  passwords fails the walkthrough regardless of features.
-- **Window management ← Rectangle** (`rxhanson/Rectangle`). Port the snap
-  calculation and display-edge math (halves/thirds/corners, gaps,
-  multi-display coordinate quirks) and ship Rectangle's default shortcut
-  scheme — muscle memory should transfer unmodified.
+- **Clipboard history.** Keyboard-only flow, pinning, paste-as-plain-text,
+  per-app and per-pattern ignore lists, and — **non-negotiable privacy
+  invariant** — honoring `org.nspasteboard.ConcealedType` and transient
+  pasteboard types so password managers' copies are never stored. Image/rich
+  media history is a product requirement (text path ships first). A history
+  that captures passwords fails the walkthrough regardless of features.
+- **Window management.** Snap calculation and display-edge math
+  (halves/thirds/corners, gaps, multi-display coordinate quirks) and a stable
+  default global shortcut map.
 
-Personal acceptance criterion, recorded for `/walkthrough` at C1 and C2:
-Chirag uninstalls Maccy and Rectangle. Machine gates prove correctness; this
-proves the shape.
+Personal acceptance: Chirag daily-drives the module for a week without needing a
+separate utility for that job. Machine gates prove correctness; daily use proves
+the shape.
 
 ## 12. What NOT to do — hard rules
 
@@ -247,7 +245,7 @@ proves the shape.
 User-facing only: what it does, brew install line, permissions it will ask for
 and why, the sovereignty statement (no account / no server / no telemetry, and
 what "local" means per rung — the Sidecar honesty rule, stated plainly),
-Raycast migration note, agent-face quickstart, screenshot. No architecture
+Extension migration note, agent-face quickstart, screenshot. No architecture
 essays, no model names, no line counts.
 
 ## 14. Portfolio integration

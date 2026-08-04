@@ -1,48 +1,79 @@
 # Summon
 
-> A sovereign, native macOS launcher. Every SuperCmd-class module — no account, no server, no telemetry. AI as a removable sidecar riding the on-device ladder.
+A sovereign, native macOS launcher. Local-first. Free and open source (AGPL-3.0). No account, no server of ours, no telemetry. AI is a removable sidecar on an on-device ladder.
 
-**Status:** pre-release, in active development. Nothing here ships until `make verify` is green in a fresh checker context.
+**Status:** pre-release daily-driver builds (v0.6.x). Signed/notarized Homebrew cask is not shipped yet.
 
-Summon is a native macOS launcher (Swift, AppKit + SwiftUI) built around one idea: the single most intimate tool on your machine should keep that intimacy on your disk. Free, open source, AGPL-3.0. No account anywhere. No server of ours in the loop. No telemetry at all.
+## Highlights
 
-## What it does
+- **Launcher** — ⌥Space opens a compact search bar (Spotlight-style: thin until you type, then results expand).
+- **Search ladder** — apps and files via the system metadata index, optional full-text (FTS, consent-gated), room for semantic recall later.
+- **Object → action** — select a result, Tab / ⌘K, choose an action.
+- **Clipboard history** — resident capture while Summon runs; dedicated browser on **⌥⇧V** (text today; image history planned).
+- **Snippets, quicklinks, calc, emoji**, window layouts, and more modules on the same core.
+- **Extensions** — sandboxed JS shim for third-party packages; App Intents surface evolving.
+- **AI** — staged only (never auto-executes); L1 Apple Foundation Models / L0 packaged model when configured; compile-out removability gate.
+- **Agent face** — CLI + optional UNIX socket (default **off**), every call journaled with `actor=`.
 
-- **Launch** apps and files, with a search *ladder*: Spotlight index (zero cost) → your own opt-in full-text index → semantic recall on top.
-- **Act** on any result — LaunchBar's object→action grammar revived (select a thing, Tab, act on it).
-- **Remember** — unlimited clipboard history and snippets, stored locally in SQLite, exportable to JSON.
-- **Manage** windows, spaces, screenshots, and system commands from the bar.
-- **Extend** — run unmodified Raycast extensions via a sandboxed shim, and consume every installed app's App Intents actions natively.
-- **Ask** — AI as a removable sidecar. Zero-key on-device model as the ground floor; Apple Foundation Models, a detected local runtime, or your own key above it. Every AI output is *staged* for your review before anything runs.
+## Use (local build)
 
-## Sovereignty
+```bash
+cd /path/to/summon
+make app
+pkill -x summon-app 2>/dev/null
+rm -rf /Applications/Summon.app
+cp -R dist/Summon.app /Applications/
+open /Applications/Summon.app
+```
 
-No account. No server of ours. No telemetry, analytics, or crash reporting — not even opt-in. This is auditable fact, not a privacy-page claim: the network gate in the test suite asserts the only egress is the update check (and any AI call *you* invoke, to *your* own provider).
+| Action | How |
+|---|---|
+| Open launcher | **⌥Space** (or menu bar 🔍 → Show Launcher) |
+| Clipboard history | **⌥⇧V** (or menu → Clipboard History) |
+| Quit | Menu bar → Quit |
 
-"Local" means different things per AI rung, and Summon states which honestly per invocation — the Sidecar honesty rule.
+Launch at login defaults **on** (menu bar can toggle). Clipboard history needs the app process running in the background.
 
-## Install
+**Install via Homebrew** (when the first notarized release exists):
 
 ```bash
 brew install --cask naklitechie/tap/summon
 ```
 
-*(Available once the first notarized release ships.)*
-
-## Agent face
-
-Every module is callable by a machine over the same core the hotkey drives — a CLI and a local UNIX socket, off by default, enabled in developer settings, every call journaled. This makes Summon a tool surface for coding agents, not a launcher with a captive agent.
+## Develop
 
 ```bash
-summon run window.arrange --layout=left-right
-summon clipboard search "invoice"
-echo "..." | summon quickfix --tone=formal
+make build          # SPM debug
+make test
+make verify         # merge gate (tests, cli-e2e, lint, removability, walkthrough, latency-soft)
+make app            # ad-hoc Summon.app under dist/
 ```
+
+SPM targets: `SummonCore` · `SummonUI` · `SummonShim` · `SummonAI` (optional via `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`.
+
+CLI (from SPM build):
+
+```bash
+BIN="$(swift build --show-bin-path)/summon-cli"
+"$BIN" search "2+2"
+"$BIN" clipboard list
+"$BIN" settings get agent.socket.enabled
+```
+
+## Spec & ops
+
+| Doc | Role |
+|---|---|
+| [`docs/summon-vision-roadmap-006.md`](docs/summon-vision-roadmap-006.md) | Vision, invariants, modules, AI ladder |
+| [`docs/summon-agent-handoff-006.md`](docs/summon-agent-handoff-006.md) | Build, gate, security, hard rules |
+| [`docs/summon-ux-reference-006.html`](docs/summon-ux-reference-006.html) | Drawn UX reference |
+| [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md) | Current position / residuals |
+| [`AGENTS.md`](AGENTS.md) | Notes for coding agents |
+
+## Sovereignty
+
+No account. No server of ours. No telemetry, analytics, or crash reporting — not even opt-in. AI data leaves the machine only on **explicit** user action, to **the user’s** provider. The test suite tracks sovereignty and AI removability as first-class gates.
 
 ## License
 
 [AGPL-3.0](LICENSE).
-
----
-
-*Project docs (vision, roadmap, agent handoff, UX reference) live in [`/docs`](docs/). Operational state lives in [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md).*

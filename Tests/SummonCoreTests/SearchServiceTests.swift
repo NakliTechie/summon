@@ -208,4 +208,16 @@ final class SearchServiceTests: XCTestCase {
         // Target: low single-digit ms average after warm (no mdfind).
         XCTAssertLessThan(ms, 25, "avg ms/query \(ms)")
     }
+
+    func testCalculatorIncompleteDoesNotThrow() {
+        // Regression: "2 +" used to abort via NSExpression NSException.
+        XCTAssertNil(Calculator.evaluate("2 +"))
+        XCTAssertNil(Calculator.evaluate("2 + "))
+        XCTAssertNil(Calculator.evaluate("("))
+        XCTAssertEqual(Calculator.evaluate("2 + 2"), 4)
+        XCTAssertEqual(Calculator.evaluate("10 / 4"), 2.5)
+        XCTAssertEqual(Calculator.evaluate("(1+2)*3"), 9)
+        XCTAssertNotNil(Calculator.result(for: "2+2"))
+        XCTAssertNil(Calculator.result(for: "2 +"))
+    }
 }

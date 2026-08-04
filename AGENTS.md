@@ -25,8 +25,8 @@ Machine-checkable, human-free:
 
 - Hard **latency** fail (p95 < 50 ms invoke / < 16 ms keystroke on arm64 CI).
 - **Network sovereignty** instrumented egress assert (only appcast + journaled user AI/web).
-- **i18n completeness** as a separate gate line (L10n keys exist; SuperCmd-class locales not gated).
-- Unmodified **Raycast store** packages (fixtures are synthetic).
+- **i18n completeness** as a separate gate line (L10n keys exist; full locale set not gated).
+- Unmodified **third-party store** packages (fixtures are synthetic).
 
 ## Working rhythm
 

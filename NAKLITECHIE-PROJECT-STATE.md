@@ -2,44 +2,46 @@
 
 ## Status
 
-**2026-08-04** — Batches **A–E** security/integrity landings on `main` (agent safety · dead-button handlers · AI truth · shim trust · replay/export).  
-Batches **A–G** (security → polish) landed on main. Phase H / R0 soak next.  
-`make verify` = unit · cli-e2e · lint · removability · walkthrough · **latency-soft** (probe only).  
-**Not** SuperCmd-complete; **not** notarized.
+**2026-08-04** — Daily-driver shell on `main` (v0.6.x):
+
+- Compact launcher (⌥Space): collapsed until type; dismiss on resign key
+- Clipboard: resident capture, login item default ON, dedicated history **⌥⇧V** (text)
+- Search: app ranking/symlink fixes, emoji seed, app icons, calc crash fix
+- Hotkey dispatcher fixed for multi-hotkey
+- `make verify` green at last commit series
+
+**Not** notarized / public cask yet. **Phase H** (Dev ID) remains last.
 
 ## Roadmap honesty
 
-- Autopilot A–G shipped **seams + product for A–E security path**; many F/G power rows remain search-level or partial (see `plan/workplan.md` Batches, not old all-`[x]` A–G table).
-- **R0 daily-driver** needs Chirag soak after trust batches.
-- **Phase H** (notarize / public cask / Dev ID) — stop-line last.
+- Security Batches A–G landed earlier the same day.
+- R0 = Chirag daily-drive; image/rich clipboard history is a **parked product requirement**.
+- Phase H: notarize · cask · Dev ID — stop-line.
 
-Inventory: `plan/pending.md` · `plan/workplan.md` · forward-pass archives under `plan/_archive/`.
+Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 ## Decisions
 
 | When | Decision |
 |---|---|
 | 2026-08-03 | Dev ID last · cask first · ⌥Space · L1 day-1 · M4=L1 gate |
-| 2026-08-03 | Socket default ON *(superseded for missing key — see 2026-08-04 Batch A)* |
-| 2026-08-04 | **D7 = MLX** |
-| 2026-08-04 | **W1** OFF + localhost preset |
-| 2026-08-04 | Autopilot A–G seams; C1a Maccy-first; F/G headless-first |
-| 2026-08-04 | **Batch A:** socket default **OFF** unless `agent.socket.enabled=true`; elevated agent/ext ops **stage** |
-| 2026-08-04 | Product version **0.6.0** (single source: `SummonVersion.string`) |
+| 2026-08-04 | **D7 = MLX** · W1 OFF + localhost preset |
+| 2026-08-04 | Socket default **OFF** unless `agent.socket.enabled=true` |
+| 2026-08-04 | Product version **0.6.0** |
+| 2026-08-04 | Empty launcher blank · dismiss on focus loss · clipboard history dedicated UI · login ON |
+| 2026-08-04 | Image clipboard history = required, parked for next slice |
 
 ## Residual
 
-*(Post Batch G polish — 2026-08-04)*
-
-
+- Image/rich clipboard history (requirement; text path for daily drive now)
 - Hard latency + network-sovereignty gates in verify
-- Real HF pin values (still PENDING-until-first-fetch then `summon.sha256`)
+- Real HF pin values (PENDING until first fetch)
 - Pure mlx-swift embed
-- Live App Intents runtime · menu AX · EventKit · browser bridge
-- 3 unmodified Raycast store packages
+- Live App Intents · menu AX · EventKit · browser bridge
+- 3 real store packages on harness
 - Notarized cask · Dev ID
-- Full Maccy image browser / Rectangle Spaces
-- i18n SuperCmd-class locales
+- Window Spaces + full global shortcut map
+- Broader i18n locales
 
 ## Ladder
 

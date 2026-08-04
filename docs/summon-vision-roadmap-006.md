@@ -1,6 +1,6 @@
 # Summon — Vision & Roadmap (rev 006)
 
-*A sovereign, native macOS launcher. Every SuperCmd-class module, no account, no
+*A sovereign, native macOS launcher. Full module surface, no account, no
 server, no telemetry, AI as a removable sidecar riding the on-device ladder.*
 
 **Track:** Sovereign (NakliTechie) · **Price:** Free · **License:** AGPL-3.0
@@ -16,72 +16,41 @@ update checks fetch a static appcast, no analytics of ours in the loop.
 
 ## 1. Position
 
-**The primary competitor is Apple.** macOS Tahoe 26 sherlocked the category:
-Spotlight now ships Actions (via App Intents), auto-learned Quick Keys, four
-browse modes, intelligent on-device ranking, and native clipboard history
-(7-day retention). Raycast remains the venture-backed subscription leader;
-SuperCmd proved the one-time-native counter-position ($19.99, Swift, 33
-modules, Raycast compat shim). Summon takes the position none of them can:
-**fully sovereign** — free, open source, no account anywhere in the product, no
-server of ours anywhere in the loop, no telemetry at all, and AI that is
-zero-setup because the ground floor is Apple's on-device model, not a hosted key.
+Summon is a **fully sovereign** macOS launcher: free, open source (AGPL-3.0), no
+account anywhere in the product, no server of ours anywhere in the loop, no
+telemetry at all. AI starts on-device when the user’s hardware and OS allow it,
+and can climb a ladder of *their* runtimes and keys — never ours.
 
-Audience shape (standing test): people who opted out of the SaaS pitch. A
-launcher is the single most intimate tool on a machine — it sees every keystroke
-of intent, every clipboard entry, every filename. "Who becomes themselves using
-this?" — the person who wants that intimacy to stay on their disk.
+A launcher is the single most intimate tool on a machine — it sees intent,
+clipboard, and filenames. Summon is for people who want that intimacy to stay
+on their disk.
 
-Differentiators, in order of moat depth:
+**Product pillars (in priority order):**
 
 1. **Agent face as architecture** — every module callable by a machine (CLI +
-   local socket) over the same core the hotkey drives. No competitor has this as
-   a first-class design; it makes Summon the *tool surface* for coding agents
-   rather than a launcher that ships its own captive agent.
-2. **Edge-First AI ladder with a packaged brain** — Summon ships its own
-   pinned on-device model (Gemma 4 E2B, Apache 2.0, multimodal) as the
-   universal floor: every Mac back to macOS 14 gets zero-key, multimodal AI,
-   while Apple Intelligence requires macOS 26 + eligible hardware.
-   Everything above the floor is detected, never configured.
+   local socket) over the same core the hotkey drives. Summon is a *tool surface*
+   for coding agents, not a launcher that ships a captive chat agent.
+2. **Edge-First AI ladder with a packaged brain** — pinned on-device model
+   (Gemma-class, Apache 2.0 where applicable) as a floor on macOS 14+; Apple
+   Foundation Models as L1 on capable hardware; higher rungs detected, not
+   configured by us.
 3. **Sovereignty as verifiable fact** — open source, no account, no telemetry,
-   AGPL. SuperCmd claims "100% local"; Summon makes it auditable.
-4. **A search ladder, not a search box** — Spotlight's index as the zero-cost
-   floor, own full-text index as the consented upgrade, semantic recall on
-   top. Searches where Spotlight won't (invisible files, unindexed volumes —
-   the ProFind/EasyFind niche our audience loves) and understands content, not
-   just names (the Foxtrot posture).
-5. **Two extension surfaces** — the Raycast compat shim (migration story,
-   parity with SuperCmd) *and* native App Intents consumption: every modern
-   Mac app's declared actions appear in Summon's bar, out-of-process, zero
-   sandbox risk. Absorbing Apple's own extension mechanism is the sherlock
-   defense in code form.
-6. **LaunchBar's object→action grammar, revived** — select a thing, Tab, act
-   on it (file → app, → person, → command). The best interaction grammar this
-   category ever shipped; nobody modern copied it properly.
+   AGPL; gates assert removability of AI and network posture.
+4. **A search ladder, not a search box** — system metadata index as the zero-cost
+   floor, optional consented full-text, semantic recall on top. Content-aware
+   where names alone fail; invisible/unindexed paths when the user opts in.
+5. **Two extension surfaces** — sandboxed third-party package shim (migration
+   and community packages) *and* native App Intents consumption so declared
+   app actions appear in the bar out-of-process.
+6. **Object→action grammar** — select a thing, Tab, act on it (file → app,
+   person, command). First-class interaction, not an afterthought.
 
-**The wedge, validated (Aug 2026 survey):** "On-Device Semantic AI Search" is
-now a named category, and the market maintains a split Summon exists to
-collapse — launchers don't do semantic (Raycast, Alfred, SuperCmd); semantic
-tools don't launch (Dhito, Fenn, Filect — Filect's own copy says it
-"complements Alfred or Raycast rather than replacing them"). Vector is the
-only occupant of both sides and is Tahoe-only, Apple-Silicon-only, closed
-source. Apple's own semantic search (Core Spotlight, "Golden Gate") is
-app-adoption-gated and OS-gated. Nobody in the category is open source,
-nobody has an agent face, and both Vector and Apple exclude the pre-Tahoe
-fleet — which makes the macOS 14 floor a beachhead market, not a spec detail.
-The pure-search wedge decays as Apple lands; the durable moats are the ones
-Apple won't build: agent face, BYO ladder, unlimited retention, the shim,
-auditability.
+**Platform floor:** macOS 14. Newer OS features are used when present; they do
+not define the minimum.
 
-**Sherlock defense, stated plainly:** ships its brain — pinned multimodal
-model on every Mac back to macOS 14, vs Apple Intelligence gated to macOS 26 +
-eligible hardware · unlimited clipboard vs Tahoe's 7-day
-cap · BYO-AI ladder vs Apple Intelligence only · agent face (Spotlight has
-none) · Raycast shim · macOS 14 floor (Tahoe features require 26) ·
-sovereignty as auditable fact, not a privacy-page claim.
-
-Monetisation: none. Flows-from-shape rule — if anything ever monetises here it is
-the relay pattern (compute-backed, zero-retention), and v1 needs no relay at all.
-Subscriptions for a no-account tool = betrayal. Closed.
+**Monetisation:** none in v1. No subscription for a no-account tool. If anything
+ever monetises later, only via user-owned compute patterns with zero retention —
+not a Summon cloud account.
 
 ---
 
@@ -126,7 +95,7 @@ row, its own sandbox, and the strictest boundary in the matrix — not a feature
    typed actions into the same core. One mechanism, N doors.
 8. **Attribution.** Every action carries an actor tag into the local journal.
 9. **i18n from day one.** String catalogs on every surface; no hardcoded
-   user-facing strings. (Baked silently; matches SuperCmd's 10+ languages.)
+   user-facing strings. (Baked silently; multi-locale from day one where keys exist.)
 10. **Latency budget.** Invoke-to-visible < 50 ms; keystroke-to-results < 16 ms
     for the local index. Native or nothing — this is why there's no Electron.
 11. **Ask before big downloads.** Models and Whisper weights prompt before
@@ -136,24 +105,23 @@ row, its own sandbox, and the strictest boundary in the matrix — not a feature
 
 ## 4. Module inventory → milestones
 
-Full SuperCmd-class inventory, sequenced by risk and dependency. One spec, one
+Full module inventory, sequenced by risk and dependency. One spec, one
 codebase, staged deploys. `/forward-pass` between milestones in fresh context;
 gate conditions machine-checkable; "done" is the verifier's word.
 
 ### M0 — Shim spike (riskiest assumption first)
 
-Can unmodified Raycast extensions run inside a Swift process? The bet: embedded
-JS runtime (JavaScriptCore first; fall back to embedded Node only if JSC +
-polyfills can't carry the Node API surface real extensions use) + a custom React
-reconciler mapping Raycast's component tree (`List`, `Detail`, `Form`,
+Can unmodified third-party JS launcher packages run inside a Swift process? The
+bet: embedded JS runtime (JavaScriptCore first; fall back to embedded Node only
+if JSC + polyfills can't carry the Node API surface real packages use) + a custom
+React reconciler mapping the package component tree (`List`, `Detail`, `Form`,
 `ActionPanel`) to native views.
 
-- Scope: render + execute **3 real store extensions unmodified** (one List-based,
-  one Form-based, one that calls `fetch` + local storage). Raycast-managed-auth
-  extensions explicitly out of scope (same carve-out SuperCmd ships).
-- Prior-art discipline: read SuperCmd's shim source (GitHub, public) and sol's
-  internals before writing a line. Embrace-and-extend if license permits;
-  clean-room stop-gate if GPL is involved.
+- Scope: render + execute **3 real store packages unmodified** (one List-based,
+  one Form-based, one that calls `fetch` + local storage). Vendor-managed-auth
+  packages that require a third-party cloud account are out of scope for v1.
+- Prior-art discipline: read public open-source shims before inventing APIs.
+  Embrace-and-extend if license permits; clean-room stop-gate if GPL is involved.
 - **Gate (deterministic):** scripted harness launches each of the 3 extensions
   headlessly via the action bus, asserts rendered node tree + action results
   against fixtures. Green = shim is real. Red after budget = shim moves to v2,
@@ -170,10 +138,10 @@ FTS5 full-text index (opt-in, disk cost stated, consent sheet before first
 index — content search, unindexed volumes, invisible files) → S3 semantic
 embeddings ride S2 at M3 · object→action grammar (Tab on any result) · calculator
 inline · emoji picker · quicklinks · menu-item search · clipboard history
-(unlimited, SQLite; **parity bar: Maccy** — the module succeeds when Chirag
-retires Maccy) · snippets + expansion · app hotkeys · hyperkey ·
-double-tap modifiers · navigation bindings · system commands · settings ·
-onboarding + `?` guide (generated by `/guide`).
+(unlimited, SQLite; text + privacy filters day-one; image/rich media required
+for daily clipboard completeness) · snippets + expansion · app hotkeys ·
+hyperkey · double-tap modifiers · navigation bindings · system commands ·
+settings · onboarding + `?` guide (generated by `/guide`).
 
 **Gate:** unit + integration green; action-bus replay reconstructs state;
 latency budget asserted in CI on Apple Silicon runner; `/walkthrough` on the
@@ -183,8 +151,8 @@ single human role.
 
 **App Intents action surface** — enumerate and invoke every installed app's
 declared actions from the bar, with Quick-Key-style abbreviations learned
-locally · window management + Spaces (**parity bar: Rectangle** — the module
-succeeds when Chirag retires Rectangle) · alt-tab switcher (live previews, close-with-
+locally · window management + Spaces (snap layouts, multi-display math, global
+shortcut map) · alt-tab switcher (live previews, close-with-
 backspace) · screenshot + annotation (region, arrows, redaction, history, pin)
 · system widgets (CPU/mem/disk/top-apps) · terminal-from-launcher · custom
 scripts · browser integration (tabs/history/bookmarks, profile-aware) ·
@@ -256,19 +224,19 @@ machine" record asserted.
 
 ### M4 — Shim productionized + completions (v1.3)
 
-Raycast extension shim hardened from the M0 spike: manifest-declared
-entitlements, per-extension sandbox + storage namespace, Raycast backup import
+Extension shim hardened from the M0 spike: manifest-declared
+entitlements, per-extension sandbox + storage namespace, package backup import
 (settings, snippets, quicklinks, hotkeys) · sync via user-owned transport —
 config/store export-import as versioned JSON + optional iCloud Drive folder
 watch (their Apple account, their transport; we host nothing, read nothing;
 never a relay of ours) · remaining i18n locale passes.
 
 **Gate:** M0 harness extended to 10 store extensions; sandbox escape attempts
-(fixture suite) fail loud; Raycast backup import round-trips a real backup.
+(fixture suite) fail loud; package backup import round-trips a real backup.
 
 ### v2 horizon (inline, not separate docs)
 
-Raycast-managed-auth extension support (if feasible without their infra) ·
+Vendor-managed-auth extension support (if feasible without third-party infra) ·
 voice agent surface (on-device realtime — AI-native module, exempt from
 sidecar) · deliberate chat-window revisit · Linux feasibility probe (un-resourced;
 noted only).
@@ -316,7 +284,7 @@ set from day one).
 ---
 
 *Bundle status: 3 of 3 complete. State file entry for
-`NAKLITECHIE-PROJECT-STATE.md`: Summon — specced (bundle rev 006), M0 = Raycast
+`NAKLITECHIE-PROJECT-STATE.md`: Summon — specced (bundle rev 006), M0 = extension
 shim spike; D1 = Summon, D5 = macOS 14 (adopted); search = full ladder S1–S3 in
 v1; App Intents = M2; L0 = packaged Gemma 4 E2B (D6 adopted, D7/D8 probe at
 chunk-5 open); D2/D4 resolve at C0. **Parked as separate future specs:**
