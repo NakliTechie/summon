@@ -3,7 +3,7 @@
 ## Status
 
 **2026-08-04** — Batches **A–E** security/integrity landings on `main` (agent safety · dead-button handlers · AI truth · shim trust · replay/export).  
-Batch **F** (gate honesty) in flight / next.  
+Batches **A–G** (security → polish) landed on main. Phase H / R0 soak next.  
 `make verify` = unit · cli-e2e · lint · removability · walkthrough · **latency-soft** (probe only).  
 **Not** SuperCmd-complete; **not** notarized.
 
@@ -28,6 +28,9 @@ Inventory: `plan/pending.md` · `plan/workplan.md` · forward-pass archives unde
 | 2026-08-04 | Product version **0.6.0** (single source: `SummonVersion.string`) |
 
 ## Residual
+
+*(Post Batch G polish — 2026-08-04)*
+
 
 - Hard latency + network-sovereignty gates in verify
 - Real HF pin values (still PENDING-until-first-fetch then `summon.sha256`)
