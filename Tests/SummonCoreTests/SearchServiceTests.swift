@@ -76,11 +76,51 @@ final class SearchServiceTests: XCTestCase {
         try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        let catalog = AppCatalog(searchPaths: [tmp])
+        AppCatalog.invalidateCache()
+        let catalog = AppCatalog(searchPaths: [tmp], cacheTTL: 0)
         let hits = catalog.search(query: try FilterGrammar.parse("Fixture"), limit: 10)
         XCTAssertEqual(hits.count, 1)
         XCTAssertEqual(hits[0].title, "FixtureApp")
         XCTAssertEqual(hits[0].kind, .app)
+    }
+
+    /// Prefix must beat alphabetical noise; short contains must not bury Safari-like names.
+    func testAppPrefixBeatsContainsNoise() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-apps-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        // Many names that *contain* "sa" but only Safari *prefixes* "saf".
+        for name in [
+            "Messages", "WhatsApp", "osaurus", "Screen Sharing", "Screenshot",
+            "Script Editor", "Safari", "Safe Exam Browser", "Sample App",
+        ] {
+            try FileManager.default.createDirectory(
+                at: tmp.appendingPathComponent("\(name).app"),
+                withIntermediateDirectories: true
+            )
+        }
+        // Symlink app (macOS Safari shape).
+        let real = tmp.appendingPathComponent("_real/SafariReal.app")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = tmp.appendingPathComponent("SafariLink.app")
+        try? FileManager.default.removeItem(at: link)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        AppCatalog.invalidateCache()
+        let catalog = AppCatalog(searchPaths: [tmp], cacheTTL: 0)
+
+        let s = catalog.search(query: try FilterGrammar.parse("s"), limit: 50)
+        XCTAssertTrue(s.contains { $0.title == "Safari" }, "s → Safari; got \(s.map(\.title))")
+        // 1-char: prefix only — Messages should not rank as S-prefix.
+        XCTAssertFalse(s.contains { $0.title == "Messages" })
+
+        let sa = catalog.search(query: try FilterGrammar.parse("sa"), limit: 20)
+        XCTAssertEqual(sa.first?.title, "Safari", "sa → Safari first; got \(sa.map(\.title))")
+        XCTAssertTrue(sa.contains { $0.title == "SafariLink" })
+
+        let saf = catalog.search(query: try FilterGrammar.parse("saf"), limit: 10)
+        XCTAssertTrue(saf.contains { $0.title.hasPrefix("Saf") }, "saf → Saf*; got \(saf.map(\.title))")
+        XCTAssertFalse(saf.contains { $0.title == "Messages" })
     }
 
     func testObjectActionGrammar() {
@@ -98,7 +138,32 @@ final class SearchServiceTests: XCTestCase {
         let results = try core.search.search("rocket kind:emoji")
         XCTAssertFalse(results.isEmpty)
         XCTAssertEqual(results.first?.kind, .emoji)
-        XCTAssertTrue(results.first?.title.contains("🚀") == true)
+        XCTAssertEqual(results.first?.title, "🚀")
+        XCTAssertEqual(results.first?.subtitle, "rocket")
+    }
+
+    /// Free text: apps above emoji (emoji still present when it matches).
+    func testFreeTextAppBeforeEmoji() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-apps-\(UUID().uuidString)", isDirectory: true)
+        let app = tmp.appendingPathComponent("RocketMail.app", isDirectory: true)
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let core = try SummonCore.inMemory(appSearchPaths: [tmp])
+        let results = try core.search.search("rocket")
+        let firstApp = results.firstIndex { $0.kind == .app }
+        let firstEmoji = results.firstIndex { $0.kind == .emoji }
+        XCTAssertNotNil(firstApp, "expected a matching app")
+        XCTAssertNotNil(firstEmoji, "emoji should still match free text")
+        XCTAssertLessThan(firstApp!, firstEmoji!)
+        XCTAssertEqual(results[firstApp!].title, "RocketMail")
+        XCTAssertEqual(results[firstEmoji!].title, "🚀")
+    }
+
+    func testFreeTextKindRankBands() {
+        XCTAssertGreaterThan(FreeTextKindRank.band(for: .app), FreeTextKindRank.band(for: .emoji))
+        XCTAssertGreaterThan(FreeTextKindRank.band(for: .emoji), FreeTextKindRank.band(for: .file))
     }
 
     func testSystemCommandSearch() throws {
@@ -120,5 +185,27 @@ final class SearchServiceTests: XCTestCase {
         _ = try core.invoke(actionName: "command.run", result: result, actor: .user)
         XCTAssertEqual(exec.calls.last?.op, "open")
         XCTAssertEqual(exec.calls.last?.value, "x-apple.systempreferences:")
+    }
+
+    func testSearchLatencyBudgetInMemory() throws {
+        // No mdfind; measure pure core ranking after warm-up.
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-apps-bench-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: tmp.appendingPathComponent("Foo.app"),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let core = try SummonCore.inMemory(appSearchPaths: [tmp])
+        _ = try core.search.search("rocket") // warm emoji index + app cache
+        let start = CFAbsoluteTimeGetCurrent()
+        for _ in 0..<20 {
+            _ = try core.search.search("rocket")
+            _ = try core.search.search("high five")
+            _ = try core.search.search("pray")
+        }
+        let ms = (CFAbsoluteTimeGetCurrent() - start) * 1000 / 60
+        // Target: low single-digit ms average after warm (no mdfind).
+        XCTAssertLessThan(ms, 25, "avg ms/query \(ms)")
     }
 }

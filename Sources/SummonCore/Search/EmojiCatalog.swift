@@ -1,123 +1,172 @@
 import Foundation
 
-/// Small built-in emoji index for M1 (expand later). No network.
+/// Built-in emoji index (offline). Seed from gemoji + colloquial ambiguities.
+/// See `EmojiCatalogSeed.swift` and `scripts/generate-emoji-seed.py`.
+///
+/// Prepared once: lowercased fields + inverted prefix index so free-text does not
+/// scan 1.5k × N keyword strings on every keystroke.
 public struct EmojiCatalog: Sendable {
     public struct Entry: Sendable, Hashable {
         public let glyph: String
         public let name: String
         public let keywords: [String]
+
+        public init(glyph: String, name: String, keywords: [String]) {
+            self.glyph = glyph
+            self.name = name
+            self.keywords = keywords
+        }
+    }
+
+    /// Pre-lowercased row for hot search path.
+    fileprivate struct Prepared: Sendable {
+        let entry: Entry
+        let nameLower: String
+        let keywordsLower: [String]
+        /// name + keywords joined for multi-token checks.
+        let blob: String
     }
 
     public let entries: [Entry]
+    private let prepared: [Prepared]
+    /// First 1–2 chars of each keyword/name → candidate indices (narrows full scan).
+    private let prefixIndex: [String: [Int]]
 
     public init(entries: [Entry]? = nil) {
-        self.entries = entries ?? Self.seed
+        if let entries {
+            self.entries = entries
+            let built = Self.buildIndex(entries: entries)
+            self.prepared = built.prepared
+            self.prefixIndex = built.prefixIndex
+        } else {
+            // Shared prepared index for the default seed (built once).
+            let shared = Self.sharedDefault
+            self.entries = shared.entries
+            self.prepared = shared.prepared
+            self.prefixIndex = shared.prefixIndex
+        }
+    }
+
+    private static let sharedDefault: (entries: [Entry], prepared: [Prepared], prefixIndex: [String: [Int]]) = {
+        let entries = seed
+        let built = buildIndex(entries: entries)
+        return (entries, built.prepared, built.prefixIndex)
+    }()
+
+    private static func buildIndex(entries: [Entry]) -> (prepared: [Prepared], prefixIndex: [String: [Int]]) {
+        var prepared: [Prepared] = []
+        prepared.reserveCapacity(entries.count)
+        var index: [String: [Int]] = [:]
+        for (i, e) in entries.enumerated() {
+            let nameLower = e.name.lowercased()
+            let keys = e.keywords.map { $0.lowercased() }
+            let blob = ([nameLower] + keys).joined(separator: "\n")
+            prepared.append(Prepared(entry: e, nameLower: nameLower, keywordsLower: keys, blob: blob))
+            var prefixes = Set<String>()
+            func addPrefixes(from s: String) {
+                guard !s.isEmpty else { return }
+                let a = String(s.prefix(1))
+                prefixes.insert(a)
+                if s.count >= 2 {
+                    prefixes.insert(String(s.prefix(2)))
+                }
+                // Word tokens for multi-word keywords
+                for part in s.split(whereSeparator: { $0.isWhitespace || $0 == "-" }) {
+                    let t = String(part)
+                    guard !t.isEmpty else { continue }
+                    prefixes.insert(String(t.prefix(1)))
+                    if t.count >= 2 { prefixes.insert(String(t.prefix(2))) }
+                }
+            }
+            addPrefixes(from: nameLower)
+            for k in keys { addPrefixes(from: k) }
+            for p in prefixes {
+                index[p, default: []].append(i)
+            }
+        }
+        return (prepared, index)
     }
 
     public func search(query: FilterQuery, limit: Int = 30) -> [SearchResult] {
         if let kind = query.kind, kind != "emoji" { return [] }
-        let free = query.freeText.lowercased()
-        let hits: [Entry]
-        if free.isEmpty {
-            hits = Array(entries.prefix(limit))
-        } else {
-            hits = entries.filter {
-                $0.name.lowercased().contains(free)
-                    || $0.keywords.contains { $0.lowercased().contains(free) }
-                    || $0.glyph == free
-            }.prefix(limit).map { $0 }
+        let free = query.freeText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let scopedToEmoji = query.kind == "emoji"
+        // Free-text single letter matches hundreds of keyword substrings — skip unless scoped.
+        if free.count < 2, !scopedToEmoji {
+            return []
         }
-        return hits.enumerated().map { index, e in
-            SearchResult(
+
+        let hits: [(Entry, Double)]
+        if free.isEmpty {
+            hits = prepared.prefix(limit).map { ($0.entry, 0) }
+        } else {
+            let candidates = candidateIndices(for: free)
+            var scored: [(Entry, Double)] = []
+            scored.reserveCapacity(min(limit * 2, candidates.count))
+            for i in candidates {
+                let p = prepared[i]
+                if let rank = matchRank(p, free: free) {
+                    scored.append((p.entry, rank))
+                }
+            }
+            scored.sort { $0.1 > $1.1 }
+            hits = Array(scored.prefix(limit))
+        }
+
+        let base = scopedToEmoji ? 750.0 : 450.0
+        return hits.enumerated().map { index, pair in
+            let (e, rank) = pair
+            let score = base + rank * 40.0 - Double(index)
+            return SearchResult(
                 id: "emoji:\(e.glyph)",
-                title: "\(e.glyph)  \(e.name)",
-                subtitle: e.keywords.joined(separator: ", "),
+                title: e.glyph,
+                subtitle: e.name,
                 kind: .emoji,
-                score: Double(750 - index),
+                score: score,
                 payload: [
                     "text": .string(e.glyph),
                     "emoji": .string(e.glyph),
+                    "name": .string(e.name),
                 ]
             )
         }
     }
 
-    private static let seed: [Entry] = [
-        Entry(glyph: "✅", name: "check mark", keywords: ["ok", "done", "yes"]),
-        Entry(glyph: "❌", name: "cross mark", keywords: ["no", "x", "cancel"]),
-        Entry(glyph: "⚠️", name: "warning", keywords: ["alert", "caution"]),
-        Entry(glyph: "🔥", name: "fire", keywords: ["hot", "lit"]),
-        Entry(glyph: "💡", name: "light bulb", keywords: ["idea"]),
-        Entry(glyph: "🚀", name: "rocket", keywords: ["ship", "launch"]),
-        Entry(glyph: "📎", name: "paperclip", keywords: ["attach"]),
-        Entry(glyph: "🔍", name: "magnifying glass", keywords: ["search", "find"]),
-        Entry(glyph: "📋", name: "clipboard", keywords: ["paste", "copy"]),
-        Entry(glyph: "⭐️", name: "star", keywords: ["favorite", "fav"]),
-        Entry(glyph: "❤️", name: "red heart", keywords: ["love", "like"]),
-        Entry(glyph: "👍", name: "thumbs up", keywords: ["yes", "approve"]),
-        Entry(glyph: "🎉", name: "party popper", keywords: ["celebrate", "tada"]),
-        Entry(glyph: "🐛", name: "bug", keywords: ["debug", "issue"]),
-        Entry(glyph: "⚡️", name: "high voltage", keywords: ["fast", "zap"]),
-        Entry(glyph: "😀", name: "grinning face", keywords: ["smile", "happy"]),
-        Entry(glyph: "😅", name: "grinning sweat", keywords: ["relief", "nervous"]),
-        Entry(glyph: "😂", name: "joy", keywords: ["laugh", "lol"]),
-        Entry(glyph: "🥹", name: "holding back tears", keywords: ["emotional"]),
-        Entry(glyph: "😊", name: "smiling eyes", keywords: ["blush"]),
-        Entry(glyph: "😍", name: "heart eyes", keywords: ["love"]),
-        Entry(glyph: "🤔", name: "thinking", keywords: ["hmm", "consider"]),
-        Entry(glyph: "😴", name: "sleeping", keywords: ["tired", "zzz"]),
-        Entry(glyph: "🙌", name: "raising hands", keywords: ["praise", "hooray"]),
-        Entry(glyph: "👏", name: "clapping", keywords: ["bravo"]),
-        Entry(glyph: "💪", name: "flexed biceps", keywords: ["strong"]),
-        Entry(glyph: "👀", name: "eyes", keywords: ["look", "see"]),
-        Entry(glyph: "🧠", name: "brain", keywords: ["smart", "think"]),
-        Entry(glyph: "💻", name: "laptop", keywords: ["computer", "code"]),
-        Entry(glyph: "📱", name: "mobile phone", keywords: ["phone"]),
-        Entry(glyph: "⌨️", name: "keyboard", keywords: ["type"]),
-        Entry(glyph: "🗂️", name: "card index dividers", keywords: ["files", "organize"]),
-        Entry(glyph: "📂", name: "open file folder", keywords: ["folder"]),
-        Entry(glyph: "🔗", name: "link", keywords: ["url", "href"]),
-        Entry(glyph: "🔒", name: "locked", keywords: ["secure", "private"]),
-        Entry(glyph: "🔓", name: "unlocked", keywords: ["open"]),
-        Entry(glyph: "🔑", name: "key", keywords: ["password"]),
-        Entry(glyph: "📝", name: "memo", keywords: ["note", "write"]),
-        Entry(glyph: "📅", name: "calendar", keywords: ["date", "event"]),
-        Entry(glyph: "⏰", name: "alarm clock", keywords: ["time", "reminder"]),
-        Entry(glyph: "🌐", name: "globe", keywords: ["web", "world"]),
-        Entry(glyph: "🧩", name: "puzzle piece", keywords: ["plugin", "extension"]),
-        Entry(glyph: "🛠️", name: "hammer and wrench", keywords: ["tools", "build"]),
-        Entry(glyph: "🧪", name: "test tube", keywords: ["test", "science"]),
-        Entry(glyph: "📦", name: "package", keywords: ["box", "ship"]),
-        Entry(glyph: "🎯", name: "direct hit", keywords: ["target", "goal"]),
-        Entry(glyph: "✨", name: "sparkles", keywords: ["magic", "new"]),
-        Entry(glyph: "🌈", name: "rainbow", keywords: ["pride", "color"]),
-        Entry(glyph: "☕️", name: "hot beverage", keywords: ["coffee", "tea"]),
-        Entry(glyph: "🍕", name: "pizza", keywords: ["food"]),
-        Entry(glyph: "🌙", name: "crescent moon", keywords: ["night", "dark"]),
-        Entry(glyph: "☀️", name: "sun", keywords: ["day", "light"]),
-        Entry(glyph: "❄️", name: "snowflake", keywords: ["cold", "winter"]),
-        Entry(glyph: "🎵", name: "musical note", keywords: ["music", "song"]),
-        Entry(glyph: "🔔", name: "bell", keywords: ["notify", "alert"]),
-        Entry(glyph: "🚫", name: "prohibited", keywords: ["block", "stop"]),
-        Entry(glyph: "♻️", name: "recycling", keywords: ["recycle", "green"]),
-        Entry(glyph: "⬇️", name: "down arrow", keywords: ["download"]),
-        Entry(glyph: "⬆️", name: "up arrow", keywords: ["upload"]),
-        Entry(glyph: "➡️", name: "right arrow", keywords: ["next"]),
-        Entry(glyph: "⬅️", name: "left arrow", keywords: ["back"]),
-        Entry(glyph: "➕", name: "plus", keywords: ["add", "new"]),
-        Entry(glyph: "➖", name: "minus", keywords: ["remove"]),
-        Entry(glyph: "🔁", name: "repeat", keywords: ["loop", "sync"]),
-        Entry(glyph: "🏠", name: "house", keywords: ["home"]),
-        Entry(glyph: "🏢", name: "office", keywords: ["work", "building"]),
-        Entry(glyph: "👤", name: "bust in silhouette", keywords: ["user", "person"]),
-        Entry(glyph: "👥", name: "busts", keywords: ["people", "team"]),
-        Entry(glyph: "💬", name: "speech balloon", keywords: ["chat", "comment"]),
-        Entry(glyph: "📣", name: "megaphone", keywords: ["announce"]),
-        Entry(glyph: "🏷️", name: "label", keywords: ["tag"]),
-        Entry(glyph: "📌", name: "pushpin", keywords: ["pin"]),
-        Entry(glyph: "🗑️", name: "wastebasket", keywords: ["delete", "trash"]),
-        Entry(glyph: "⏳", name: "hourglass", keywords: ["wait", "loading"]),
-        Entry(glyph: "🤖", name: "robot", keywords: ["bot", "ai"]),
-        Entry(glyph: "🪄", name: "magic wand", keywords: ["magic", "transform"]),
-    ]
+    private func candidateIndices(for free: String) -> [Int] {
+        let key2 = free.count >= 2 ? String(free.prefix(2)) : String(free.prefix(1))
+        if let list = prefixIndex[key2], !list.isEmpty {
+            return list
+        }
+        let key1 = String(free.prefix(1))
+        if let list = prefixIndex[key1], !list.isEmpty {
+            return list
+        }
+        // Fallback: full scan (rare for empty prefix)
+        return Array(prepared.indices)
+    }
+
+    /// Higher is better. `nil` = no match.
+    private func matchRank(_ p: Prepared, free: String) -> Double? {
+        let entry = p.entry
+        if entry.glyph == free
+            || entry.glyph.replacingOccurrences(of: "\u{FE0F}", with: "") == free {
+            return 1.0
+        }
+        let name = p.nameLower
+        let keys = p.keywordsLower
+        if name == free { return 0.98 }
+        if keys.contains(free) { return 0.95 }
+        if name.hasPrefix(free) { return 0.85 }
+        if keys.contains(where: { $0.hasPrefix(free) }) { return 0.8 }
+        if name.contains(free) { return 0.7 }
+        if keys.contains(where: { $0.contains(free) }) { return 0.65 }
+        let tokens = free.split(whereSeparator: { $0.isWhitespace || $0 == "-" }).map(String.init)
+            .filter { $0.count >= 2 }
+        if tokens.count >= 2 {
+            if tokens.allSatisfy({ p.blob.contains($0) }) {
+                return 0.75
+            }
+        }
+        return nil
+    }
 }

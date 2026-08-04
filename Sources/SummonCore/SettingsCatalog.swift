@@ -7,8 +7,9 @@ public enum SettingsCatalog {
         ("search.fts.enabled", "Content search (S2)", "FTS5 index — consent first"),
         ("web.search.enabled", "Web search (W1)", "User SearXNG only — default OFF"),
         ("web.search.baseURL", "SearXNG base URL", "Preset http://127.0.0.1:8080"),
-        ("launchAtLogin", "Launch at login", "Login item"),
-        ("hotkey.primary", "Primary hotkey", "⌥Space locked"),
+        ("launchAtLogin", "Launch at login", "Default ON — clipboard history needs background"),
+        ("hotkey.primary", "Primary hotkey", "⌥Space launcher"),
+        ("hotkey.clipboard", "Clipboard history", "⌥⇧V dedicated history"),
         ("theme.appearance", "Appearance", "system / dark / light"),
     ]
 

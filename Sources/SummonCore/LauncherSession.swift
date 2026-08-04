@@ -26,11 +26,8 @@ public final class LauncherSession: @unchecked Sendable {
         return results[objectTargetIndex]
     }
 
-    @discardableResult
-    public func setQuery(_ raw: String) throws -> [SearchResult] {
-        query = raw
-        objectMode = false
-        objectActions = []
+    /// Pure search + alias/help merge. Safe off the main thread (no session mutation).
+    public func computeResults(for raw: String) throws -> [SearchResult] {
         // Learned alias exact match elevates a synthetic top hit
         var list = try core.search.search(raw)
         let head = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -50,9 +47,23 @@ public final class LauncherSession: @unchecked Sendable {
         if head == "?" || head == "help" {
             list = GuideContent.searchResults()
         }
+        return list
+    }
+
+    /// Apply a precomputed list on the main thread (panel / table consumers).
+    public func applyResults(_ raw: String, _ list: [SearchResult]) {
+        query = raw
+        objectMode = false
+        objectActions = []
         results = list
         selectedIndex = 0
         objectTargetIndex = 0
+    }
+
+    @discardableResult
+    public func setQuery(_ raw: String) throws -> [SearchResult] {
+        let list = try computeResults(for: raw)
+        applyResults(raw, list)
         return results
     }
 
@@ -64,6 +75,18 @@ public final class LauncherSession: @unchecked Sendable {
         } else {
             guard !results.isEmpty else { return }
             selectedIndex = (selectedIndex + delta + results.count) % results.count
+        }
+    }
+
+    /// Absolute selection (table click). Clamps to valid range.
+    public func selectIndex(_ index: Int) {
+        if objectMode {
+            let count = objectActions.count
+            guard count > 0 else { return }
+            selectedIndex = min(max(0, index), count - 1)
+        } else {
+            guard !results.isEmpty else { return }
+            selectedIndex = min(max(0, index), results.count - 1)
         }
     }
 
@@ -112,7 +135,8 @@ public final class LauncherSession: @unchecked Sendable {
         switch result.kind {
         case .app: return "app.open"
         case .file, .folder: return "file.open"
-        case .snippet, .calculation, .emoji: return "snippet.copy"
+        case .snippet, .calculation: return "snippet.copy"
+        case .emoji: return "emoji.copy"
         case .clipboard: return "clipboard.copy"
         case .quicklink: return "quicklink.open"
         case .setting: return "settings.open"

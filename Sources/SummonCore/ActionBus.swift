@@ -128,6 +128,7 @@ public final class ActionBus: @unchecked Sendable {
         if targetID.hasPrefix("clipboard:") { return .clipboard }
         if targetID.hasPrefix("quicklink:") { return .quicklink }
         if targetID.hasPrefix("calc:") { return .calculation }
+        if targetID.hasPrefix("emoji:") { return .emoji }
         if targetID.hasPrefix("file:") { return .file }
         return .command
     }

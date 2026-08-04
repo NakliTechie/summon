@@ -88,7 +88,20 @@ final class PhaseBGModulesTests: XCTestCase {
 
     func testEmojiCatalogExpanded() {
         let cat = EmojiCatalog()
-        XCTAssertGreaterThanOrEqual(cat.entries.count, 50)
+        XCTAssertGreaterThanOrEqual(cat.entries.count, 1000)
+    }
+
+    func testEmojiAmbiguityHighFiveAndPray() {
+        let cat = EmojiCatalog()
+        let highFive = cat.search(query: FilterQuery(freeText: "high five", filters: []), limit: 20)
+        let glyphs = Set(highFive.map(\.title))
+        // Ambiguity: raising hands, folded hands (common misuse), raised hand
+        XCTAssertTrue(glyphs.contains("🙌") || glyphs.contains("🙏") || glyphs.contains("✋"),
+                      "high five should hit hand emoji; got \(glyphs)")
+        let pray = cat.search(query: FilterQuery(freeText: "pray", filters: []), limit: 10)
+        XCTAssertTrue(pray.contains { $0.title == "🙏" }, "pray → folded hands")
+        let thanks = cat.search(query: FilterQuery(freeText: "thank you", filters: []), limit: 10)
+        XCTAssertTrue(thanks.contains { $0.title == "🙏" }, "thank you → folded hands")
     }
 
     func testSettingsCatalog() {

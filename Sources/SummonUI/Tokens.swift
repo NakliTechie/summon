@@ -77,4 +77,37 @@ public enum Tokens {
         }
         #endif
     }
+
+    #if canImport(AppKit)
+    /// Appearance-adaptive colors (Apple HIG). Prefer these in AppKit UI over fixed RGB.
+    public enum System {
+        public static var label: NSColor { .labelColor }
+        public static var secondaryLabel: NSColor { .secondaryLabelColor }
+        public static var tertiaryLabel: NSColor { .tertiaryLabelColor }
+        public static var separator: NSColor { .separatorColor }
+        public static var accent: NSColor { .controlAccentColor }
+        public static var danger: NSColor { .systemRed }
+        public static var ok: NSColor { .systemGreen }
+        /// Propose-don't-dispose only (not decorative).
+        public static var staged: NSColor { .systemOrange }
+        public static var controlBackground: NSColor { .controlBackgroundColor }
+        public static var windowBackground: NSColor { .windowBackgroundColor }
+    }
+
+    public enum TypeScale {
+        public static var search: NSFont { .systemFont(ofSize: 17, weight: .regular) }
+        public static var rowTitle: NSFont { .systemFont(ofSize: 13, weight: .medium) }
+        public static var rowSubtitle: NSFont { .systemFont(ofSize: 11, weight: .regular) }
+        public static var caption: NSFont { .systemFont(ofSize: 11, weight: .regular) }
+        public static var footnote: NSFont { .systemFont(ofSize: 10, weight: .regular) }
+    }
+
+    public enum Metrics {
+        public static let panelCornerRadius: CGFloat = 12
+        public static let rowCornerRadius: CGFloat = 6
+        public static let contentInset: CGFloat = 12
+        public static let rowHeight: CGFloat = 44
+        public static let iconSize: CGFloat = 28
+    }
+    #endif
 }

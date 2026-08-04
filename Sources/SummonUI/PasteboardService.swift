@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 import SummonCore
 
-/// Live pasteboard watcher + writer. Honors Maccy privacy types via PasteboardPrivacy.
+/// Live pasteboard watcher. Honors Maccy privacy types via PasteboardPrivacy.
+/// Runs for process lifetime (resident capture) — panel need not be open.
 public final class PasteboardService: @unchecked Sendable {
     private let core: SummonCore
     private var lastChangeCount: Int = -1
@@ -10,23 +11,19 @@ public final class PasteboardService: @unchecked Sendable {
 
     public init(core: SummonCore) {
         self.core = core
-        // Wire pasteboard writer for module copy actions.
-        core.setExecutor(
-            ProcessModuleExecutor { text in
-                let pb = NSPasteboard.general
-                pb.clearContents()
-                pb.setString(text, forType: .string)
-            }
-        )
     }
 
     public func startPolling(interval: TimeInterval = 0.5) {
         stopPolling()
         lastChangeCount = NSPasteboard.general.changeCount
-        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             self?.poll()
         }
+        // Common modes so capture continues during tracking / menu use.
+        RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        // Ingest whatever is currently on the pasteboard once at start (optional soft).
+        // Skip initial dump to avoid re-logging huge clips on every launch — only new changes.
     }
 
     public func stopPolling() {
@@ -56,7 +53,6 @@ public final class PasteboardService: @unchecked Sendable {
         }
     }
 
-    /// Test/helper: evaluate privacy + ingest without reading the real pasteboard.
     @discardableResult
     public static func ingestIfAllowed(
         core: SummonCore,

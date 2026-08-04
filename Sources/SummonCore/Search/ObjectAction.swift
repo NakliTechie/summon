@@ -76,8 +76,8 @@ public enum ObjectActionGrammar {
             ]
         case .emoji:
             return [
-                ObjectAction(id: "copy", title: "Copy", name: "snippet.copy"),
-                ObjectAction(id: "paste", title: "Paste", name: "snippet.paste"),
+                ObjectAction(id: "copy", title: "Copy emoji", name: "emoji.copy"),
+                ObjectAction(id: "paste", title: "Copy emoji", name: "emoji.paste"),
             ]
         }
     }

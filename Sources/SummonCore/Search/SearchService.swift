@@ -51,7 +51,10 @@ public struct SearchService: Sendable {
         results.append(contentsOf: inlineTools(free: free, limit: limit))
         results.append(contentsOf: try storeSources(query: query, free: free, limit: limit))
         results.append(contentsOf: try emptyQueryBoosts(expanded: expanded, limit: limit))
-        return try finalize(results, limit: limit)
+        // Free-text (no kind: scope): app > emoji > others. Explicit kind: keeps source scores.
+        let freeTextRanking = query.kind == nil
+            && !free.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return try finalize(results, limit: limit, freeTextRanking: freeTextRanking)
     }
 
     private func inlineTools(free: String, limit: Int) -> [SearchResult] {
@@ -172,24 +175,59 @@ public struct SearchService: Sendable {
         return results
     }
 
-    private func finalize(_ results: [SearchResult], limit: Int) throws -> [SearchResult] {
+    private func finalize(
+        _ results: [SearchResult],
+        limit: Int,
+        freeTextRanking: Bool
+    ) throws -> [SearchResult] {
         var seen = Set<String>()
         var deduped = results.filter { seen.insert($0.id).inserted }
         if let frecency {
             deduped = try deduped.map { r in
                 let boost = try frecency.boost(for: r.id)
                 guard boost > 0 else { return r }
-                return SearchResult(
-                    id: r.id,
-                    title: r.title,
-                    subtitle: r.subtitle,
-                    kind: r.kind,
-                    path: r.path,
-                    score: r.score + min(0.5, boost / 10),
-                    payload: r.payload
-                )
+                return withScore(r, r.score + min(0.5, boost / 10))
+            }
+        }
+        // Free-text (no kind:) band: app > emoji > everything else (TBD finer tiers).
+        if freeTextRanking {
+            deduped = deduped.map { r in
+                withScore(r, FreeTextKindRank.band(for: r.kind) + residualScore(r.score))
             }
         }
         return Array(deduped.sorted { $0.score > $1.score }.prefix(limit))
+    }
+
+    /// Keep relative order inside a kind band; original scores are typically < 2000.
+    private func residualScore(_ score: Double) -> Double {
+        min(max(score, 0), 1999)
+    }
+
+    private func withScore(_ r: SearchResult, _ score: Double) -> SearchResult {
+        SearchResult(
+            id: r.id,
+            title: r.title,
+            subtitle: r.subtitle,
+            kind: r.kind,
+            path: r.path,
+            score: score,
+            payload: r.payload
+        )
+    }
+}
+
+/// Free-text kind priority (app > emoji > others). Scoped `kind:` queries skip this.
+public enum FreeTextKindRank {
+    public static let app: Double = 3_000_000
+    public static let emoji: Double = 2_000_000
+    public static let other: Double = 1_000_000
+
+    public static func band(for kind: SearchResult.Kind) -> Double {
+        switch kind {
+        case .app: return app
+        case .emoji: return emoji
+        case .file, .folder, .snippet, .clipboard, .quicklink, .command, .setting, .calculation:
+            return other
+        }
     }
 }

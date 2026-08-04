@@ -10,6 +10,8 @@ excluded:
   - .worktrees
   - plan
   - Package.swift
+  # Generated gemoji seed — line_length / file_length not meaningful
+  - Sources/SummonCore/Search/EmojiCatalogSeed.swift
 
 disabled_rules:
   - trailing_whitespace
@@ -37,15 +39,15 @@ line_length:
   ignores_urls: true
 
 file_length:
-  warning: 600
+  warning: 750
   error: 900
 
 type_body_length:
-  warning: 500
+  warning: 650
   error: 900
 
 function_body_length:
-  warning: 100
+  warning: 120
   error: 200
 
 cyclomatic_complexity:

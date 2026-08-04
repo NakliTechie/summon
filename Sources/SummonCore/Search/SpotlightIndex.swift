@@ -62,7 +62,16 @@ public struct FakeSpotlightIndex: SpotlightIndexing, Sendable {
 
 /// Real S1: shells out to `mdfind` with a constructed Spotlight query.
 /// Headless-safe: fails soft (empty) if mdfind is unavailable.
+///
+/// Single-character `*c*` predicates scan the whole volume and block the UI for
+/// tens of seconds — skip short free-text and hard-timeout the process.
 public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
+    /// Minimum free-text / name length before invoking mdfind (apps still search at 1 char).
+    /// 3 chars avoids broad `*ab*` scans that dominate keystroke latency.
+    public static let minimumQueryLength = 3
+    /// Wall-clock budget for mdfind; over → terminate and return empty.
+    public static let processTimeoutSeconds: TimeInterval = 0.2
+
     public init() {}
 
     /// Strip MDQuery metacharacters that break predicates (`"`, `\`, `*`).
@@ -75,8 +84,10 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
 
     public func search(query: FilterQuery, limit: Int = 50) throws -> [SearchResult] {
         var parts: [String] = []
-        if !query.freeText.isEmpty {
-            let escaped = Self.escapeMDQuery(query.freeText)
+        let free = query.freeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Broad name wildcards on 0–1 chars hang mdfind on a full disk.
+        if free.count >= Self.minimumQueryLength {
+            let escaped = Self.escapeMDQuery(free)
             parts.append("kMDItemDisplayName == \"*\(escaped)*\"cd")
         }
         if let kind = query.kind {
@@ -94,14 +105,21 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
             }
         }
         if let name = query.nameContains {
-            let escaped = Self.escapeMDQuery(name)
-            parts.append("kMDItemDisplayName == \"*\(escaped)*\"cd")
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.count >= Self.minimumQueryLength {
+                let escaped = Self.escapeMDQuery(trimmed)
+                parts.append("kMDItemDisplayName == \"*\(escaped)*\"cd")
+            }
         }
 
         let predicate: String
         if parts.isEmpty {
             return []
         } else if parts.count == 1 {
+            // Kind-only with no name still scans too much — require a name fragment.
+            if free.count < Self.minimumQueryLength, query.nameContains == nil {
+                return []
+            }
             predicate = parts[0]
         } else {
             predicate = parts.map { "(\($0))" }.joined(separator: " && ")
@@ -120,14 +138,28 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
         process.standardError = errPipe
         do {
             try process.run()
-            process.waitUntilExit()
         } catch {
             return []
         }
+
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            process.waitUntilExit()
+            group.leave()
+        }
+        let waited = group.wait(timeout: .now() + Self.processTimeoutSeconds)
+        if waited == .timedOut {
+            process.terminate()
+            // Drain so the waiter can finish; ignore leftover output budget.
+            _ = group.wait(timeout: .now() + 0.25)
+            // Prefer empty over a multi-second hang; partial stdout is unreliable after SIGTERM.
+            return []
+        }
+
         if process.terminationStatus != 0 {
             let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
             let errText = String(data: errData, encoding: .utf8) ?? ""
-            // Log-ish: empty results on bad predicate rather than crash
             _ = errText
             return []
         }

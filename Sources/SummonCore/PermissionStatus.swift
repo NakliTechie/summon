@@ -20,16 +20,17 @@ public struct PermissionSnapshot: Sendable, Equatable {
         self.screenRecording = screenRecording
     }
 
+    /// Short strings for discreet UI (footer), not alarming top banners.
     public var bannerMessages: [String] {
         var msgs: [String] = []
         if !accessibilityTrusted {
-            msgs.append("Accessibility is off — window layout and menu search need it.")
+            msgs.append("Accessibility off · Settings › Privacy")
         }
         if fullDiskAccess == false {
-            msgs.append("Full Disk Access is off — content search may miss protected paths.")
+            msgs.append("Full Disk Access off")
         }
         if screenRecording == false {
-            msgs.append("Screen Recording is off — window previews cannot render.")
+            msgs.append("Screen Recording off")
         }
         // Unknown (nil) FDA / Screen Recording: no optimistic "ok" claim
         return msgs

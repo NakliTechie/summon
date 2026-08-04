@@ -37,7 +37,12 @@ var targets: [Target] = [
     .target(
         name: "SummonUI",
         dependencies: ["SummonCore"],
-        path: "Sources/SummonUI"
+        path: "Sources/SummonUI",
+        linkerSettings: [
+            .linkedFramework("ServiceManagement"),
+            .linkedFramework("Carbon"),
+            .linkedFramework("AppKit"),
+        ]
     ),
     .target(
         name: "SummonShim",

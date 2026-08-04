@@ -17,6 +17,35 @@ final class ModuleRouterTests: XCTestCase {
         XCTAssertEqual(exec.calls.last?.value, "/tmp/-weird.txt")
     }
 
+    func testEmojiCopyPutsGlyphOnPasteboard() throws {
+        let exec = RecordingModuleExecutor()
+        let hit = SearchResult(
+            id: "emoji:🚀",
+            title: "🚀",
+            subtitle: "rocket",
+            kind: .emoji,
+            score: 1,
+            payload: [
+                "text": .string("🚀"),
+                "emoji": .string("🚀"),
+            ]
+        )
+        try ModuleRouter.perform(actionName: "emoji.copy", result: hit, executor: exec)
+        XCTAssertEqual(exec.pasteboard, "🚀")
+    }
+
+    func testEmojiDefaultActionViaSession() throws {
+        let core = try SummonCore.inMemory()
+        let exec = RecordingModuleExecutor()
+        core.setExecutor(exec)
+        let session = LauncherSession(core: core)
+        let hits = try session.setQuery("rocket kind:emoji")
+        XCTAssertEqual(hits.first?.kind, .emoji)
+        let action = try session.confirm(actor: .user)
+        XCTAssertEqual(action, "emoji.copy")
+        XCTAssertEqual(exec.pasteboard, "🚀")
+    }
+
     func testProcessKillRecordsPID() throws {
         let exec = RecordingModuleExecutor()
         let hit = SearchResult(

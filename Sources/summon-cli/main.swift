@@ -1,4 +1,4 @@
-// swiftlint:disable file_length type_body_length
+// swiftlint:disable type_body_length
 import Foundation
 import SummonCore
 import SummonUI
@@ -739,4 +739,4 @@ private final class ConcurrentBox<T>: @unchecked Sendable {
         set { lock.lock(); defer { lock.unlock() }; _value = newValue }
     }
 }
-// swiftlint:enable file_length type_body_length
+// swiftlint:enable type_body_length

@@ -100,4 +100,16 @@ final class IntegrityBatchETests: XCTestCase {
         XCTAssertFalse(e.contains("*"))
         XCTAssertFalse(e.contains("\""))
     }
+
+    /// Short free text must not shell mdfind (UI hang / latency regression).
+    func testMdfindSkipsShortFreeText() throws {
+        let index = MdfindSpotlightIndex()
+        let short = FilterQuery(freeText: "c", filters: [])
+        let hits = try index.search(query: short, limit: 10)
+        XCTAssertTrue(hits.isEmpty, "1-char free text must skip mdfind")
+        let two = FilterQuery(freeText: "ab", filters: [])
+        XCTAssertTrue(try index.search(query: two, limit: 10).isEmpty, "2-char free text must skip mdfind")
+        let empty = FilterQuery(freeText: "", filters: [])
+        XCTAssertTrue(try index.search(query: empty, limit: 10).isEmpty)
+    }
 }

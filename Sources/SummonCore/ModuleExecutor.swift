@@ -152,6 +152,10 @@ public enum ModuleRouter {
         case "snippet.copy", "snippet.paste", "calc.copy", "calc.paste", "snippet.edit":
             try copyPayloadText(result: result, executor: executor)
             return true
+        case "emoji.copy", "emoji.paste":
+            // Copy glyph only (not "🚀  rocket") so ↩ is paste-ready.
+            try copyEmoji(result: result, executor: executor)
+            return true
         case "clipboard.copy", "clipboard.paste", "clipboard.pastePlain":
             try clipboardAction(actionName: actionName, result: result, executor: executor)
             return true
@@ -281,6 +285,22 @@ public enum ModuleRouter {
             text = result.title
         }
         try executor.copyToPasteboard(text: text)
+    }
+
+    /// Prefer payload `emoji` / `text`; never the display title with name.
+    private static func copyEmoji(result: SearchResult, executor: any ModuleExecuting) throws {
+        let glyph: String
+        if case .string(let e) = result.payload["emoji"], !e.isEmpty {
+            glyph = e
+        } else if case .string(let t) = result.payload["text"], !t.isEmpty {
+            glyph = t
+        } else if result.id.hasPrefix("emoji:") {
+            glyph = String(result.id.dropFirst("emoji:".count))
+        } else {
+            // First token of "🚀  rocket" style titles
+            glyph = result.title.split(separator: " ").first.map(String.init) ?? result.title
+        }
+        try executor.copyToPasteboard(text: glyph)
     }
 
     private static func trash(result: SearchResult, executor: any ModuleExecuting) throws {
