@@ -56,20 +56,49 @@ public enum ManifestGate {
                 "extension manifest version \(v); expected \(schemaVersion)"
             )
         }
-        guard !wire.name.isEmpty else {
-            throw CoreError.schemaValidation("extension manifest requires name")
-        }
+        let name = try validateExtensionID(wire.name)
         guard !wire.commands.isEmpty else {
             throw CoreError.schemaValidation("extension manifest requires at least one command")
         }
         for cmd in wire.commands where cmd.name.isEmpty {
             throw CoreError.schemaValidation("command name must be non-empty")
         }
+        let ents = (wire.entitlements ?? []).map { normalizeEntitlement($0) }
+        // Only allow known entitlement tokens
+        for e in ents where !Self.allowedEntitlements.contains(e) {
+            throw CoreError.schemaValidation("unknown entitlement '\(e)'")
+        }
         return ExtensionManifest(
-            name: wire.name,
-            title: wire.title.isEmpty ? wire.name : wire.title,
+            name: name,
+            title: wire.title.isEmpty ? name : wire.title,
             commands: wire.commands,
-            entitlements: wire.entitlements ?? []
+            entitlements: ents
         )
+    }
+
+    /// `^[A-Za-z0-9._-]{1,64}$` — no path separators / traversal.
+    public static func validateExtensionID(_ raw: String) throws -> String {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 64 else {
+            throw CoreError.schemaValidation("extension name must be 1…64 characters")
+        }
+        guard name.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil else {
+            throw CoreError.schemaValidation(
+                "extension name must match [A-Za-z0-9._-]+ (no path separators)"
+            )
+        }
+        if name == "." || name == ".." || name.contains("..") {
+            throw CoreError.schemaValidation("extension name must not contain '..'")
+        }
+        return name
+    }
+
+    public static let allowedEntitlements: Set<String> = ["network"]
+
+    /// `fetch` is an alias for `network` (canonical).
+    public static func normalizeEntitlement(_ raw: String) -> String {
+        let e = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if e == "fetch" { return "network" }
+        return e
     }
 }

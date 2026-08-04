@@ -53,13 +53,14 @@ public final class ExtensionRegistry: @unchecked Sendable {
         let manifestURL = dir.appendingPathComponent("package.json")
         let data = try Data(contentsOf: manifestURL)
         let manifest = try ManifestGate.decode(from: data)
-        let dest = root.appendingPathComponent(manifest.name, isDirectory: true)
+        let id = try ManifestGate.validateExtensionID(manifest.name)
+        let dest = try containedDestination(extensionID: id)
         if FileManager.default.fileExists(atPath: dest.path) {
             try FileManager.default.removeItem(at: dest)
         }
         try FileManager.default.copyItem(at: dir, to: dest)
         let rec = ExtensionInstallRecord(
-            extensionID: manifest.name,
+            extensionID: id,
             title: manifest.title,
             path: dest.path
         )
@@ -69,6 +70,18 @@ public final class ExtensionRegistry: @unchecked Sendable {
         lock.unlock()
         persist()
         return rec
+    }
+
+    /// Ensure dest is a direct child of `root` (no traversal).
+    public func containedDestination(extensionID: String) throws -> URL {
+        let id = try ManifestGate.validateExtensionID(extensionID)
+        let rootStd = root.standardizedFileURL
+        let dest = rootStd.appendingPathComponent(id, isDirectory: true).standardizedFileURL
+        let rootPath = rootStd.path.hasSuffix("/") ? rootStd.path : rootStd.path + "/"
+        guard dest.path.hasPrefix(rootPath) || dest.deletingLastPathComponent().path == rootStd.path else {
+            throw CoreError.schemaValidation("extension install path escapes Extensions root")
+        }
+        return dest
     }
 
     public func list() -> [ExtensionInstallRecord] {
@@ -105,17 +118,25 @@ public final class ExtensionRegistry: @unchecked Sendable {
 
     // Durable per-extension storage
     public func storageSet(extensionID: String, key: String, value: String) {
+        guard let id = try? ManifestGate.validateExtensionID(extensionID) else { return }
         lock.lock()
-        var bag = storage[extensionID] ?? [:]
+        var bag = storage[id] ?? [:]
         bag[key] = value
-        storage[extensionID] = bag
+        storage[id] = bag
         lock.unlock()
         persist()
     }
 
     public func storageGet(extensionID: String, key: String) -> String? {
+        guard let id = try? ManifestGate.validateExtensionID(extensionID) else { return nil }
         lock.lock(); defer { lock.unlock() }
-        return storage[extensionID]?[key]
+        return storage[id]?[key]
+    }
+
+    /// Entitlements declared ∩ user-granted (canonical names).
+    public func effectiveEntitlements(for manifest: ExtensionManifest) -> Set<String> {
+        let declared = Set(manifest.entitlements.map { ManifestGate.normalizeEntitlement($0) })
+        return Set(declared.filter { isGranted(extensionID: manifest.name, entitlement: $0) })
     }
 
     private var stateURL: URL { root.appendingPathComponent("registry.json") }
@@ -173,7 +194,7 @@ public enum RaycastBackupImport {
         for s in backup.snippets ?? [] {
             try core.dispatch(
                 action: .snippetUpsert(
-                    id: UUID().uuidString,
+                    id: stableID(prefix: "snip", name: s.name, keyword: s.keyword),
                     name: s.name,
                     body: s.text,
                     keyword: s.keyword
@@ -185,7 +206,7 @@ public enum RaycastBackupImport {
         for q in backup.quicklinks ?? [] {
             try core.dispatch(
                 action: .quicklinkUpsert(
-                    id: UUID().uuidString,
+                    id: stableID(prefix: "ql", name: q.name, keyword: q.keyword),
                     name: q.name,
                     url: q.link,
                     keyword: q.keyword
@@ -195,5 +216,15 @@ public enum RaycastBackupImport {
             qc += 1
         }
         return (sc, qc)
+    }
+
+    /// Deterministic id so re-import upserts instead of duplicating.
+    public static func stableID(prefix: String, name: String, keyword: String?) -> String {
+        let raw = "\(prefix)|\(name)|\(keyword ?? "")"
+        var hash: UInt64 = 5381
+        for u in raw.utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(u)
+        }
+        return "\(prefix)-\(String(hash, radix: 16))"
     }
 }

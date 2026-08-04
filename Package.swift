@@ -14,8 +14,8 @@ var products: [Product] = [
     .executable(name: "summon-app", targets: ["summon-app"]),
 ]
 
-var cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
-var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
+var cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI", "SummonShim"]
+var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI", "SummonShim"]
 var cliSettings: [SwiftSetting] = []
 var appSettings: [SwiftSetting] = []
 

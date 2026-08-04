@@ -20,8 +20,11 @@ public struct FixtureHarness: Sendable {
         fetchHandler: ((URL, String, [String: String], String?) throws -> ShimRuntime.FetchResponse)? = nil
     ) throws -> RunResult {
         let manifest = try ManifestGate.decode(from: manifestJSON)
+        // Test harness: grant all declared entitlements (simulates user consent sheet)
+        let grants = Set(manifest.entitlements)
         let runtime = try ShimRuntime(
             manifest: manifest,
+            grantedEntitlements: grants,
             fetchHandler: fetchHandler
         )
         let tree = try runtime.run(entrySource: entrySource)
