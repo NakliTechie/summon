@@ -83,18 +83,20 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             effectView = effect
         }
 
-        // Icon + plain text field (NSSearchField borderless stacks glyph on text).
+        // Icon + plain text field, shared vertical center in the search band.
         searchIconView = NSImageView(frame: .zero)
         searchIconView.imageScaling = .scaleProportionallyUpOrDown
         searchIconView.contentTintColor = Tokens.System.secondaryLabel
         if let img = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil) {
-            let cfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+            let cfg = NSImage.SymbolConfiguration(pointSize: 17, weight: .medium)
             searchIconView.image = img.withSymbolConfiguration(cfg)
         }
         rootView.addSubview(searchIconView)
 
+        let searchFont = NSFont.systemFont(ofSize: 20, weight: .regular)
         searchField = NSTextField(frame: .zero)
-        searchField.font = NSFont.systemFont(ofSize: 20, weight: .regular)
+        searchField.cell = VerticallyCenteredTextFieldCell(textCell: "")
+        searchField.font = searchFont
         searchField.focusRingType = .none
         searchField.isBordered = false
         searchField.isBezeled = false
@@ -103,11 +105,15 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchField.isSelectable = true
         searchField.backgroundColor = .clear
         searchField.textColor = Tokens.System.label
+        searchField.alignment = .left
+        searchField.maximumNumberOfLines = 1
+        searchField.lineBreakMode = .byTruncatingTail
+        searchField.usesSingleLineMode = true
         searchField.placeholderAttributedString = NSAttributedString(
             string: "Summon…",
             attributes: [
                 .foregroundColor: Tokens.System.secondaryLabel,
-                .font: NSFont.systemFont(ofSize: 20, weight: .regular),
+                .font: searchFont,
             ]
         )
         searchField.setAccessibilityLabel("Search")
@@ -315,22 +321,24 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             self.rootView.frame = NSRect(x: 0, y: 0, width: self.panelWidth, height: height)
             self.effectView?.frame = self.rootView.bounds
 
-            let inset: CGFloat = 14
-            let iconSize: CGFloat = 18
+            let inset: CGFloat = 16
+            let iconSize: CGFloat = 20
             let bandY = height - self.searchBandHeight
-            // Magnifying glass left; text field starts after a clear gap.
+            // Shared vertical center for icon + text (optical mid of the 48pt bar).
+            let rowH: CGFloat = 28
+            let rowY = bandY + (self.searchBandHeight - rowH) / 2
             self.searchIconView.frame = NSRect(
                 x: inset,
-                y: bandY + (self.searchBandHeight - iconSize) / 2,
+                y: rowY + (rowH - iconSize) / 2,
                 width: iconSize,
                 height: iconSize
             )
             let textX = inset + iconSize + 10
             self.searchField.frame = NSRect(
                 x: textX,
-                y: bandY + 8,
+                y: rowY,
                 width: self.panelWidth - textX - inset,
-                height: 32
+                height: rowH
             )
 
             let dividerY = height - self.searchBandHeight
@@ -652,5 +660,32 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         }
         refreshStagedStrip()
         applyLayout(animated: true)
+    }
+}
+
+/// Centers single-line text vertically inside the control bounds (stock cell sits high).
+private final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        let ideal = cellSize(forBounds: rect)
+        var r = super.drawingRect(forBounds: rect)
+        let dy = max(0, (r.height - ideal.height) / 2)
+        r.origin.y += dy
+        r.size.height = min(r.height, ideal.height)
+        return r
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: drawingRect(forBounds: rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(
+            withFrame: drawingRect(forBounds: rect),
+            in: controlView,
+            editor: textObj,
+            delegate: delegate,
+            start: selStart,
+            length: selLength
+        )
     }
 }
