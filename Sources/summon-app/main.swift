@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             pasteboard = PasteboardService(core: core)
             pasteboard.startPolling()
 
+            // Launcher hotkey is load-bearing — fail hard if it cannot register.
             hotkey = GlobalHotkey(id: 1)
             hotkey.onPressed = { [weak self] in
                 self?.clipboardHistory.hide()
@@ -57,16 +58,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             try hotkey.register() // ⌥Space
 
-            // CB-3: dedicated history — ⌥⇧V (Option+Shift+V).
+            // Clipboard hotkey is optional (another app may own ⌥⇧V).
             clipboardHotkey = GlobalHotkey(id: 2)
             clipboardHotkey.onPressed = { [weak self] in
                 self?.panel.hide()
                 self?.clipboardHistory.toggle()
             }
-            try clipboardHotkey.register(
-                keyCode: 9, // V
-                modifiers: UInt32(optionKey | shiftKey)
-            )
+            do {
+                try clipboardHotkey.register(
+                    keyCode: 9, // V
+                    modifiers: UInt32(optionKey | shiftKey)
+                )
+            } catch {
+                fputs("Summon: clipboard hotkey ⌥⇧V not registered: \(error)\n", stderr)
+            }
 
             try startAgentSocketIfEnabled()
             installStatusItem()

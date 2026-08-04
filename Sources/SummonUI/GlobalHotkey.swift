@@ -3,21 +3,24 @@ import Carbon
 import Foundation
 import SummonCore
 
-/// Registers a global carbon hotkey (⌘Space is system-owned — default is ⌥Space).
-/// Accessibility is not required for Carbon `RegisterEventHotKey`.
-/// Use a unique `hotKeyID` per instance when registering multiple hotkeys.
+/// Registers a global Carbon hotkey (⌘Space is system-owned — default is ⌥Space).
+///
+/// Multiple instances share one app-target event handler and dispatch by hotkey id.
+/// Accessibility is not required for `RegisterEventHotKey`.
 public final class GlobalHotkey: @unchecked Sendable {
     public var onPressed: (() -> Void)?
     private var hotKeyRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
     private let signature: OSType
-    private let hotKeyID: UInt32
+    private let id: UInt32
 
-    /// - Parameters:
-    ///   - id: Unique id within the signature (1 = launcher, 2 = clipboard, …).
-    ///   - signature: Four-char code; default 'SUMN'.
+    private static let lock = NSLock()
+    private static var callbacks: [UInt32: () -> Void] = [:]
+    private static var handlerRef: EventHandlerRef?
+    private static let sharedSignature = OSType(0x53554D4E) // 'SUMN'
+
+    /// - Parameter id: Unique id (1 = launcher, 2 = clipboard, …).
     public init(id: UInt32 = 1, signature: OSType = OSType(0x53554D4E)) {
-        self.hotKeyID = id
+        self.id = id
         self.signature = signature
     }
 
@@ -25,50 +28,18 @@ public final class GlobalHotkey: @unchecked Sendable {
         unregister()
     }
 
-    /// `keyCode` Carbon virtual key (49 = space, 9 = V). `modifiers` Carbon option/cmd/control/shift.
+    /// `keyCode` Carbon virtual key (49 = space, 9 = V).
     public func register(keyCode: UInt32 = 49, modifiers: UInt32 = UInt32(optionKey)) throws {
         unregister()
-        let hotKeyID = EventHotKeyID(signature: signature, id: hotKeyID)
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
 
-        let handler: EventHandlerUPP = { _, event, userData -> OSStatus in
-            guard let userData else { return noErr }
-            // Only fire for our hotkey id (shared app event target).
-            var hkID = EventHotKeyID()
-            GetEventParameter(
-                event,
-                EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID),
-                nil,
-                MemoryLayout<EventHotKeyID>.size,
-                nil,
-                &hkID
-            )
-            let this = Unmanaged<GlobalHotkey>.fromOpaque(userData).takeUnretainedValue()
-            guard hkID.id == this.hotKeyID, hkID.signature == this.signature else {
-                return noErr
-            }
-            DispatchQueue.main.async {
-                this.onPressed?()
-            }
-            return noErr
+        Self.lock.lock()
+        Self.callbacks[id] = { [weak self] in
+            self?.onPressed?()
         }
+        try Self.installSharedHandlerIfNeeded_locked()
+        Self.lock.unlock()
 
-        let status = InstallEventHandler(
-            GetApplicationEventTarget(),
-            handler,
-            1,
-            &eventType,
-            Unmanaged.passUnretained(self).toOpaque(),
-            &handlerRef
-        )
-        guard status == noErr else {
-            throw CoreError.io("InstallEventHandler failed: \(status)")
-        }
-
+        let hotKeyID = EventHotKeyID(signature: signature, id: id)
         let reg = RegisterEventHotKey(
             keyCode,
             modifiers,
@@ -78,7 +49,10 @@ public final class GlobalHotkey: @unchecked Sendable {
             &hotKeyRef
         )
         guard reg == noErr else {
-            throw CoreError.io("RegisterEventHotKey failed: \(reg)")
+            Self.lock.lock()
+            Self.callbacks.removeValue(forKey: id)
+            Self.lock.unlock()
+            throw CoreError.io("RegisterEventHotKey failed: \(reg) (key=\(keyCode) mods=\(modifiers))")
         }
     }
 
@@ -87,9 +61,60 @@ public final class GlobalHotkey: @unchecked Sendable {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
         }
-        if let handlerRef {
+        Self.lock.lock()
+        Self.callbacks.removeValue(forKey: id)
+        if Self.callbacks.isEmpty, let handlerRef = Self.handlerRef {
             RemoveEventHandler(handlerRef)
-            self.handlerRef = nil
+            Self.handlerRef = nil
+        }
+        Self.lock.unlock()
+    }
+
+    private static func installSharedHandlerIfNeeded_locked() throws {
+        if handlerRef != nil { return }
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        let handler: EventHandlerUPP = { _, theEvent, _ -> OSStatus in
+            guard let theEvent else { return noErr }
+            var hkID = EventHotKeyID()
+            let err = GetEventParameter(
+                theEvent,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hkID
+            )
+            guard err == noErr else { return noErr }
+
+            let callback: (() -> Void)?
+            GlobalHotkey.lock.lock()
+            callback = GlobalHotkey.callbacks[hkID.id]
+            GlobalHotkey.lock.unlock()
+
+            if let callback {
+                DispatchQueue.main.async {
+                    callback()
+                }
+            }
+            return noErr
+        }
+
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            handler,
+            1,
+            &eventType,
+            nil,
+            &handlerRef
+        )
+        guard status == noErr else {
+            throw CoreError.io("InstallEventHandler failed: \(status)")
         }
     }
 }
