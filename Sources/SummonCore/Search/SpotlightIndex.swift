@@ -65,11 +65,18 @@ public struct FakeSpotlightIndex: SpotlightIndexing, Sendable {
 public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
     public init() {}
 
+    /// Strip MDQuery metacharacters that break predicates (`"`, `\`, `*`).
+    public static func escapeMDQuery(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: "\\", with: "")
+            .replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "*", with: "")
+    }
+
     public func search(query: FilterQuery, limit: Int = 50) throws -> [SearchResult] {
         var parts: [String] = []
         if !query.freeText.isEmpty {
-            // Escape quotes in free text
-            let escaped = query.freeText.replacingOccurrences(of: "\"", with: "\\\"")
+            let escaped = Self.escapeMDQuery(query.freeText)
             parts.append("kMDItemDisplayName == \"*\(escaped)*\"cd")
         }
         if let kind = query.kind {
@@ -87,7 +94,7 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
             }
         }
         if let name = query.nameContains {
-            let escaped = name.replacingOccurrences(of: "\"", with: "\\\"")
+            let escaped = Self.escapeMDQuery(name)
             parts.append("kMDItemDisplayName == \"*\(escaped)*\"cd")
         }
 
@@ -108,12 +115,20 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
         }
         process.arguments = args
         let pipe = Pipe()
+        let errPipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = errPipe
         do {
             try process.run()
             process.waitUntilExit()
         } catch {
+            return []
+        }
+        if process.terminationStatus != 0 {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errText = String(data: errData, encoding: .utf8) ?? ""
+            // Log-ish: empty results on bad predicate rather than crash
+            _ = errText
             return []
         }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
