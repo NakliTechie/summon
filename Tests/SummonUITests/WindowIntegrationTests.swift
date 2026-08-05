@@ -5,6 +5,21 @@ import XCTest
 @testable import SummonUI
 
 final class WindowIntegrationTests: XCTestCase {
+    func testStatusMenuSeparatesRegistrationFromAccessibility() {
+        XCTAssertEqual(
+            StatusMenuPresentation.windowShortcutsTitle(registered: 12, total: 13),
+            "Window Shortcuts (12/13 Registered)"
+        )
+        XCTAssertEqual(
+            StatusMenuPresentation.accessibilityTitle(isTrusted: false),
+            "Accessibility Permission: Off"
+        )
+        XCTAssertEqual(
+            StatusMenuPresentation.accessibilityTitle(isTrusted: true),
+            "Accessibility Permission: On"
+        )
+    }
+
     func testCoordinateConversionUsesPrimaryDisplayOriginWhenDisplayIsAbovePrimary() {
         let primary = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
         let above = CGRect(x: 200, y: 1_080, width: 1_440, height: 900)
@@ -127,6 +142,8 @@ final class WindowIntegrationTests: XCTestCase {
         XCTAssertTrue(shortcuts.allSatisfy {
             $0.modifiers == UInt32(controlKey | optionKey)
         })
+        XCTAssertTrue(shortcuts.allSatisfy { $0.menuTitle.contains($0.label) })
+        XCTAssertEqual(Set(shortcuts.map(\.displayName)).count, shortcuts.count)
     }
 
     func testWindowShortcutProducesJournalableModuleAction() throws {

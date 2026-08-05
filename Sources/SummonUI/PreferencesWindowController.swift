@@ -99,7 +99,8 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
                 + "Launch at login is recommended, but Summon changes it only after your choice."
         )
         let shortcuts = label(
-            "Launcher: ⌥Space\nClipboard history: ⌥⇧V\n"
+            "Launcher: \(ShortcutCatalog.launcher)\n"
+                + "Clipboard history: \(ShortcutCatalog.clipboardHistory)\n"
                 + "Window shortcuts: \(WindowShortcut.defaultSummary)\n"
                 + "Window actions affect the focused window on the active Space only."
         )

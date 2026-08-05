@@ -73,8 +73,8 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         title.frame = NSRect(x: inset, y: panelHeight - 28, width: 200, height: 16)
         rootView.addSubview(title)
 
-        let ignoreButton = NSButton(title: "Ignore…", target: nil, action: nil)
-        ignoreButton.frame = NSRect(x: panelWidth - 142, y: panelHeight - 34, width: 66, height: 24)
+        let ignoreButton = NSButton(title: "Ignored Apps…", target: nil, action: nil)
+        ignoreButton.frame = NSRect(x: panelWidth - 180, y: panelHeight - 34, width: 104, height: 24)
         ignoreButton.bezelStyle = .inline
         ignoreButton.font = Tokens.TypeScale.footnote
         rootView.addSubview(ignoreButton)
@@ -99,7 +99,7 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         rootView.addSubview(divider)
 
         scrollView = NSScrollView(
-            frame: NSRect(x: 4, y: 32, width: panelWidth - 8, height: panelHeight - 70 - 32)
+            frame: NSRect(x: 4, y: 44, width: panelWidth - 8, height: panelHeight - 70 - 44)
         )
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
@@ -130,12 +130,16 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         rootView.addSubview(emptyLabel)
 
         footerLabel = NSTextField(
-            labelWithString: "↩ Copy  ·  ⌘⌫ Delete  ·  ⌘P Pin  ·  ⌥⇧V  ·  Esc"
+            labelWithString: "↑↓ Navigate  ·  ↩ Copy  ·  ⌘⌫ Delete\n"
+                + "⌘P Pin  ·  \(ShortcutCatalog.clearClipboardHistory) Clear  ·  "
+                + "\(ShortcutCatalog.clipboardHistory) Open  ·  Esc Close"
         )
         footerLabel.font = Tokens.TypeScale.footnote
         footerLabel.textColor = Tokens.System.tertiaryLabel
         footerLabel.alignment = .center
-        footerLabel.frame = NSRect(x: inset, y: 8, width: panelWidth - inset * 2, height: 14)
+        footerLabel.maximumNumberOfLines = 2
+        footerLabel.lineBreakMode = .byTruncatingTail
+        footerLabel.frame = NSRect(x: inset, y: 6, width: panelWidth - inset * 2, height: 30)
         rootView.addSubview(footerLabel)
 
         super.init()
@@ -164,7 +168,8 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
             object: nil
         )
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKey(event) ?? event
+            guard let self else { return event }
+            return self.handleKey(event)
         }
         NotificationCenter.default.addObserver(
             self,
@@ -489,12 +494,17 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         guard panel.isVisible, panel.isKeyWindow || NSApp.keyWindow === panel else {
             return event
         }
+        return handleFocusedKey(event)
+    }
+
+    func handleFocusedKey(_ event: NSEvent) -> NSEvent? {
         let editor = searchField.currentEditor() as? NSTextView
         let isEditingSearch = panel.firstResponder === editor || panel.firstResponder === searchField
         if editor?.hasMarkedText() == true, [36, 125, 126].contains(event.keyCode) {
             return event
         }
         let cmd = event.modifierFlags.contains(.command)
+        let shift = event.modifierFlags.contains(.shift)
         switch event.keyCode {
         case 125:
             selectedIndex = min(selectedIndex + 1, max(0, items.count - 1))
@@ -518,7 +528,11 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
                 hide()
             }
             return nil
-        case 51 where cmd && !isEditingSearch: // ⌘⌫
+        case 51 where cmd && shift: // ⌘⇧⌫
+            requestClearHistory()
+            return nil
+        case 51 where cmd && !shift
+            && (!isEditingSearch || searchField.stringValue.isEmpty): // ⌘⌫
             deleteSelected()
             return nil
         case 35 where cmd && !isEditingSearch: // ⌘P

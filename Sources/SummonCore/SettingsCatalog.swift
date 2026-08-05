@@ -43,7 +43,7 @@ public enum SettingsCatalog {
         PreferenceDescriptor(
             key: "hotkey.clipboard",
             title: "Clipboard history hotkey",
-            subtitle: "⌥⇧V dedicated history",
+            subtitle: "\(ShortcutCatalog.clipboardHistory) dedicated history",
             section: .general
         ),
         PreferenceDescriptor(

@@ -45,6 +45,10 @@ final class PhaseAStoresTests: XCTestCase {
         XCTAssertFalse(r.isEmpty)
         XCTAssertTrue(r[0].id.hasPrefix("guide:"))
         XCTAssertEqual(r[0].payload["action"], .string("snippet.copy"))
+        XCTAssertTrue(r.contains { $0.title == ShortcutCatalog.clipboardHistory })
+        XCTAssertTrue(r.contains { $0.subtitle?.contains("summon-cli snippet add") == true })
+        XCTAssertTrue(r.contains { $0.subtitle?.contains("summon-cli quicklink add") == true })
+        XCTAssertTrue(r.contains { $0.title == "Add favorite" })
     }
 
     func testSessionRecordsFrecencyOnConfirm() throws {

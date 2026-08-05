@@ -9,7 +9,7 @@ A sovereign, native macOS launcher. Local-first. Free and open source (AGPL-3.0)
 - **Launcher** — ⌥Space opens a compact search bar (Spotlight-style: thin until you type, then results expand).
 - **Search ladder** — apps and files via the system metadata index, optional full-text (FTS, consent-gated), room for semantic recall later.
 - **Object → action** — select a result, Tab / ⌘K, choose an action.
-- **Clipboard history** — resident text, image, HTML, and RTF capture while Summon runs; dedicated browser on **⌥⇧V**.
+- **Clipboard history** — resident text, image, HTML, and RTF capture while Summon runs; dedicated browser on **⌥⇧C**.
 - **Snippets, quicklinks, calc, emoji**, window layouts, and more modules on the same core.
 - **Extensions** — deferred from R1. The registry/JSC harness remains a development target; shipping executables expose no installer, grants, results, or runner.
 - **AI** — staged only (never auto-executes); capability-gated L1 Apple Foundation Models plus an experimental, consented, user-managed L0 MLX adapter; compile-out removability gate.
@@ -29,8 +29,11 @@ open /Applications/Summon.app
 | Action | How |
 |---|---|
 | Open launcher | **⌥Space** (or menu bar 🔍 → Show Launcher) |
-| Clipboard history | **⌥⇧V** (or menu → Clipboard History) |
+| Clipboard history | **⌥⇧C** (or menu → Clipboard History) |
 | Arrange focused window | **⌃⌥** + arrows, U/I/J/K, Return/C, or D/F/G |
+| View every window shortcut | Menu bar → Window Shortcuts |
+| Manage ignored clipboard apps | Clipboard → Ignored Apps…, or menu bar → Manage Ignored Applications… |
+| Clear unpinned clipboard history | Clipboard → Clear…, or **⌘⇧⌫** inside Clipboard |
 | Quit | Menu bar → Quit |
 
 First launch offers an explicit **Keep Ready at Login** choice. The recommended choice is on because clipboard history needs the app process running in the background. Preferences and the menu bar can change it later.

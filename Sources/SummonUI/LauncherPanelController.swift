@@ -210,8 +210,9 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         stagedReviewView.rejectButton.target = self
         stagedReviewView.rejectButton.action = #selector(rejectStaged)
 
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in
-            self?.handleKey($0) ?? $0
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            return self.handleKey(event)
         }
         NotificationCenter.default.addObserver(
             self,
@@ -460,8 +461,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             }
 
             self.updateFooter()
-            self.tableView.reloadData()
             let idx = self.session.selectedIndex
+            self.tableView.reloadData()
             let count = self.numberOfRows(in: self.tableView)
             if expanded, count > 0, idx >= 0, idx < count {
                 self.tableView.selectRowIndexes(IndexSet(integer: idx), byExtendingSelection: false)

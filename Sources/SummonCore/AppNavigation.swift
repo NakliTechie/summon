@@ -38,7 +38,7 @@ public enum LauncherStarterCatalog {
             navigationResult(
                 id: "starter:clipboard",
                 title: "Clipboard history",
-                subtitle: "⌥⇧V · stored locally on this Mac",
+                subtitle: "\(ShortcutCatalog.clipboardHistory) · stored locally on this Mac",
                 destination: .clipboard,
                 score: 1.8
             ),

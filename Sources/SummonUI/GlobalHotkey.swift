@@ -31,6 +31,28 @@ public struct WindowShortcut: Sendable, Equatable {
         )
     }
 
+    public var displayName: String {
+        switch layout {
+        case .leftHalf: return "Left Half"
+        case .rightHalf: return "Right Half"
+        case .topHalf: return "Top Half"
+        case .bottomHalf: return "Bottom Half"
+        case .topLeft: return "Top Left"
+        case .topRight: return "Top Right"
+        case .bottomLeft: return "Bottom Left"
+        case .bottomRight: return "Bottom Right"
+        case .maximize: return "Maximize"
+        case .center: return "Center"
+        case .leftThird: return "Left Third"
+        case .centerThird: return "Center Third"
+        case .rightThird: return "Right Third"
+        }
+    }
+
+    public var menuTitle: String {
+        "\(displayName) — \(label)"
+    }
+
     public static let defaults: [WindowShortcut] = {
         let chord = UInt32(controlKey | optionKey)
         return [
@@ -78,7 +100,7 @@ public final class GlobalHotkey: @unchecked Sendable {
         unregister()
     }
 
-    /// `keyCode` Carbon virtual key (49 = space, 9 = V).
+    /// `keyCode` Carbon virtual key (49 = Space).
     public func register(keyCode: UInt32 = 49, modifiers: UInt32 = UInt32(optionKey)) throws {
         unregister()
 

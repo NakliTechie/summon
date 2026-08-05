@@ -1,8 +1,54 @@
+import AppKit
 import XCTest
 import SummonCore
 @testable import SummonUI
 
 final class ClipboardMutationFeedbackTests: XCTestCase {
+    func testCommandDeleteRemovesSelectionWhenSearchFieldIsEmpty() throws {
+        let core = try SummonCore.inMemory()
+        _ = try core.dispatch(
+            action: .clipboardIngest(
+                id: "delete-from-default-focus",
+                text: "delete me",
+                sourceApp: "Test",
+                createdAt: Date(),
+                pinned: false
+            ),
+            actor: .user
+        )
+        let controller = ClipboardHistoryController(core: core)
+        controller.show()
+        pumpMainRunLoop()
+        defer { controller.hide() }
+
+        let delete = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: controller.panel.windowNumber,
+            context: nil,
+            characters: "\u{7f}",
+            charactersIgnoringModifiers: "\u{7f}",
+            isARepeat: false,
+            keyCode: 51
+        ))
+        XCTAssertNil(controller.handleFocusedKey(delete))
+        XCTAssertTrue(try core.clipboard.metadataPage(perBucketLimit: 5).isEmpty)
+    }
+
+    func testClipboardFooterExposesClearAndDedicatedShortcuts() throws {
+        let controller = ClipboardHistoryController(core: try SummonCore.inMemory())
+        let labels = descendants(of: controller.panel.contentView)
+            .compactMap { ($0 as? NSTextField)?.stringValue }
+        let buttons = descendants(of: controller.panel.contentView)
+            .compactMap { ($0 as? NSButton)?.title }
+
+        XCTAssertTrue(labels.contains { $0.contains("\(ShortcutCatalog.clearClipboardHistory) Clear") })
+        XCTAssertTrue(labels.contains { $0.contains("\(ShortcutCatalog.clipboardHistory) Open") })
+        XCTAssertTrue(buttons.contains("Ignored Apps…"))
+    }
+
     func testAppliedMutationHasNoFailureDetail() {
         let detail = ClipboardActionFeedback.failureDetail(
             label: "Delete",
@@ -102,6 +148,15 @@ final class ClipboardMutationFeedbackTests: XCTestCase {
                 "Copy Clipboard Item could not write to the pasteboard: I/O error: injected writer failure"
             )
         }
+    }
+
+    private func descendants(of root: NSView?) -> [NSView] {
+        guard let root else { return [] }
+        return [root] + root.subviews.flatMap { descendants(of: $0) }
+    }
+
+    private func pumpMainRunLoop() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     }
 }
 

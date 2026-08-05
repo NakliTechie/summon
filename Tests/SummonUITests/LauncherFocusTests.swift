@@ -73,6 +73,24 @@ final class LauncherFocusTests: XCTestCase {
         XCTAssertFalse(focusView.isHidden)
     }
 
+    func testArrowKeysMoveLauncherSelectionAndAreConsumed() throws {
+        let controller = LauncherPanelController(core: try SummonCore.inMemory())
+        controller.show()
+        pumpMainRunLoop()
+        defer { controller.hide() }
+
+        XCTAssertGreaterThan(controller.session.results.count, 1)
+        XCTAssertEqual(controller.session.selectedIndex, 0)
+
+        let down = try keyEvent(controller: controller, keyCode: 125, characters: "")
+        XCTAssertNil(controller.handleFocusedKey(down))
+        XCTAssertEqual(controller.session.selectedIndex, 1)
+
+        let up = try keyEvent(controller: controller, keyCode: 126, characters: "")
+        XCTAssertNil(controller.handleFocusedKey(up))
+        XCTAssertEqual(controller.session.selectedIndex, 0)
+    }
+
     func testStagedKeyboardRoutesAcceptEditRejectAndEditorNavigation() throws {
         let acceptedCore = try SummonCore.inMemory()
         let acceptedID = UUID().uuidString

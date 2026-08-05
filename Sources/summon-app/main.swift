@@ -7,7 +7,7 @@ import SummonUI
 import SummonAI
 #endif
 
-/// Menu-bar host: ⌥Space launcher, ⌥⇧V clipboard history, resident pasteboard capture, login item.
+/// Menu-bar host: ⌥Space launcher, ⌥⇧C clipboard history, resident pasteboard capture, login item.
 @main
 enum SummonAppMain {
     static func main() {
@@ -20,7 +20,7 @@ enum SummonAppMain {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var core: SummonCore!
     var panel: LauncherPanelController!
     var clipboardHistory: ClipboardHistoryController!
@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var agentSocketMonitor: Timer?
     var agentSocketError: String?
     var statusItem: NSStatusItem?
+    var accessibilityStatusItem: NSMenuItem?
     var primaryHotkeyLabel = "⌥Space"
     var primaryHotkeyError: String?
     let loginChoicePromptedKey = "onboarding.loginChoicePrompted"
@@ -105,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             registerPrimaryHotkey()
             registerWindowHotkeys()
 
-            // Clipboard hotkey is optional (another app may own ⌥⇧V).
+            // Clipboard hotkey is optional (another app may own ⌥⇧C).
             clipboardHotkey = GlobalHotkey(id: 2)
             clipboardHotkey?.onPressed = { [weak self] in
                 self?.panel.hide()
@@ -113,11 +114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             do {
                 try clipboardHotkey?.register(
-                    keyCode: 9, // V
+                    keyCode: UInt32(kVK_ANSI_C),
                     modifiers: UInt32(optionKey | shiftKey)
                 )
             } catch {
-                fputs("Summon: clipboard hotkey ⌥⇧V not registered: \(error)\n", stderr)
+                fputs(
+                    "Summon: clipboard hotkey \(ShortcutCatalog.clipboardHistory) not registered: \(error)\n",
+                    stderr
+                )
             }
 
             startAgentSocketMonitoring()
@@ -151,6 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.toolTip = "Summon \(SummonVersion.string)"
         }
         let menu = NSMenu()
+        menu.delegate = self
         for warning in core.startupWarnings {
             let warningItem = NSMenuItem(
                 title: "Store Warning: \(String(warning.prefix(160)))",
@@ -171,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let clipItem = NSMenuItem(
             title: "Clipboard History",
             action: #selector(showClipboard),
-            keyEquivalent: "v"
+            keyEquivalent: "c"
         )
         clipItem.keyEquivalentModifierMask = [.option, .shift]
         menu.addItem(clipItem)
@@ -184,13 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         shortcutStatus.isEnabled = false
         menu.addItem(shortcutStatus)
-        let windowShortcutStatus = NSMenuItem(
-            title: "Window Shortcuts: \(windowHotkeys.count)/\(WindowShortcut.defaults.count) active",
-            action: nil,
-            keyEquivalent: ""
-        )
-        windowShortcutStatus.isEnabled = false
-        menu.addItem(windowShortcutStatus)
+        menu.addItem(makeWindowShortcutMenuItem())
         if let windowShortcutLastError {
             let errorItem = NSMenuItem(
                 title: "Window Action: \(String(windowShortcutLastError.prefix(160)))",
@@ -206,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: ""
         ))
         menu.addItem(NSMenuItem(
-            title: "Clipboard Ignore List…",
+            title: "Manage Ignored Applications…",
             action: #selector(showClipboardIgnoreList),
             keyEquivalent: ""
         ))
@@ -236,6 +235,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keyEquivalent: "q"
         ))
         statusItem?.menu = menu
+    }
+
+    private func makeWindowShortcutMenuItem() -> NSMenuItem {
+        let parent = NSMenuItem(
+            title: StatusMenuPresentation.windowShortcutsTitle(
+                registered: windowHotkeys.count,
+                total: WindowShortcut.defaults.count
+            ),
+            action: nil,
+            keyEquivalent: ""
+        )
+        let submenu = NSMenu(title: "Window Shortcuts")
+        let accessibilityStatus = NSMenuItem(
+            title: StatusMenuPresentation.accessibilityTitle(
+                isTrusted: PermissionStatus.snapshot().accessibilityTrusted
+            ),
+            action: nil,
+            keyEquivalent: ""
+        )
+        accessibilityStatusItem = accessibilityStatus
+        accessibilityStatus.isEnabled = false
+        submenu.addItem(accessibilityStatus)
+        submenu.addItem(NSMenuItem.separator())
+        for shortcut in WindowShortcut.defaults {
+            let item = NSMenuItem(title: shortcut.menuTitle, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            submenu.addItem(item)
+        }
+        parent.submenu = submenu
+        return parent
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        accessibilityStatusItem?.title = StatusMenuPresentation.accessibilityTitle(
+            isTrusted: PermissionStatus.snapshot().accessibilityTrusted
+        )
     }
 
     private func registerPrimaryHotkey() {
