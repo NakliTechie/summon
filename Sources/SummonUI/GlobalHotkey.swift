@@ -3,6 +3,58 @@ import Carbon
 import Foundation
 import SummonCore
 
+/// Stable Rectangle-compatible defaults for every window layout Summon exposes.
+/// Shortcut choices follow Rectangle's MIT-licensed alternate defaults
+/// (Copyright 2019-2026 Ryan Hanson):
+/// https://github.com/rxhanson/Rectangle/blob/main/Rectangle/WindowAction.swift
+public struct WindowShortcut: Sendable, Equatable {
+    public let id: UInt32
+    public let layout: WindowLayout
+    public let keyCode: UInt32
+    public let modifiers: UInt32
+    public let label: String
+
+    public init(id: UInt32, layout: WindowLayout, keyCode: UInt32, modifiers: UInt32, label: String) {
+        self.id = id
+        self.layout = layout
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+        self.label = label
+    }
+
+    public var action: CoreAction {
+        .moduleRun(
+            name: "window.arrange",
+            targetID: "window:\(layout.rawValue)",
+            path: nil,
+            payload: ["layout": .string(layout.rawValue), "gap": .number(8)]
+        )
+    }
+
+    public static let defaults: [WindowShortcut] = {
+        let chord = UInt32(controlKey | optionKey)
+        return [
+            WindowShortcut(id: 100, layout: .leftHalf, keyCode: UInt32(kVK_LeftArrow), modifiers: chord, label: "⌃⌥←"),
+            WindowShortcut(id: 101, layout: .rightHalf, keyCode: UInt32(kVK_RightArrow), modifiers: chord, label: "⌃⌥→"),
+            WindowShortcut(id: 102, layout: .topHalf, keyCode: UInt32(kVK_UpArrow), modifiers: chord, label: "⌃⌥↑"),
+            WindowShortcut(id: 103, layout: .bottomHalf, keyCode: UInt32(kVK_DownArrow), modifiers: chord, label: "⌃⌥↓"),
+            WindowShortcut(id: 104, layout: .topLeft, keyCode: UInt32(kVK_ANSI_U), modifiers: chord, label: "⌃⌥U"),
+            WindowShortcut(id: 105, layout: .topRight, keyCode: UInt32(kVK_ANSI_I), modifiers: chord, label: "⌃⌥I"),
+            WindowShortcut(id: 106, layout: .bottomLeft, keyCode: UInt32(kVK_ANSI_J), modifiers: chord, label: "⌃⌥J"),
+            WindowShortcut(id: 107, layout: .bottomRight, keyCode: UInt32(kVK_ANSI_K), modifiers: chord, label: "⌃⌥K"),
+            WindowShortcut(id: 108, layout: .maximize, keyCode: UInt32(kVK_Return), modifiers: chord, label: "⌃⌥↩"),
+            WindowShortcut(id: 109, layout: .center, keyCode: UInt32(kVK_ANSI_C), modifiers: chord, label: "⌃⌥C"),
+            WindowShortcut(id: 110, layout: .leftThird, keyCode: UInt32(kVK_ANSI_D), modifiers: chord, label: "⌃⌥D"),
+            WindowShortcut(id: 111, layout: .centerThird, keyCode: UInt32(kVK_ANSI_F), modifiers: chord, label: "⌃⌥F"),
+            WindowShortcut(id: 112, layout: .rightThird, keyCode: UInt32(kVK_ANSI_G), modifiers: chord, label: "⌃⌥G"),
+        ]
+    }()
+
+    public static var defaultSummary: String {
+        defaults.map { "\($0.layout.rawValue): \($0.label)" }.joined(separator: " · ")
+    }
+}
+
 /// Registers a global Carbon hotkey (⌘Space is system-owned — default is ⌥Space).
 ///
 /// Multiple instances share one app-target event handler and dispatch by hotkey id.
@@ -16,8 +68,6 @@ public final class GlobalHotkey: @unchecked Sendable {
     private static let lock = NSLock()
     private static var callbacks: [UInt32: () -> Void] = [:]
     private static var handlerRef: EventHandlerRef?
-    private static let sharedSignature = OSType(0x53554D4E) // 'SUMN'
-
     /// - Parameter id: Unique id (1 = launcher, 2 = clipboard, …).
     public init(id: UInt32 = 1, signature: OSType = OSType(0x53554D4E)) {
         self.id = id
@@ -33,11 +83,18 @@ public final class GlobalHotkey: @unchecked Sendable {
         unregister()
 
         Self.lock.lock()
-        Self.callbacks[id] = { [weak self] in
-            self?.onPressed?()
+        do {
+            defer { Self.lock.unlock() }
+            Self.callbacks[id] = { [weak self] in
+                self?.onPressed?()
+            }
+            do {
+                try Self.installSharedHandlerIfNeeded_locked()
+            } catch {
+                Self.callbacks.removeValue(forKey: id)
+                throw error
+            }
         }
-        try Self.installSharedHandlerIfNeeded_locked()
-        Self.lock.unlock()
 
         let hotKeyID = EventHotKeyID(signature: signature, id: id)
         let reg = RegisterEventHotKey(
@@ -94,8 +151,8 @@ public final class GlobalHotkey: @unchecked Sendable {
 
             let callback: (() -> Void)?
             GlobalHotkey.lock.lock()
+            defer { GlobalHotkey.lock.unlock() }
             callback = GlobalHotkey.callbacks[hkID.id]
-            GlobalHotkey.lock.unlock()
 
             if let callback {
                 DispatchQueue.main.async {

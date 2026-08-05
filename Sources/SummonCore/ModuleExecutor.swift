@@ -5,6 +5,33 @@ public protocol ModuleExecuting: Sendable {
     func open(pathOrURL: String) throws
     func reveal(path: String) throws
     func copyToPasteboard(text: String) throws
+    func copyClipboardItem(_ item: ClipboardItem, asPlainText: Bool) throws
+    func showAppDestination(_ destination: AppDestination) throws
+    func arrangeWindow(layout: WindowLayout, gap: CGFloat) throws
+    func installExtension(sourcePath: String) throws
+    func setExtensionGrant(extensionID: String, entitlement: String, granted: Bool) throws
+}
+
+public extension ModuleExecuting {
+    func copyClipboardItem(_ item: ClipboardItem, asPlainText: Bool) throws {
+        try copyToPasteboard(text: item.plainText)
+    }
+
+    func arrangeWindow(layout: WindowLayout, gap: CGFloat) throws {
+        throw CoreError.store("window arranger not configured")
+    }
+
+    func showAppDestination(_ destination: AppDestination) throws {
+        throw CoreError.store("app destination \(destination.rawValue) not configured")
+    }
+
+    func installExtension(sourcePath: String) throws {
+        throw CoreError.store("extension installer not configured")
+    }
+
+    func setExtensionGrant(extensionID: String, entitlement: String, granted: Bool) throws {
+        throw CoreError.store("extension grant store not configured")
+    }
 }
 
 /// Records calls for tests; does not touch the OS.
@@ -19,6 +46,7 @@ public final class RecordingModuleExecutor: ModuleExecuting, @unchecked Sendable
     public var pasteboard: String = ""
     public var killedPIDs: [Int32] = []
     public var trashedPaths: [String] = []
+    public private(set) var copiedClipboardItems: [ClipboardItem] = []
 
     public init() {}
 
@@ -38,6 +66,17 @@ public final class RecordingModuleExecutor: ModuleExecuting, @unchecked Sendable
         calls.append(Call(op: "copy", value: text))
     }
 
+    public func copyClipboardItem(_ item: ClipboardItem, asPlainText: Bool) throws {
+        lock.lock(); defer { lock.unlock() }
+        copiedClipboardItems.append(item)
+        pasteboard = item.plainText
+        calls.append(Call(op: asPlainText ? "copyClipboardPlain" : "copyClipboard", value: item.id))
+    }
+
+    public func showAppDestination(_ destination: AppDestination) throws {
+        recordOp("app.navigate", value: destination.rawValue)
+    }
+
     public func recordKill(pid: Int32) {
         lock.lock(); defer { lock.unlock() }
         killedPIDs.append(pid)
@@ -54,16 +93,48 @@ public final class RecordingModuleExecutor: ModuleExecuting, @unchecked Sendable
         lock.lock(); defer { lock.unlock() }
         calls.append(Call(op: op, value: value))
     }
+
+    public func arrangeWindow(layout: WindowLayout, gap: CGFloat) throws {
+        recordOp("window.arrange", value: "\(layout.rawValue):\(gap)")
+    }
+
+    public func installExtension(sourcePath: String) throws {
+        recordOp("extension.install", value: sourcePath)
+    }
+
+    public func setExtensionGrant(extensionID: String, entitlement: String, granted: Bool) throws {
+        recordOp(
+            granted ? "extension.grant" : "extension.revoke",
+            value: "\(extensionID):\(entitlement)"
+        )
+    }
 }
 
 /// Production executor: `/usr/bin/open` and a pasteboard sink (injected for tests).
 public struct ProcessModuleExecutor: ModuleExecuting, Sendable {
     public var pasteboardWriter: @Sendable (String) throws -> Void
+    public var clipboardWriter: (@Sendable (ClipboardItem, Bool) throws -> Void)?
+    public var destinationOpener: (@Sendable (AppDestination) throws -> Void)?
+    public var windowArranger: (@Sendable (WindowLayout, CGFloat) throws -> Void)?
+    public var extensionInstaller: (@Sendable (String) throws -> Void)?
+    public var extensionGrantSetter: (@Sendable (String, String, Bool) throws -> Void)?
 
-    public init(pasteboardWriter: @escaping @Sendable (String) throws -> Void = { _ in
-        throw CoreError.io("pasteboard writer not configured")
-    }) {
+    public init(
+        pasteboardWriter: @escaping @Sendable (String) throws -> Void = { _ in
+            throw CoreError.io("pasteboard writer not configured")
+        },
+        clipboardWriter: (@Sendable (ClipboardItem, Bool) throws -> Void)? = nil,
+        destinationOpener: (@Sendable (AppDestination) throws -> Void)? = nil,
+        windowArranger: (@Sendable (WindowLayout, CGFloat) throws -> Void)? = nil,
+        extensionInstaller: (@Sendable (String) throws -> Void)? = nil,
+        extensionGrantSetter: (@Sendable (String, String, Bool) throws -> Void)? = nil
+    ) {
         self.pasteboardWriter = pasteboardWriter
+        self.clipboardWriter = clipboardWriter
+        self.destinationOpener = destinationOpener
+        self.windowArranger = windowArranger
+        self.extensionInstaller = extensionInstaller
+        self.extensionGrantSetter = extensionGrantSetter
     }
 
     public func open(pathOrURL: String) throws {
@@ -79,12 +150,48 @@ public struct ProcessModuleExecutor: ModuleExecuting, Sendable {
         try pasteboardWriter(text)
     }
 
+    public func copyClipboardItem(_ item: ClipboardItem, asPlainText: Bool) throws {
+        if let clipboardWriter {
+            try clipboardWriter(item, asPlainText)
+        } else {
+            try pasteboardWriter(item.plainText)
+        }
+    }
+
+    public func showAppDestination(_ destination: AppDestination) throws {
+        guard let destinationOpener else {
+            throw CoreError.store("app destination \(destination.rawValue) not configured")
+        }
+        try destinationOpener(destination)
+    }
+
+    public func arrangeWindow(layout: WindowLayout, gap: CGFloat) throws {
+        guard let windowArranger else {
+            throw CoreError.store("window arranger not configured")
+        }
+        try windowArranger(layout, gap)
+    }
+
+    public func installExtension(sourcePath: String) throws {
+        guard let extensionInstaller else {
+            throw CoreError.store("extension installer not configured")
+        }
+        try extensionInstaller(sourcePath)
+    }
+
+    public func setExtensionGrant(extensionID: String, entitlement: String, granted: Bool) throws {
+        guard let extensionGrantSetter else {
+            throw CoreError.store("extension grant store not configured")
+        }
+        try extensionGrantSetter(extensionID, entitlement, granted)
+    }
+
     private func run(_ exe: String, arguments: [String]) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: exe)
         process.arguments = arguments
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()
@@ -146,28 +253,39 @@ public enum ModuleRouter {
         case "file.getInfo":
             try getInfo(result: result, executor: executor)
             return true
-        case "file.openWith":
-            try openWith(result: result, executor: executor)
-            return true
-        case "snippet.copy", "snippet.paste", "calc.copy", "calc.paste", "snippet.edit":
+        case "snippet.copy", "calc.copy":
             try copyPayloadText(result: result, executor: executor)
             return true
-        case "emoji.copy", "emoji.paste":
+        case "emoji.copy":
             // Copy glyph only (not "🚀  rocket") so ↩ is paste-ready.
             try copyEmoji(result: result, executor: executor)
             return true
-        case "clipboard.copy", "clipboard.paste", "clipboard.pastePlain":
+        case "clipboard.copy", "clipboard.copyPlain":
             try clipboardAction(actionName: actionName, result: result, executor: executor)
             return true
         case "quicklink.open":
             try quicklinkOpen(result: result, executor: executor)
             return true
         case "settings.open":
-            if case .string(let key) = result.payload["settingsKey"] {
-                try executor.copyToPasteboard(text: key)
+            let raw: String
+            if case .string(let destination) = result.payload["destination"] {
+                raw = destination
+            } else if case .string(let key) = result.payload["settingsKey"] {
+                raw = SettingsCatalog.destination(for: key).rawValue
             } else {
-                try executor.copyToPasteboard(text: result.title)
+                raw = AppDestination.preferencesGeneral.rawValue
             }
+            guard let destination = AppDestination(rawValue: raw) else {
+                throw CoreError.store("settings.open requires a valid destination")
+            }
+            try executor.showAppDestination(destination)
+            return true
+        case "app.navigate":
+            guard case .string(let raw) = result.payload["destination"],
+                  let destination = AppDestination(rawValue: raw) else {
+                throw CoreError.store("app.navigate requires a valid destination")
+            }
+            try executor.showAppDestination(destination)
             return true
         case "command.run":
             try commandRun(result: result, executor: executor)
@@ -180,7 +298,7 @@ public enum ModuleRouter {
         }
     }
 
-    /// Power-module / M2 action names. Stubs stay searchable; handlers must not ↩-fail.
+    /// Power-module / M2 action names exposed by live search rows.
     private static func performPower(
         actionName: String,
         result: SearchResult,
@@ -193,8 +311,6 @@ public enum ModuleRouter {
             try runTool("/usr/sbin/screencapture", ["-i", "-c"], executor: executor, label: "screenshot.region")
         case "screenshot.full":
             try runTool("/usr/sbin/screencapture", ["-c"], executor: executor, label: "screenshot.full")
-        case "browser.list":
-            try executor.open(pathOrURL: "https://")
         case "terminal.run":
             if case .string(let cmd) = result.payload["command"], !cmd.isEmpty {
                 try executor.copyToPasteboard(text: cmd)
@@ -206,22 +322,19 @@ public enum ModuleRouter {
             try executor.open(pathOrURL: "/System/Applications/Calendar.app")
         case "dict.define":
             if case .string(let word) = result.payload["word"] {
-                try executor.open(pathOrURL: "dict://\(word)")
+                try executor.open(pathOrURL: dictionaryURL(for: word))
             } else {
                 try executor.open(pathOrURL: "/System/Applications/Dictionary.app")
             }
-        case "contacts.find":
-            try executor.open(pathOrURL: "/System/Applications/Contacts.app")
-        case "camera.quick":
-            try executor.open(pathOrURL: "/System/Applications/Photo Booth.app")
-        case "apps.autoquit":
-            try executor.open(pathOrURL: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")
         case "speech.speak":
             try speechSpeak(result: result, executor: executor)
         case "window.arrange":
-            if case .string(let layout) = result.payload["layout"] {
-                try executor.copyToPasteboard(text: "window:\(layout)")
+            guard case .string(let rawLayout) = result.payload["layout"],
+                  let layout = WindowLayout(rawValue: rawLayout) else {
+                throw CoreError.store("window.arrange requires a valid layout")
             }
+            let gap = CGFloat(result.payload["gap"]?.numberValue ?? 8)
+            try executor.arrangeWindow(layout: layout, gap: gap)
         default:
             return false
         }
@@ -239,8 +352,9 @@ public enum ModuleRouter {
         } else {
             raw = result.title
         }
-        let text = actionName == "clipboard.pastePlain"
-            ? PasteboardPrivacy.asPlainText(raw)
+        let sourceFlavor = result.payload["flavor"]?.stringValue
+        let text = actionName == "clipboard.copyPlain"
+            ? PasteboardPrivacy.asPlainText(raw, sourceFlavor: sourceFlavor)
             : raw
         try executor.copyToPasteboard(text: text)
     }
@@ -325,19 +439,18 @@ public enum ModuleRouter {
             throw CoreError.store("getInfo requires path")
         }
         try executor.reveal(path: path)
-        if executor is RecordingModuleExecutor { return }
-        let escaped = path.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = "tell application \"Finder\" to open information window of (POSIX file \"\(escaped)\" as alias)"
-        try runTool("/usr/bin/osascript", ["-e", script], executor: executor, label: "getInfo")
-    }
-
-    private static func openWith(result: SearchResult, executor: any ModuleExecuting) throws {
-        guard let path = result.path, !path.isEmpty else {
-            throw CoreError.store("openWith requires path")
-        }
-        try executor.copyToPasteboard(text: path)
-        try executor.open(pathOrURL: path)
+        let script = """
+        on run argv
+            set targetPath to item 1 of argv
+            tell application "Finder" to open information window of (POSIX file targetPath as alias)
+        end run
+        """
+        try runTool(
+            "/usr/bin/osascript",
+            ["-e", script, "--", path],
+            executor: executor,
+            label: "getInfo"
+        )
     }
 
     private static func killProcess(result: SearchResult, executor: any ModuleExecuting) throws {
@@ -397,7 +510,14 @@ public enum ModuleRouter {
         } else {
             text = result.subtitle ?? result.title
         }
-        try runTool("/usr/bin/say", [text], executor: executor, label: "speech.speak")
+        try runTool("/usr/bin/say", ["--", text], executor: executor, label: "speech.speak")
+    }
+
+    private static func dictionaryURL(for word: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        let encoded = word.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+        return "dict://\(encoded)"
     }
 
     private static func runTool(
@@ -413,8 +533,8 @@ public enum ModuleRouter {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: exe)
         process.arguments = args
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()

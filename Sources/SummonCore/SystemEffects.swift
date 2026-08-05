@@ -2,6 +2,10 @@ import Foundation
 
 /// Maps summon://system/* to fixed local effects (no user shell strings).
 public enum SystemEffects {
+    public static func requiresUserConfirmation(url: String) -> Bool {
+        url == "summon://system/empty-trash"
+    }
+
     public static func perform(url: String, executor: any ModuleExecuting) throws {
         if url.hasPrefix("summon://system/") {
             let action = String(url.dropFirst("summon://system/".count))
@@ -13,7 +17,7 @@ public enum SystemEffects {
                 if FileManager.default.isExecutableFile(atPath: cg) {
                     try run(cg, ["-suspend"])
                 } else {
-                    try run("/usr/bin/pmset", ["displaysleepnow"])
+                    throw CoreError.io("Lock Screen is unavailable on this macOS installation")
                 }
             case "empty-trash":
                 try run("/usr/bin/osascript", ["-e", "tell application \"Finder\" to empty trash"])
@@ -29,8 +33,8 @@ public enum SystemEffects {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: exe)
         process.arguments = args
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()

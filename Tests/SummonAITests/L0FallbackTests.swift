@@ -12,7 +12,7 @@ final class L0FallbackTests: XCTestCase {
     func testL0AvailableAfterConsentAndWeights() async throws {
         let store = MemoryL0WeightStore()
         let l0 = L0PackagedModelRung(store: store, engine: FakeL0InferenceEngine())
-        l0.grantConsent()
+        try l0.grantConsent()
         store.markWeightsPresent(l0.manifest.modelID)
         let avail = await l0.availability()
         XCTAssertTrue(avail.isAvailable)
@@ -25,7 +25,7 @@ final class L0FallbackTests: XCTestCase {
     func testLadderPrefersL0WhenL1Down() async throws {
         let store = MemoryL0WeightStore()
         let l0 = L0PackagedModelRung(store: store, engine: FakeL0InferenceEngine())
-        l0.grantConsent()
+        try l0.grantConsent()
         store.markWeightsPresent(l0.manifest.modelID)
         let ladder = AILadder.testingL0Fallback(l0: l0, l1Available: false)
         let preferred = await ladder.preferredRung()

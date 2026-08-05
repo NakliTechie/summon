@@ -11,11 +11,23 @@ final class PhaseBGModulesTests: XCTestCase {
     func testColorPicker() {
         let r = ColorPickerUtil.parse("#ff00aa")
         XCTAssertEqual(r?.title, "#FF00AA")
+        XCTAssertEqual(r?.payload["action"], .string("snippet.copy"))
     }
 
     func testDevUUID() {
         let hits = DevUtils.search(query: "uuid")
         XCTAssertFalse(hits.isEmpty)
+    }
+
+    func testDevBase64PreservesPayloadCaseAndDerivesTheCommandBoundary() {
+        XCTAssertEqual(
+            DevUtils.search(query: "base64 MixedCase").first?.title,
+            Data("MixedCase".utf8).base64EncodedString()
+        )
+        XCTAssertEqual(
+            DevUtils.search(query: "DeCoDe TWl4ZWRDYXNl").first?.title,
+            "MixedCase"
+        )
     }
 
     func testDestructiveGuardAgentBlocked() throws {
@@ -56,9 +68,27 @@ final class PhaseBGModulesTests: XCTestCase {
         let core = try SummonCore.inMemory()
         XCTAssertFalse(try core.search.search("screenshot").isEmpty)
         XCTAssertFalse(try core.search.search("settings").isEmpty)
-        XCTAssertFalse(try core.search.search("welcome").isEmpty)
+        XCTAssertFalse(try core.search.search("welcome").contains { $0.id.hasPrefix("onboard:") })
         XCTAssertFalse(try core.search.search("define foobar").isEmpty)
-        XCTAssertFalse(try core.search.search("mem").isEmpty)
+        let memory = try core.search.search("mem").first { $0.id == "widget:mem" }
+        XCTAssertEqual(memory?.payload["action"], .string("snippet.copy"))
+        XCTAssertFalse(try core.search.search("tabs").contains { $0.id.hasPrefix("browser:") })
+        XCTAssertFalse(try core.search.search("contact Ada").contains { $0.id.hasPrefix("contact:") })
+        XCTAssertFalse(try core.search.search("camera").contains { $0.id.hasPrefix("camera:") })
+        XCTAssertFalse(try core.search.search("autoquit Mail").contains { $0.id == "autoquit" })
+    }
+
+    func testVisiblePowerRowsDescribeTheirCurrentEffects() throws {
+        let core = try SummonCore.inMemory()
+
+        let shots = try core.search.search("screenshot")
+        XCTAssertEqual(shots.first { $0.id == "shot:region" }?.subtitle, "select a region · copy to clipboard")
+        XCTAssertEqual(shots.first { $0.id == "shot:full" }?.subtitle, "copy display screenshot to clipboard")
+
+        let terminal = try core.search.search("> echo hello").first { $0.id.hasPrefix("term:") }
+        XCTAssertEqual(terminal?.title, "Open Terminal with command copied")
+        XCTAssertTrue(terminal?.subtitle?.contains("Summon never executes it") == true)
+        XCTAssertEqual(terminal?.payload["action"], .string("terminal.run"))
     }
 
     func testSnippetExpansionMatch() {
@@ -109,9 +139,6 @@ final class PhaseBGModulesTests: XCTestCase {
         XCTAssertFalse(hits.isEmpty)
     }
 
-    func testNavigationBindingsDefault() {
-        XCTAssertEqual(NavigationBindings.default.confirmKey, "return")
-    }
 }
 
 /// S3 lives in SummonAI; keep a local test double in Core tests for bag-of-words.

@@ -39,7 +39,7 @@ public enum AltTabModule {
     }
 }
 
-/// Screenshot + annotation stub (RC-32) — stages a path/action, no capture in core.
+/// Screenshot capture actions (RC-32). Annotation and history are not exposed yet.
 public enum ScreenshotModule {
     public static func search(query: String) -> [SearchResult] {
         let q = query.lowercased()
@@ -48,7 +48,7 @@ public enum ScreenshotModule {
             SearchResult(
                 id: "shot:region",
                 title: "Screenshot region",
-                subtitle: "annotate · pin · history",
+                subtitle: "select a region · copy to clipboard",
                 kind: .command,
                 score: 0.9,
                 payload: ["action": .string("screenshot.region")]
@@ -56,28 +56,10 @@ public enum ScreenshotModule {
             SearchResult(
                 id: "shot:full",
                 title: "Screenshot display",
-                subtitle: "full screen",
+                subtitle: "copy display screenshot to clipboard",
                 kind: .command,
                 score: 0.85,
                 payload: ["action": .string("screenshot.full")]
-            ),
-        ]
-    }
-}
-
-/// Browser tabs/history stub (RC-33).
-public enum BrowserModule {
-    public static func search(query: String) -> [SearchResult] {
-        let q = query.lowercased()
-        guard q.hasPrefix("tab ") || q.hasPrefix("bookmark ") || q == "tabs" else { return [] }
-        return [
-            SearchResult(
-                id: "browser:stub",
-                title: "Browser integration",
-                subtitle: "tabs/history/bookmarks — install browser bridge",
-                kind: .command,
-                score: 0.5,
-                payload: ["action": .string("browser.list")]
             ),
         ]
     }
@@ -114,7 +96,7 @@ public struct FakeCalendarEnumerator: CalendarEnumerating, Sendable {
 
 public struct CalendarSurface: Sendable {
     public var enumerator: any CalendarEnumerating
-    public init(enumerator: any CalendarEnumerating = FakeCalendarEnumerator()) {
+    public init(enumerator: any CalendarEnumerating) {
         self.enumerator = enumerator
     }
     public func search(query: String) throws -> [SearchResult] {
@@ -151,11 +133,11 @@ public enum TerminalModule {
             return [
                 SearchResult(
                     id: "term:\(cmd)",
-                    title: cmd.isEmpty ? "Open Terminal" : "Run: \(cmd)",
-                    subtitle: "staged shell — never auto-run",
+                    title: cmd.isEmpty ? "Open Terminal" : "Open Terminal with command copied",
+                    subtitle: cmd.isEmpty ? "open Terminal.app" : "\(cmd) · Summon never executes it",
                     kind: .command,
                     score: 0.8,
-                    payload: ["action": .string("terminal.run"), "command": .string(cmd), "staged": .bool(true)]
+                    payload: ["action": .string("terminal.run"), "command": .string(cmd)]
                 ),
             ]
         }
@@ -195,9 +177,13 @@ public enum SystemWidgets {
             SearchResult(
                 id: "widget:mem",
                 title: "Memory (Summon): \(rss)",
-                subtitle: "system widget",
+                subtitle: "system widget · Return copies value",
                 kind: .command,
-                score: 0.4
+                score: 0.4,
+                payload: [
+                    "text": .string(rss),
+                    "action": .string("snippet.copy"),
+                ]
             ),
         ]
     }
@@ -208,18 +194,6 @@ public enum SystemWidgets {
             return []
         }
         return snapshot()
-    }
-}
-
-/// App hotkeys config (RC-10) — storage only until Carbon registration expands.
-public struct AppHotkeyBinding: Sendable, Hashable, Codable, Equatable {
-    public let appPath: String
-    public let keyCode: UInt32
-    public let modifiers: UInt32
-    public init(appPath: String, keyCode: UInt32, modifiers: UInt32) {
-        self.appPath = appPath
-        self.keyCode = keyCode
-        self.modifiers = modifiers
     }
 }
 
@@ -249,13 +223,13 @@ public enum SnippetExpansion {
                 "snippetID": .string(snippet.id),
                 "body": .string(snippet.body),
                 "text": .string(snippet.body),
-                "action": .string("snippet.paste"),
+                "action": .string("snippet.copy"),
             ]
         )
     }
 }
 
-/// Contacts / dictionary stubs (SP-08/09).
+/// Dictionary lookup (SP-09). Contacts remain hidden until a consented adapter exists.
 public enum ContactsDictionary {
     public static func search(query: String) -> [SearchResult] {
         let q = query.lowercased()
@@ -272,48 +246,15 @@ public enum ContactsDictionary {
                 ),
             ]
         }
-        if q.hasPrefix("contact ") {
-            let name = String(query.dropFirst(8))
-            return [
-                SearchResult(
-                    id: "contact:\(name)",
-                    title: name,
-                    subtitle: "contacts — EventKit/Contacts consent required",
-                    kind: .command,
-                    score: 0.65,
-                    payload: ["action": .string("contacts.find"), "name": .string(name)]
-                ),
-            ]
-        }
         return []
     }
 }
 
-/// Quick camera / auto-quit / read-aloud (RC-61–63).
+/// Read-aloud (RC-63). Camera and auto-quit stay hidden until their live actions exist.
 public enum MiscPowerModules {
     public static func search(query: String) -> [SearchResult] {
         let q = query.lowercased()
         var out: [SearchResult] = []
-        if q == "camera" || q.hasPrefix("camera ") {
-            out.append(SearchResult(
-                id: "camera:quick",
-                title: "Quick camera",
-                subtitle: "capture still",
-                kind: .command,
-                score: 0.7,
-                payload: ["action": .string("camera.quick")]
-            ))
-        }
-        if q.hasPrefix("autoquit ") || q == "auto-quit" {
-            out.append(SearchResult(
-                id: "autoquit",
-                title: "Auto-quit idle apps",
-                subtitle: "configure rules",
-                kind: .command,
-                score: 0.6,
-                payload: ["action": .string("apps.autoquit")]
-            ))
-        }
         if q.hasPrefix("speak ") || q.hasPrefix("say ") {
             let text = query.split(separator: " ", maxSplits: 1).dropFirst().first.map(String.init) ?? ""
             out.append(SearchResult(
@@ -326,29 +267,5 @@ public enum MiscPowerModules {
             ))
         }
         return out
-    }
-}
-
-/// Navigation bindings (RC-64).
-public struct NavigationBindings: Sendable, Hashable, Codable, Equatable {
-    public var upKey: String
-    public var downKey: String
-    public var confirmKey: String
-    public var actionsKey: String
-    public var dismissKey: String
-
-    public static let `default` = NavigationBindings(
-        upKey: "up",
-        downKey: "down",
-        confirmKey: "return",
-        actionsKey: "tab",
-        dismissKey: "escape"
-    )
-}
-
-/// Window Spaces multi-display (RC-56 / F15).
-public enum WindowSpaces {
-    public static func layoutsForMultiDisplay() -> [WindowLayout] {
-        WindowLayout.allCases
     }
 }

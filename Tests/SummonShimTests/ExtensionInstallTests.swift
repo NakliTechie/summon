@@ -23,7 +23,7 @@ final class ExtensionInstallTests: XCTestCase {
         XCTAssertEqual(reg.list().count, 1)
 
         XCTAssertFalse(reg.isGranted(extensionID: "demo-list", entitlement: "network"))
-        reg.setGrant(extensionID: "demo-list", entitlement: "network", granted: true)
+        try reg.setGrant(extensionID: "demo-list", entitlement: "network", granted: true)
         XCTAssertTrue(reg.isGranted(extensionID: "demo-list", entitlement: "network"))
 
         reg.storageSet(extensionID: "demo-list", key: "k", value: "v")
@@ -65,6 +65,125 @@ final class ExtensionInstallTests: XCTestCase {
         try Data(manifest.utf8).write(to: pkg.appendingPathComponent("package.json"))
         let reg = ExtensionRegistry(root: tmp.appendingPathComponent("reg", isDirectory: true))
         XCTAssertThrowsError(try reg.install(fromDirectory: pkg))
+    }
+
+    func testManifestGateRejectsUnknownAndBoundViolations() throws {
+        let unknownRoot = Data(
+            #"{"v":1,"name":"x","title":"X","commands":[{"name":"run","title":"Run"}],"extra":true}"#.utf8
+        )
+        XCTAssertThrowsError(try ManifestGate.decode(from: unknownRoot))
+
+        let unknownCommand = Data(
+            #"{"v":1,"name":"x","title":"X","commands":[{"name":"run","title":"Run","extra":true}]}"#.utf8
+        )
+        XCTAssertThrowsError(try ManifestGate.decode(from: unknownCommand))
+
+        var nested: Any = "entry.js"
+        for _ in 0...(SchemaGate.maximumNestingDepth + 1) { nested = [nested] }
+        let nestedData = try JSONSerialization.data(withJSONObject: [
+            "v": 1,
+            "name": "x",
+            "title": "X",
+            "commands": [["name": "run", "title": "Run", "entry": nested]],
+        ])
+        XCTAssertThrowsError(try ManifestGate.decode(from: nestedData))
+
+        var oversized = Data(
+            #"{"v":1,"name":"x","title":"X","commands":[{"name":"run","title":"Run"}]}"#.utf8
+        )
+        oversized.append(Data(repeating: UInt8(ascii: " "), count: SchemaGate.maximumDocumentBytes))
+        XCTAssertThrowsError(try ManifestGate.decode(from: oversized))
+
+        let invalidCommand = Data(
+            #"{"v":1,"name":"x","title":"X","commands":[{"name":"../run","title":"Run"}]}"#.utf8
+        )
+        XCTAssertThrowsError(try ManifestGate.decode(from: invalidCommand))
+    }
+
+    func testExtensionAuthorityActionsAreJournaled() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-ext-journal-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let pkg = tmp.appendingPathComponent("pkg", isDirectory: true)
+        try FileManager.default.createDirectory(at: pkg, withIntermediateDirectories: true)
+        let manifest = """
+        {"v":1,"name":"journaled","title":"Journaled","commands":[{"name":"run","title":"Run","mode":"view"}],"entitlements":["network"]}
+        """
+        try Data(manifest.utf8).write(to: pkg.appendingPathComponent("package.json"))
+
+        let registry = ExtensionRegistry(
+            root: tmp.appendingPathComponent("registry", isDirectory: true)
+        )
+        let executor = ProcessModuleExecutor(
+            extensionInstaller: { sourcePath in
+                _ = try registry.install(
+                    fromDirectory: URL(fileURLWithPath: sourcePath, isDirectory: true)
+                )
+            },
+            extensionGrantSetter: { extensionID, entitlement, granted in
+                try registry.setGrant(
+                    extensionID: extensionID,
+                    entitlement: entitlement,
+                    granted: granted
+                )
+            }
+        )
+        let core = try SummonCore.inMemory(executor: executor)
+
+        let installResult = try core.dispatch(
+            action: .extensionInstall(sourcePath: pkg.path),
+            actor: .user
+        )
+        XCTAssertTrue(installResult.isApplied, "\(installResult.outcome)")
+        let grantResult = try core.dispatch(
+                action: .extensionGrant(
+                    extensionID: "journaled",
+                    entitlement: "network",
+                    granted: true
+                ),
+                actor: .user
+        )
+        XCTAssertTrue(grantResult.isApplied, "\(grantResult.outcome)")
+        XCTAssertTrue(registry.isGranted(extensionID: "journaled", entitlement: "network"))
+        let revokeResult = try core.dispatch(
+                action: .extensionGrant(
+                    extensionID: "journaled",
+                    entitlement: "network",
+                    granted: false
+                ),
+                actor: .user
+        )
+        XCTAssertTrue(revokeResult.isApplied, "\(revokeResult.outcome)")
+        XCTAssertFalse(registry.isGranted(extensionID: "journaled", entitlement: "network"))
+
+        let failed = try core.dispatch(
+            action: .extensionGrant(
+                extensionID: "missing",
+                entitlement: "network",
+                granted: true
+            ),
+            actor: .user
+        )
+        XCTAssertFalse(failed.isApplied)
+        let missingPackage = try core.dispatch(
+            action: .extensionInstall(
+                sourcePath: tmp.appendingPathComponent("missing", isDirectory: true).path
+            ),
+            actor: .user
+        )
+        XCTAssertFalse(missingPackage.isApplied)
+        let entries = try core.journal.allEntries()
+        XCTAssertEqual(entries.map(\.actor), [.user, .user, .user, .user, .user])
+        XCTAssertEqual(
+            entries.map(\.action.name),
+            [
+                "extension.install", "extension.grant", "extension.grant",
+                "extension.grant", "extension.install",
+            ]
+        )
+        XCTAssertEqual(entries.filter { $0.outcome == "applied" }.count, 3)
+        XCTAssertTrue(entries.last?.outcome.hasPrefix("rejected:") == true)
     }
 
     func testFetchRequiresUserGrant() throws {

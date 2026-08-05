@@ -13,7 +13,6 @@ public final class ShimRuntime: @unchecked Sendable {
     private let storage: ShimStorage
     private let fetchHandler: (URL, String, [String: String], String?) throws -> FetchResponse
     private let entitlements: Set<String>
-    private var toasts: [[String: Any]] = []
     /// Captured by exceptionHandler — JSC may clear `context.exception` after the handler returns.
     private var lastJSError: String?
 
@@ -142,10 +141,6 @@ public final class ShimRuntime: @unchecked Sendable {
 
     public func storageSnapshot() -> [String: String] {
         storage.all()
-    }
-
-    public func collectedToasts() -> [[String: Any]] {
-        toasts
     }
 
     /// Effective host entitlements (declared ∩ user-granted).
@@ -385,14 +380,13 @@ public final class ShimRuntime: @unchecked Sendable {
     }
 
     private func jsonString(_ s: String) -> String {
-        // JSONSerialization rejects top-level String; escape manually.
-        let escaped = s
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
-        return "\"\(escaped)\""
+        guard let data = try? JSONEncoder().encode(s),
+              let encoded = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
+        return encoded
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 }
 

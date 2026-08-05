@@ -15,7 +15,7 @@ public struct ProcessInfoRow: Sendable, Equatable, Identifiable {
 
 public enum ProcessControl {
     public static func runningApps() -> [ProcessInfoRow] {
-        // Headless: parse `ps` (no AppKit). Split on *last* whitespace so names with spaces survive.
+        // Headless: parse `ps` (no AppKit). Split on first whitespace so names with spaces survive.
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/ps")
         task.arguments = ["-axo", "pid=,comm="]

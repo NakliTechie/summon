@@ -1,13 +1,10 @@
-// swiftlint:disable type_body_length
 import Foundation
 import SummonCore
 import SummonUI
-import SummonShim
 #if SUMMON_AI
 import SummonAI
 #endif
 
-@main
 struct SummonCLI {
     /// Default `.user` for interactive CLI; set via `--actor agent` for automation.
     static var cliActor: ActorTag = .user
@@ -30,13 +27,14 @@ struct SummonCLI {
         // Global: --actor user|agent (default user)
         if let idx = args.firstIndex(of: "--actor"), args.index(after: idx) < args.endIndex {
             let label = args[args.index(after: idx)]
-            cliActor = try ActorTag(journalLabel: label)
+            cliActor = try ActorTag(cliLabel: label)
             args.remove(at: args.index(after: idx))
             args.remove(at: idx)
         }
         guard let command = args.first else {
             printUsage(); exit(2)
         }
+        try admitAgentCLIIfNeeded(args)
         switch command {
         case "--version", "version", "-v":
             print(SummonVersion.string)
@@ -82,8 +80,6 @@ struct SummonCLI {
             for r in GuideContent.searchResults() {
                 print("\(r.title)\t\(r.subtitle ?? "")")
             }
-        case "extension", "ext":
-            try extensionCommand(Array(args.dropFirst()))
         default:
             fputs("error: unknown command '\(command)'\n", stderr)
             printUsage()
@@ -93,21 +89,29 @@ struct SummonCLI {
 
     static func makeCore() throws -> SummonCore {
         let core = try SummonCore()
+        for warning in core.startupWarnings {
+            fputs("warning: \(warning)\n", stderr)
+        }
         core.enableLiveSpotlight()
         // CLI open/reveal via /usr/bin/open; pasteboard via pbcopy for agent face.
-        core.setExecutor(ProcessModuleExecutor { text in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
-            let pipe = Pipe()
-            process.standardInput = pipe
-            try process.run()
-            pipe.fileHandleForWriting.write(Data(text.utf8))
-            pipe.fileHandleForWriting.closeFile()
-            process.waitUntilExit()
-            if process.terminationStatus != 0 {
-                throw CoreError.io("pbcopy failed")
+        core.setExecutor(ProcessModuleExecutor(
+            pasteboardWriter: { text in
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+                let pipe = Pipe()
+                process.standardInput = pipe
+                try process.run()
+                pipe.fileHandleForWriting.write(Data(text.utf8))
+                pipe.fileHandleForWriting.closeFile()
+                process.waitUntilExit()
+                if process.terminationStatus != 0 {
+                    throw CoreError.io("pbcopy failed")
+                }
+            },
+            windowArranger: { layout, gap in
+                try WindowApplicator.apply(layout: layout, gap: gap)
             }
-        })
+        ))
         return core
     }
 
@@ -124,7 +128,7 @@ struct SummonCLI {
                 action: .settingsSet(key: args[1], value: JSONValue.parseCLI(args[2])),
                 actor: actor
             )
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok \(args[1])=\(args[2])")
         case "get":
             guard args.count >= 2 else { fputs("usage: summon settings get <key>\n", stderr); exit(2) }
@@ -132,7 +136,7 @@ struct SummonCLI {
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon settings delete <key>\n", stderr); exit(2) }
             let result = try core.dispatch(action: .settingsDelete(key: args[1]), actor: actor)
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok deleted \(args[1])")
         case "list":
             for key in try core.settings.all().keys.sorted() {
@@ -147,7 +151,10 @@ struct SummonCLI {
         let query = args.joined(separator: " ")
         guard !query.isEmpty else { fputs("usage: summon search <query>\n", stderr); exit(2) }
         let core = try makeCore()
-        let results = try core.search.search(query)
+        let results = try core.search.search(
+            query,
+            includeSensitiveStores: try sensitiveReadAllowed(core)
+        )
         for (index, result) in results.enumerated() {
             let sub = result.subtitle.map { " — \($0)" } ?? ""
             print("\(index + 1). [\(result.kind.rawValue)] \(result.title)\(sub)")
@@ -183,9 +190,10 @@ struct SummonCLI {
                 ),
                 actor: actor
             )
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok \(id) \(args[1])")
         case "list":
+            try requireSensitiveReadGrant(core)
             for snip in try core.snippets.all() {
                 let kw = snip.keyword.map { " (\($0))" } ?? ""
                 print("\(snip.id)\t\(snip.name)\(kw)")
@@ -193,7 +201,7 @@ struct SummonCLI {
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon snippet delete <id>\n", stderr); exit(2) }
             let result = try core.dispatch(action: .snippetDelete(id: args[1]), actor: actor)
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok deleted \(args[1])")
         default:
             fputs("error: unknown snippet subcommand '\(sub)'\n", stderr); exit(2)
@@ -202,17 +210,19 @@ struct SummonCLI {
 
     static func clipboardCommand(_ args: [String]) throws {
         guard let sub = args.first else {
-            fputs("error: clipboard requires subcommand (list|search|ingest|delete)\n", stderr); exit(2)
+            fputs("error: clipboard requires subcommand (list|search|ingest|delete|pin)\n", stderr); exit(2)
         }
         let core = try makeCore()
         switch sub {
         case "list":
-            for item in try core.clipboard.all(limit: 50) {
+            try requireSensitiveReadGrant(core)
+            for item in try core.clipboard.metadataPage(perBucketLimit: 25) {
                 let pin = item.isPinned ? "*" : " "
                 let preview = item.text.replacingOccurrences(of: "\n", with: " ").prefix(60)
                 print("\(pin) \(item.id)\t\(preview)")
             }
         case "search":
+            try requireSensitiveReadGrant(core)
             let q = args.dropFirst().joined(separator: " ")
             let results = try core.search.search(q.isEmpty ? "kind:clipboard" : "\(q) kind:clipboard")
             for r in results { print("\(r.title)") }
@@ -235,8 +245,25 @@ struct SummonCLI {
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon clipboard delete <id>\n", stderr); exit(2) }
             let result = try core.dispatch(action: .clipboardDelete(id: args[1]), actor: cliActor)
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok deleted \(args[1])")
+        case "pin":
+            guard args.count >= 2 else {
+                fputs("usage: summon clipboard pin <id> [on|off]\n", stderr); exit(2)
+            }
+            let pinned: Bool
+            switch args.count >= 3 ? args[2].lowercased() : "on" {
+            case "on", "true", "1": pinned = true
+            case "off", "false", "0": pinned = false
+            default:
+                fputs("usage: summon clipboard pin <id> [on|off]\n", stderr); exit(2)
+            }
+            let result = try core.dispatch(
+                action: .clipboardPin(id: args[1], pinned: pinned),
+                actor: cliActor
+            )
+            guard result.isApplied else { exitForOutcome(result) }
+            print("ok \(pinned ? "pinned" : "unpinned") \(args[1])")
         default:
             fputs("error: unknown clipboard subcommand '\(sub)'\n", stderr); exit(2)
         }
@@ -260,7 +287,7 @@ struct SummonCLI {
                 ),
                 actor: cliActor
             )
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok \(id) \(args[1])")
         case "list":
             for link in try core.quicklinks.all() {
@@ -269,7 +296,7 @@ struct SummonCLI {
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon quicklink delete <id>\n", stderr); exit(2) }
             let result = try core.dispatch(action: .quicklinkDelete(id: args[1]), actor: cliActor)
-            guard result.isApplied else { exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok deleted \(args[1])")
         default:
             fputs("error: unknown quicklink subcommand '\(sub)'\n", stderr); exit(2)
@@ -300,7 +327,7 @@ struct SummonCLI {
             path: target
         )
         let outcome = try core.invoke(actionName: name, result: result, actor: cliActor)
-        guard outcome.isApplied else { exit(1) }
+        guard outcome.isApplied else { exitForOutcome(outcome) }
         print("ok \(name) \(target)")
     }
 
@@ -338,29 +365,34 @@ struct SummonCLI {
             print("---")
             print("state \(proposal.state.rawValue) (not executed — accept in UI later)")
         case "l0-consent":
+            try requireUserOperation(.modelConsent)
             let store = try FileL0WeightStore()
             let rung = L0PackagedModelRung.production(store: store)
-            rung.grantConsent()
-            print("ok L0 consent granted for \(rung.manifest.modelID) (MLX)")
-            print("note: summon ai l0-fetch  OR place model at Models/\(rung.manifest.modelID)/")
-        case "l0-fetch":
-            let store = try FileL0WeightStore()
-            let rung = L0PackagedModelRung.production(store: store)
-            guard store.consent().granted else {
-                fputs("error: consent required — run: summon ai l0-consent\n", stderr)
-                exit(1)
-            }
+            let priorConsent = store.consent()
             do {
-                let url = try L0ModelFetch.fetch(rung: rung, store: store)
-                print("ok fetched \(url.path)")
-                if let pin = L0ModelFetch.readPin(modelDir: url) {
-                    print("pin \(pin)")
+                try rung.grantConsent()
+                let result = try core.dispatch(
+                    action: .modelConsentGrant(modelID: rung.manifest.modelID),
+                    actor: cliActor
+                )
+                guard result.isApplied else {
+                    throw CoreError.store("model consent audit was not applied: \(result.outcome)")
                 }
             } catch {
-                fputs("error: \(error.localizedDescription)\n", stderr)
-                fputs("hint: pip install -U huggingface_hub && mlx-lm; absolute mlx path required\n", stderr)
-                exit(1)
+                do {
+                    try store.setConsent(priorConsent)
+                } catch let rollbackError {
+                    throw CoreError.store(
+                        "model consent audit failed: \(error.localizedDescription); "
+                            + "consent rollback failed: \(rollbackError.localizedDescription)"
+                    )
+                }
+                throw error
             }
+            print("ok experimental L0 consent granted for \(rung.manifest.modelID) (user-managed MLX)")
+            print("note: summon ai l0-fetch downloads revision \(rung.manifest.hfRevision)")
+        case "l0-fetch":
+            try fetchL0Model(core: core)
         case "parse-command":
             let text = args.dropFirst().joined(separator: " ")
             guard !text.isEmpty else {
@@ -370,28 +402,41 @@ struct SummonCLI {
             let parsed = try NLCommandSidecar.parse(output: text)
             print("ok \(parsed.actionName)")
         case "list-staged":
+            try requireSensitiveReadGrant(core)
             try core.staged.migrate()
             for p in try core.staged.list(state: "staged") {
                 print("\(p.id)\t\(p.rung)\t\(p.prompt.prefix(40))")
             }
         case "accept":
-            guard args.count >= 2, let id = UUID(uuidString: args[1]) else {
+            guard args.count >= 2, UUID(uuidString: args[1]) != nil else {
                 fputs("usage: summon ai accept <proposal-uuid>\n", stderr); exit(2)
             }
-            if let p = try service.accept(id: id, actor: cliActor) {
-                print("accepted \(p.id)")
-                print(p.output)
-            } else {
-                // Fall back to persisted store
-                try core.staged.setState(id: args[1], state: "accepted")
-                print("accepted \(args[1])")
+            try requireUserOperation(.proposalDecision)
+            guard let persisted = try core.staged.get(args[1]) else {
+                throw CoreError.store("proposal \(args[1]) does not exist")
             }
+            guard persisted.rung != "agent" else {
+                throw CoreError.store("agent actions can only be accepted in Summon UI")
+            }
+            try core.acceptStagedTextProposal(
+                id: args[1],
+                reviewedOutput: persisted.output,
+                actor: cliActor
+            )
+            print("accepted \(args[1])")
+            print(persisted.output)
         case "reject":
-            guard args.count >= 2, let id = UUID(uuidString: args[1]) else {
+            guard args.count >= 2, UUID(uuidString: args[1]) != nil else {
                 fputs("usage: summon ai reject <proposal-uuid>\n", stderr); exit(2)
             }
-            _ = try service.reject(id: id, actor: cliActor)
-            try? core.staged.setState(id: args[1], state: "rejected")
+            try requireUserOperation(.proposalDecision)
+            guard let persisted = try core.staged.get(args[1]) else {
+                throw CoreError.store("proposal \(args[1]) does not exist")
+            }
+            guard persisted.rung != "agent" else {
+                throw CoreError.store("agent actions can only be rejected in Summon UI")
+            }
+            try core.rejectStagedProposal(id: args[1], actor: cliActor)
             print("rejected \(args[1])")
         default:
             fputs("error: unknown ai subcommand '\(sub)'\n", stderr)
@@ -403,6 +448,54 @@ struct SummonCLI {
         #endif
     }
 
+    #if SUMMON_AI
+    private static func fetchL0Model(core: SummonCore) throws {
+        try requireUserOperation(.modelFetch)
+        let store = try FileL0WeightStore()
+        let rung = L0PackagedModelRung.production(store: store)
+        guard store.consent().granted else {
+            fputs("error: consent required — run: summon ai l0-consent\n", stderr)
+            exit(1)
+        }
+        do {
+            let providerURL = URL(string: "https://huggingface.co/\(rung.manifest.hfRepo)")!
+            let intent = try core.dispatch(
+                action: .egressRequested(
+                    purpose: EgressPurpose.userModelFetch.rawValue,
+                    host: (providerURL.host ?? "huggingface.co").lowercased()
+                ),
+                actor: cliActor
+            )
+            guard let journalEntry = try core.journal.entry(id: intent.envelopeID) else {
+                throw CoreError.journal("model-fetch egress intent missing after dispatch")
+            }
+            let authorization = try NetworkSovereignty.authorize(
+                url: providerURL,
+                purpose: .userModelFetch,
+                actor: cliActor,
+                journalEntry: journalEntry
+            )
+            let url = try L0ModelFetch.fetch(
+                rung: rung,
+                store: store,
+                authorization: authorization
+            )
+            print("ok fetched \(url.path)")
+            if let receipt = L0ModelFetch.readReceipt(modelDir: url) {
+                print("revision \(receipt.hfRevision)")
+                print("artifacts \(receipt.artifacts.count)")
+            }
+        } catch {
+            fputs("error: \(error.localizedDescription)\n", stderr)
+            fputs(
+                "hint: L0 needs a supported user-managed mlx_lm.generate; Summon never installs it\n",
+                stderr
+            )
+            exit(1)
+        }
+    }
+    #endif
+
     static func webCommand(_ args: [String]) throws {
         #if SUMMON_AI
         guard let sub = args.first else {
@@ -412,13 +505,16 @@ struct SummonCLI {
         switch sub {
         case "enable":
             core.webConfig.enableWithLocalhostPreset()
-            try core.persistWebConfig()
+            let result = try core.persistWebConfig(actor: cliActor)
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok web enabled baseURL=\(core.webConfig.baseURL)")
         case "disable":
             core.webConfig.enabled = false
-            try core.persistWebConfig()
+            let result = try core.persistWebConfig(actor: cliActor)
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok web disabled")
         case "search":
+            try requireUserOperation(.webSearch)
             var enrich = false
             var qParts: [String] = []
             for a in args.dropFirst() {
@@ -429,20 +525,35 @@ struct SummonCLI {
             guard core.webConfig.enabled else {
                 fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
             }
+            guard let providerURL = URL(string: core.webConfig.baseURL),
+                  let providerHost = providerURL.host else {
+                throw CoreError.store("web search requires a valid provider URL")
+            }
+            let intent = try core.dispatch(
+                action: .egressRequested(
+                    purpose: EgressPurpose.userWeb.rawValue,
+                    host: providerHost.lowercased()
+                ),
+                actor: cliActor
+            )
+            guard let journalEntry = try core.journal.entry(id: intent.envelopeID) else {
+                throw CoreError.journal("web egress intent missing after dispatch")
+            }
+            let authorization = try NetworkSovereignty.authorize(
+                url: providerURL,
+                purpose: .userWeb,
+                actor: cliActor,
+                journalEntry: journalEntry
+            )
             let client = SearXNGClient(config: core.webConfig)
-            let hits = try awaitOrRun { try await client.search(query: q) }
+            let hits = try awaitOrRun {
+                try await client.search(query: q, authorization: authorization)
+            }
             if hits.isEmpty {
                 print("(no hits)")
                 exit(1)
             }
             print(WebEnrich.formatHitsOnly(hits))
-            _ = try? core.dispatch(
-                action: .settingsSet(
-                    key: "web.lastEgressHost",
-                    value: .string(URL(string: core.webConfig.baseURL)?.host ?? "unknown")
-                ),
-                actor: cliActor
-            )
             if enrich {
                 let service = SummonAIService(core: core)
                 let prompt = WebEnrich.enrichPrompt(question: q, hits: hits)
@@ -471,7 +582,17 @@ struct SummonCLI {
         print("layout \(layout.rawValue)")
         print("frame \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))")
         if apply {
-            try WindowApplicator.apply(layout: layout, gap: 8)
+            let core = try makeCore()
+            let result = try core.dispatch(
+                action: .moduleRun(
+                    name: "window.arrange",
+                    targetID: "window:\(layout.rawValue)",
+                    path: nil,
+                    payload: ["layout": .string(layout.rawValue), "gap": .number(8)]
+                ),
+                actor: cliActor
+            )
+            guard result.isApplied else { exitForOutcome(result) }
             print("applied via Accessibility")
         } else {
             print("note: pass --apply to set frontmost window (requires Accessibility)")
@@ -502,230 +623,25 @@ struct SummonCLI {
         summon \(SummonVersion.string) — sovereign macOS launcher (agent CLI)
 
         Usage:
-          summon version | search | calc | actions | guide | latency [n]
+          summon version | search | calc | actions | guide | latency [n] | latency live [n]
           summon settings set|get|delete|list
           summon snippet add|list|delete
-          summon clipboard list|search|ingest|delete|pin
+          summon clipboard list|search|ingest|delete|pin <id> [on|off]
           summon quicklink add|list|delete
           summon run <module.action> <path>
-          summon ai status | complete | accept | reject | l0-consent | list-staged
+          summon ai status | complete | accept | reject | l0-consent | l0-fetch | list-staged | parse-command
           summon web enable|disable|search <q> [--enrich]
           summon window <leftHalf|rightHalf|maximize|…>
-          summon fts enable|disable|index|search|status
+          summon fts consent|enable|disable|index|search|status
           summon export [file] | import <file>
           summon alias set|list|delete
           summon favorite add|list|remove
           summon ignore add|list|remove
-          summon extension install|list|grant <path|id>
-
         Mutating commands journal actor=user by default; pass --actor agent for automation.
         AI output is always staged (never auto-executed).
         Web search is opt-in (default OFF; enable presets localhost:8080).
         Binary name: summon-cli (SPM); user-facing brand is Summon.
         """)
-    }
-
-    // CLI extras (split for SwiftLint file length)
-
-    static func extensionCommand(_ args: [String]) throws {
-        let reg = try ExtensionRegistry(root: ExtensionRegistry.defaultRoot())
-        guard let sub = args.first else {
-            fputs("usage: summon extension install <dir>|list|grant <id> <entitlement>\n", stderr)
-            exit(2)
-        }
-        switch sub {
-        case "list":
-            for rec in reg.list() {
-                print("\(rec.extensionID)\t\(rec.title)\t\(rec.path)")
-            }
-        case "install":
-            guard args.count >= 2 else {
-                fputs("usage: summon extension install <dir>\n", stderr)
-                exit(2)
-            }
-            let rec = try reg.install(fromDirectory: URL(fileURLWithPath: args[1]))
-            print("ok installed \(rec.extensionID) → \(rec.path)")
-            print("note: grant entitlements with: summon extension grant \(rec.extensionID) network")
-        case "grant":
-            guard args.count >= 3 else {
-                fputs("usage: summon extension grant <id> <entitlement>\n", stderr)
-                exit(2)
-            }
-            let ent = ManifestGate.normalizeEntitlement(args[2])
-            reg.setGrant(extensionID: args[1], entitlement: ent, granted: true)
-            print("ok granted \(ent) to \(args[1])")
-        default:
-            fputs("usage: summon extension install|list|grant\n", stderr)
-            exit(2)
-        }
-    }
-
-    static func cli_latencyCommand(_ args: [String]) throws {
-        let iters = Int(args.first ?? "100") ?? 100
-        let core = try SummonCore.inMemory()
-        let sample = try LatencyProbe.measure(label: "search-keystroke", iterations: iters) {
-            _ = try core.search.search("a")
-        }
-        let ms = String(format: "%.3f", sample.milliseconds)
-        print("p95_ms=\(ms) iterations=\(sample.iterations) budget=\(LatencyProbe.keystrokeResultsMs)")
-        if !LatencyProbe.p95Passes(sample: sample, budgetMs: LatencyProbe.keystrokeResultsMs) {
-            fputs("warn: exceeds keystroke budget \(LatencyProbe.keystrokeResultsMs)ms\n", stderr)
-        }
-    }
-
-    static func cli_ftsCommand(_ args: [String]) throws {
-        let core = try makeCore()
-        guard let sub = args.first else {
-            fputs("usage: summon fts enable|disable|index|search|status\n", stderr)
-            exit(2)
-        }
-        switch sub {
-        case "consent":
-            try core.grantFTSConsent()
-            print("ok fts consent granted")
-        case "enable":
-            try core.setFTSEnabled(true)
-            print("fts enabled")
-        case "disable":
-            try core.setFTSEnabled(false)
-            print("fts disabled")
-        case "status":
-            print(
-                "enabled=\(core.search.ftsEnabled) consent=\(core.ftsConsentGranted()) docs=\(try core.fts.count())"
-            )
-        case "index":
-            guard args.count >= 2 else {
-                fputs("usage: summon fts index <file>\n", stderr)
-                exit(2)
-            }
-            guard core.ftsConsentGranted() || core.search.ftsEnabled else {
-                fputs("error: FTS consent required — run: summon fts consent && summon fts enable\n", stderr)
-                exit(1)
-            }
-            let url = URL(fileURLWithPath: args[1])
-            let body = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            try core.fts.upsert(FTSDocument(
-                id: url.path,
-                title: url.lastPathComponent,
-                body: body,
-                path: url.path
-            ))
-            print("indexed \(url.path)")
-        case "search":
-            let q = args.dropFirst().joined(separator: " ")
-            for doc in try core.fts.search(query: q) {
-                print("\(doc.title)\t\(doc.path ?? "")")
-            }
-        default:
-            fputs("usage: summon fts consent|enable|disable|index|search|status\n", stderr)
-            exit(2)
-        }
-    }
-
-    static func cli_exportCommand(_ args: [String]) throws {
-        let core = try makeCore()
-        let data = try DataExport.export(core: core)
-        if let path = args.first {
-            try data.write(to: URL(fileURLWithPath: path))
-            print("wrote \(path)")
-        } else if let text = String(data: data, encoding: .utf8) {
-            print(text)
-        }
-    }
-
-    static func cli_importCommand(_ args: [String]) throws {
-        guard let path = args.first else {
-            fputs("usage: summon import <file.json>\n", stderr)
-            exit(2)
-        }
-        let core = try makeCore()
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        try DataExport.importJSON(data, into: core)
-        print("imported \(path)")
-    }
-
-    static func cli_aliasCommand(_ args: [String]) throws {
-        let core = try makeCore()
-        guard let sub = args.first else {
-            fputs("usage: summon alias set|list|delete\n", stderr)
-            exit(2)
-        }
-        switch sub {
-        case "set":
-            guard args.count >= 4 else {
-                fputs("usage: summon alias set <kw> <resultID> <title>\n", stderr)
-                exit(2)
-            }
-            try core.aliases.set(LearnedAlias(
-                keyword: args[1],
-                targetResultID: args[2],
-                title: args[3],
-                kind: args.count > 4 ? args[4] : "app"
-            ))
-            print("ok")
-        case "list":
-            for alias in try core.aliases.all() {
-                print("\(alias.keyword)\t\(alias.title)\t\(alias.targetResultID)")
-            }
-        case "delete":
-            guard args.count >= 2 else { exit(2) }
-            try core.aliases.delete(keyword: args[1])
-            print("ok")
-        default:
-            exit(2)
-        }
-    }
-
-    static func cli_favoriteCommand(_ args: [String]) throws {
-        let core = try makeCore()
-        guard let sub = args.first else {
-            fputs("usage: summon favorite add|list|remove\n", stderr)
-            exit(2)
-        }
-        switch sub {
-        case "add":
-            guard args.count >= 3 else { exit(2) }
-            try core.favorites.add(FavoriteItem(
-                resultID: args[1],
-                title: args[2],
-                kind: args.count > 3 ? args[3] : "app"
-            ))
-            print("ok")
-        case "list":
-            for fav in try core.favorites.all() {
-                print("\(fav.resultID)\t\(fav.title)")
-            }
-        case "remove":
-            guard args.count >= 2 else { exit(2) }
-            try core.favorites.remove(resultID: args[1])
-            print("ok")
-        default:
-            exit(2)
-        }
-    }
-
-    static func cli_ignoreCommand(_ args: [String]) throws {
-        let core = try makeCore()
-        guard let sub = args.first else {
-            fputs("usage: summon ignore add|list|remove\n", stderr)
-            exit(2)
-        }
-        switch sub {
-        case "add":
-            guard args.count >= 2 else { exit(2) }
-            try core.clipboardIgnore.add(args[1])
-            print("ok")
-        case "list":
-            for app in try core.clipboardIgnore.all() {
-                print(app)
-            }
-        case "remove":
-            guard args.count >= 2 else { exit(2) }
-            try core.clipboardIgnore.remove(args[1])
-            print("ok")
-        default:
-            exit(2)
-        }
     }
 
 }
@@ -739,4 +655,4 @@ private final class ConcurrentBox<T>: @unchecked Sendable {
         set { lock.lock(); defer { lock.unlock() }; _value = newValue }
     }
 }
-// swiftlint:enable type_body_length
+SummonCLI.main()

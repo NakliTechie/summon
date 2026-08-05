@@ -68,7 +68,7 @@ public final class ExtensionRegistry: @unchecked Sendable {
         installs.removeAll { $0.extensionID == rec.extensionID }
         installs.append(rec)
         lock.unlock()
-        persist()
+        try persist()
         return rec
     }
 
@@ -89,16 +89,33 @@ public final class ExtensionRegistry: @unchecked Sendable {
         return installs
     }
 
-    public func setGrant(extensionID: String, entitlement: String, granted: Bool) {
+    public func setGrant(extensionID: String, entitlement: String, granted: Bool) throws {
+        let id = try ManifestGate.validateExtensionID(extensionID)
+        let normalizedEntitlement = ManifestGate.normalizeEntitlement(entitlement)
+        guard ManifestGate.allowedEntitlements.contains(normalizedEntitlement) else {
+            throw CoreError.schemaValidation("unknown entitlement '\(normalizedEntitlement)'")
+        }
         lock.lock()
-        grants.removeAll { $0.extensionID == extensionID && $0.entitlement == entitlement }
+        guard installs.contains(where: { $0.extensionID == id }) else {
+            lock.unlock()
+            throw CoreError.store("extension \(id) is not installed")
+        }
+        let prior = grants
+        grants.removeAll { $0.extensionID == id && $0.entitlement == normalizedEntitlement }
         grants.append(ExtensionPermissionGrant(
-            extensionID: extensionID,
-            entitlement: entitlement,
+            extensionID: id,
+            entitlement: normalizedEntitlement,
             granted: granted
         ))
         lock.unlock()
-        persist()
+        do {
+            try persist()
+        } catch {
+            lock.lock()
+            grants = prior
+            lock.unlock()
+            throw error
+        }
     }
 
     public func isGranted(extensionID: String, entitlement: String) -> Bool {
@@ -124,7 +141,7 @@ public final class ExtensionRegistry: @unchecked Sendable {
         bag[key] = value
         storage[id] = bag
         lock.unlock()
-        persist()
+        try? persist()
     }
 
     public func storageGet(extensionID: String, key: String) -> String? {
@@ -147,16 +164,15 @@ public final class ExtensionRegistry: @unchecked Sendable {
         var storage: [String: [String: String]]
     }
 
-    private func persist() {
+    private func persist() throws {
         lock.lock()
         let wire = Wire(installs: installs, grants: grants, storage: storage)
         lock.unlock()
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
-        if let data = try? enc.encode(wire) {
-            try? data.write(to: stateURL, options: .atomic)
-        }
+        let data = try enc.encode(wire)
+        try data.write(to: stateURL, options: .atomic)
     }
 
     private func load() {

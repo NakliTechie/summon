@@ -1,4 +1,42 @@
+import Darwin
 import Foundation
+
+private final class BoundedSpotlightBuffer: @unchecked Sendable {
+    private let limit: Int
+    private var bytes = Data()
+    private var truncated = false
+    private let lock = NSLock()
+
+    init(limit: Int) {
+        self.limit = max(0, limit)
+    }
+
+    func append(_ incoming: Data) {
+        guard !incoming.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        let remaining = max(0, limit - bytes.count)
+        if remaining > 0 {
+            bytes.append(incoming.prefix(remaining))
+        }
+        if incoming.count > remaining {
+            truncated = true
+        }
+    }
+
+    func snapshot() -> (data: Data, truncated: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (bytes, truncated)
+    }
+}
+
+struct BoundedSpotlightCommandResult: Sendable, Equatable {
+    let terminationStatus: Int32
+    let didTimeOut: Bool
+    let standardOutput: Data
+    let standardOutputTruncated: Bool
+}
 
 /// S1 search provider seam. Production uses `mdfind`; tests inject fixtures.
 public protocol SpotlightIndexing: Sendable {
@@ -71,6 +109,8 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
     public static let minimumQueryLength = 3
     /// Wall-clock budget for mdfind; over → terminate and return empty.
     public static let processTimeoutSeconds: TimeInterval = 0.2
+    static let maximumResultCount = 500
+    static let maximumRetainedOutputBytes = 2 * 1_024 * 1_024
 
     public init() {}
 
@@ -83,6 +123,34 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
     }
 
     public func search(query: FilterQuery, limit: Int = 50) throws -> [SearchResult] {
+        let resultLimit = min(max(0, limit), Self.maximumResultCount)
+        guard resultLimit > 0 else { return [] }
+        guard let predicate = Self.queryPredicate(for: query) else { return [] }
+
+        var args = [predicate]
+        if let path = query.pathPrefix {
+            args = ["-onlyin", path, predicate]
+        }
+        let commandResult: BoundedSpotlightCommandResult
+        do {
+            commandResult = try Self.runBoundedCommand(
+                executableURL: URL(fileURLWithPath: "/usr/bin/mdfind"),
+                arguments: args,
+                timeout: Self.processTimeoutSeconds,
+                maximumOutputBytes: Self.outputBudget(for: resultLimit)
+            )
+        } catch {
+            return []
+        }
+        guard commandResult.terminationStatus == 0 || commandResult.didTimeOut else { return [] }
+        let paths = Self.paths(
+            from: commandResult.standardOutput,
+            truncated: commandResult.standardOutputTruncated || commandResult.didTimeOut
+        )
+        return Self.results(paths: paths, query: query, limit: resultLimit)
+    }
+
+    static func queryPredicate(for query: FilterQuery) -> String? {
         var parts: [String] = []
         let free = query.freeText.trimmingCharacters(in: .whitespacesAndNewlines)
         // Broad name wildcards on 0–1 chars hang mdfind on a full disk.
@@ -104,79 +172,155 @@ public struct MdfindSpotlightIndex: SpotlightIndexing, Sendable {
                 break
             }
         }
+        var hasValidNameFragment = false
         if let name = query.nameContains {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.count >= Self.minimumQueryLength {
                 let escaped = Self.escapeMDQuery(trimmed)
                 parts.append("kMDItemDisplayName == \"*\(escaped)*\"cd")
+                hasValidNameFragment = true
             }
         }
 
-        let predicate: String
         if parts.isEmpty {
-            return []
+            return nil
         } else if parts.count == 1 {
             // Kind-only with no name still scans too much — require a name fragment.
-            if free.count < Self.minimumQueryLength, query.nameContains == nil {
-                return []
+            if free.count < Self.minimumQueryLength, !hasValidNameFragment {
+                return nil
             }
-            predicate = parts[0]
+            return parts[0]
         } else {
-            predicate = parts.map { "(\($0))" }.joined(separator: " && ")
+            return parts.map { "(\($0))" }.joined(separator: " && ")
         }
+    }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        var args = [predicate]
-        if let path = query.pathPrefix {
-            args = ["-onlyin", path, predicate]
+    static func outputBudget(for resultLimit: Int) -> Int {
+        min(max(64 * 1_024, max(0, resultLimit) * 4_096), maximumRetainedOutputBytes)
+    }
+
+    static func paths(from data: Data, truncated: Bool) -> [String] {
+        var completeData = data
+        if truncated, completeData.last != 0x0A {
+            guard let lastNewline = completeData.lastIndex(of: 0x0A) else { return [] }
+            completeData = completeData.prefix(through: lastNewline)
         }
-        process.arguments = args
-        let pipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = errPipe
+        guard let text = String(data: completeData, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    }
+
+    /// Drains both pipes while the process runs. Output beyond the retention
+    /// budget is discarded after reading so a broad query cannot block on a
+    /// full pipe or grow memory without bound.
+    static func runBoundedCommand(
+        executableURL: URL,
+        arguments: [String],
+        timeout: TimeInterval,
+        maximumOutputBytes: Int
+    ) throws -> BoundedSpotlightCommandResult {
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
+
+        let outputPipe = Pipe()
+        let errorPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = errorPipe
+
+        let output = BoundedSpotlightBuffer(limit: maximumOutputBytes)
+        let error = BoundedSpotlightBuffer(limit: 8 * 1_024)
+
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
         do {
             try process.run()
         } catch {
-            return []
+            throw error
         }
 
-        let group = DispatchGroup()
+        let drainers = DispatchGroup()
+        drain(outputPipe.fileHandleForReading, into: output, group: drainers)
+        drain(errorPipe.fileHandleForReading, into: error, group: drainers)
+
+        let waitResult = finished.wait(timeout: .now() + max(0.01, timeout))
+        let didTimeOut = waitResult == .timedOut
+        if didTimeOut {
+            process.terminate()
+            if finished.wait(timeout: .now() + 0.25) == .timedOut, process.isRunning {
+                Darwin.kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + 1)
+            }
+        }
+
+        if drainers.wait(timeout: .now() + 1) == .timedOut {
+            try? outputPipe.fileHandleForReading.close()
+            try? errorPipe.fileHandleForReading.close()
+            _ = drainers.wait(timeout: .now() + 0.25)
+        }
+
+        let outputSnapshot = output.snapshot()
+        return BoundedSpotlightCommandResult(
+            terminationStatus: process.isRunning ? -1 : process.terminationStatus,
+            didTimeOut: didTimeOut,
+            standardOutput: outputSnapshot.data,
+            standardOutputTruncated: outputSnapshot.truncated
+        )
+    }
+
+    private static func drain(
+        _ handle: FileHandle,
+        into buffer: BoundedSpotlightBuffer,
+        group: DispatchGroup
+    ) {
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async {
-            process.waitUntilExit()
-            group.leave()
+            defer { group.leave() }
+            while true {
+                let data: Data
+                do {
+                    data = try handle.read(upToCount: 32 * 1_024) ?? Data()
+                } catch {
+                    return
+                }
+                guard !data.isEmpty else { return }
+                buffer.append(data)
+            }
         }
-        let waited = group.wait(timeout: .now() + Self.processTimeoutSeconds)
-        if waited == .timedOut {
-            process.terminate()
-            // Drain so the waiter can finish; ignore leftover output budget.
-            _ = group.wait(timeout: .now() + 0.25)
-            // Prefer empty over a multi-second hang; partial stdout is unreliable after SIGTERM.
-            return []
+    }
+
+    /// Applies filesystem-backed clauses that `mdfind` does not encode.
+    /// Kept internal so deterministic tests can exercise the production post-filter.
+    static func results(
+        paths: [String],
+        query: FilterQuery,
+        limit: Int,
+        now: Date = Date(),
+        fileManager: FileManager = .default
+    ) -> [SearchResult] {
+        let matchingPaths = paths.filter { path in
+            guard let bound = query.modified else { return true }
+            guard let modified = try? fileManager.attributesOfItem(atPath: path)[.modificationDate] as? Date else {
+                return false
+            }
+            return bound.matches(date: modified, now: now)
         }
 
-        if process.terminationStatus != 0 {
-            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-            let errText = String(data: errData, encoding: .utf8) ?? ""
-            _ = errText
-            return []
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
-        let paths = text.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
-        return paths.prefix(limit).enumerated().map { index, path in
+        return matchingPaths.prefix(limit).enumerated().map { index, path in
             let url = URL(fileURLWithPath: path)
             let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             let kind: SearchResult.Kind = path.hasSuffix(".app") ? .app : (isDir ? .folder : .file)
+            var payload: [String: JSONValue] = [:]
+            if let modified = try? fileManager.attributesOfItem(atPath: path)[.modificationDate] as? Date {
+                payload["mtime"] = .number(modified.timeIntervalSince1970)
+            }
             return SearchResult(
                 id: "file:\(path)",
                 title: url.lastPathComponent,
                 subtitle: path,
                 kind: kind,
                 path: path,
-                score: Double(500 - index)
+                score: Double(500 - index),
+                payload: payload
             )
         }
     }

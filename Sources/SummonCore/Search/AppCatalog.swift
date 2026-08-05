@@ -63,7 +63,6 @@ public struct AppCatalog: Sendable {
 
     /// If `/Applications/Name.app` exists (often a symlink to cryptex), use that path for open/icons.
     private static func preferApplicationsPath(_ apps: [AppEntry]) -> [AppEntry] {
-        let fm = FileManager.default
         return apps.map { app in
             let candidates = [
                 "/Applications/\(app.name).app",

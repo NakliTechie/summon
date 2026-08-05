@@ -76,10 +76,11 @@ public enum FilterGrammar {
             if let colon = token.firstIndex(of: ":"), colon != token.startIndex {
                 let key = String(token[..<colon]).lowercased()
                 let value = String(token[token.index(after: colon)...])
-                guard !value.isEmpty else {
-                    throw CoreError.schemaValidation("empty filter value for key '\(key)'")
+                if Self.knownKeys.contains(key), !value.isEmpty {
+                    filters.append(try parseClause(key: key, value: value))
+                } else {
+                    freeParts.append(token)
                 }
-                filters.append(try parseClause(key: key, value: value))
             } else {
                 freeParts.append(token)
             }
@@ -87,6 +88,13 @@ public enum FilterGrammar {
 
         return FilterQuery(freeText: freeParts.joined(separator: " "), filters: filters)
     }
+
+    private static let knownKeys: Set<String> = [
+        "kind", "type", "k",
+        "modified", "mod", "mtime", "date",
+        "in", "path", "dir",
+        "name", "n",
+    ]
 
     private static func parseClause(key: String, value: String) throws -> FilterClause {
         switch key {
@@ -99,7 +107,7 @@ public enum FilterGrammar {
         case "name", "n":
             return .name(value)
         default:
-            return .unknown(key: key, value: value)
+            preconditionFailure("parseClause called for unknown filter key")
         }
     }
 

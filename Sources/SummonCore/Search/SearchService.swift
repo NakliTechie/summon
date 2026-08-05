@@ -13,11 +13,12 @@ public struct SearchService: Sendable {
     public var fts: FTSIndex?
     public var ftsEnabled: Bool
     public var favorites: FavoriteStore?
-    public var appIntents: AppIntentsSurface
+    public var appIntents: AppIntentsSurface?
+    public var calendar: CalendarSurface?
 
     public init(
         apps: AppCatalog = AppCatalog(),
-        spotlight: any SpotlightIndexing = FakeSpotlightIndex(),
+        spotlight: any SpotlightIndexing,
         snippets: SnippetStore? = nil,
         clipboard: ClipboardStore? = nil,
         quicklinks: QuicklinkStore? = nil,
@@ -27,7 +28,8 @@ public struct SearchService: Sendable {
         fts: FTSIndex? = nil,
         ftsEnabled: Bool = false,
         favorites: FavoriteStore? = nil,
-        appIntents: AppIntentsSurface = AppIntentsSurface()
+        appIntents: AppIntentsSurface? = nil,
+        calendar: CalendarSurface? = nil
     ) {
         self.apps = apps
         self.spotlight = spotlight
@@ -41,16 +43,35 @@ public struct SearchService: Sendable {
         self.ftsEnabled = ftsEnabled
         self.favorites = favorites
         self.appIntents = appIntents
+        self.calendar = calendar
     }
 
     public func search(_ raw: String, limit: Int = 50) throws -> [SearchResult] {
+        try search(raw, limit: limit, includeSensitiveStores: true)
+    }
+
+    /// Agent-facing search excludes clipboard and snippet data unless a separate grant is active.
+    public func search(
+        _ raw: String,
+        limit: Int = 50,
+        includeSensitiveStores: Bool
+    ) throws -> [SearchResult] {
         let expanded = RootAlias.expandQuery(raw)
         let query = try FilterGrammar.parse(expanded)
         let free = query.freeText.isEmpty ? expanded : query.freeText
         var results: [SearchResult] = []
         results.append(contentsOf: inlineTools(free: free, limit: limit))
-        results.append(contentsOf: try storeSources(query: query, free: free, limit: limit))
-        results.append(contentsOf: try emptyQueryBoosts(expanded: expanded, limit: limit))
+        results.append(contentsOf: try storeSources(
+            query: query,
+            free: free,
+            limit: limit,
+            includeSensitiveStores: includeSensitiveStores
+        ))
+        results.append(contentsOf: try emptyQueryBoosts(
+            expanded: expanded,
+            limit: limit,
+            includeSensitiveStores: includeSensitiveStores
+        ))
         // Free-text (no kind: scope): app > emoji > others. Explicit kind: keeps source scores.
         let freeTextRanking = query.kind == nil
             && !free.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -68,18 +89,17 @@ public struct SearchService: Sendable {
         results.append(contentsOf: ProcessControl.search(query: free, limit: min(10, limit)))
         results.append(contentsOf: AltTabModule.search(query: free))
         results.append(contentsOf: ScreenshotModule.search(query: free))
-        results.append(contentsOf: BrowserModule.search(query: free))
         results.append(contentsOf: TerminalModule.search(query: free))
         results.append(contentsOf: SystemWidgets.search(query: free))
         results.append(contentsOf: ContactsDictionary.search(query: free))
         results.append(contentsOf: MiscPowerModules.search(query: free))
-        if let calHits = try? CalendarSurface().search(query: free) {
+        if let calendar, let calHits = try? calendar.search(query: free) {
             results.append(contentsOf: calHits)
         }
         results.append(contentsOf: SettingsCatalog.search(query: free))
-        results.append(contentsOf: OnboardingCatalog.search(query: free))
         let lower = free.lowercased()
-        if lower.hasPrefix("action ") || lower.hasPrefix("intent ") || lower.hasPrefix("do ") {
+        if let appIntents,
+           lower.hasPrefix("action ") || lower.hasPrefix("intent ") || lower.hasPrefix("do ") {
             let needle = free.split(separator: " ", maxSplits: 1).dropFirst().first.map(String.init) ?? ""
             if let hits = try? appIntents.search(query: needle, limit: min(15, limit)) {
                 results.append(contentsOf: hits)
@@ -88,13 +108,18 @@ public struct SearchService: Sendable {
         return results
     }
 
-    private func storeSources(query: FilterQuery, free: String, limit: Int) throws -> [SearchResult] {
+    private func storeSources(
+        query: FilterQuery,
+        free: String,
+        limit: Int,
+        includeSensitiveStores: Bool
+    ) throws -> [SearchResult] {
         var results: [SearchResult] = []
         let kind = query.kind
         let wantApps = kind == nil || kind == "app"
         let wantFiles = kind == nil || ["file", "pdf", "folder", "image", "document"].contains(kind ?? "")
-        let wantSnippets = kind == nil || kind == "snippet"
-        let wantClipboard = kind == nil || kind == "clipboard"
+        let wantSnippets = includeSensitiveStores && (kind == nil || kind == "snippet")
+        let wantClipboard = includeSensitiveStores && (kind == nil || kind == "clipboard")
         let wantQuicklinks = kind == nil || kind == "quicklink"
         let wantEmoji = kind == nil || kind == "emoji"
         let wantSystem = kind == nil || kind == "command" || kind == "system"
@@ -128,7 +153,7 @@ public struct SearchService: Sendable {
         if wantFiles && (!pureKind || !nonFileKinds.contains(kind ?? "")) {
             results.append(contentsOf: try spotlight.search(query: query, limit: limit))
         }
-        if ftsEnabled, wantContent, let fts, !free.isEmpty {
+        if includeSensitiveStores, ftsEnabled, wantContent, let fts, !free.isEmpty {
             for doc in try fts.search(query: free, limit: min(limit, 20)) {
                 results.append(SearchResult(
                     id: "fts:\(doc.id)",
@@ -144,12 +169,17 @@ public struct SearchService: Sendable {
         return results
     }
 
-    private func emptyQueryBoosts(expanded: String, limit: Int) throws -> [SearchResult] {
+    private func emptyQueryBoosts(
+        expanded: String,
+        limit: Int,
+        includeSensitiveStores: Bool
+    ) throws -> [SearchResult] {
         guard expanded.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         var results: [SearchResult] = []
         if let favorites {
             for fav in try favorites.all().prefix(limit) {
                 let kind = SearchResult.Kind(rawValue: fav.kind) ?? .command
+                if !includeSensitiveStores, [.snippet, .clipboard].contains(kind) { continue }
                 results.append(SearchResult(
                     id: fav.resultID,
                     title: fav.title,
@@ -163,12 +193,15 @@ public struct SearchService: Sendable {
         if let frecency {
             for entry in try frecency.recents(limit: min(10, limit)) {
                 let kind = SearchResult.Kind(rawValue: entry.kind) ?? .command
+                if !includeSensitiveStores, [.snippet, .clipboard].contains(kind) { continue }
                 results.append(SearchResult(
                     id: entry.resultID,
                     title: entry.title,
                     subtitle: "recent · \(entry.count)×",
                     kind: kind,
-                    score: 0.4 + min(0.4, entry.score() / 20)
+                    path: entry.path,
+                    score: 0.4 + min(0.4, entry.score() / 20),
+                    payload: entry.payload
                 ))
             }
         }

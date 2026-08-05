@@ -14,8 +14,8 @@ var products: [Product] = [
     .executable(name: "summon-app", targets: ["summon-app"]),
 ]
 
-var cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI", "SummonShim"]
-var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI", "SummonShim"]
+var cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
+var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
 var cliSettings: [SwiftSetting] = []
 var appSettings: [SwiftSetting] = []
 
@@ -108,7 +108,11 @@ if summonAIEnabled {
     targets.append(
         .testTarget(
             name: "SummonAITests",
-            dependencies: ["SummonAI", "SummonCore"],
+            dependencies: [
+                "SummonAI",
+                "SummonCore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ],
             path: "Tests/SummonAITests"
         )
     )

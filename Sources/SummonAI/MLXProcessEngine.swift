@@ -1,33 +1,37 @@
 import Foundation
 
-/// D7 decision (Chirag 2026-08-04): **MLX** for L0 — via `mlx_lm.generate` process bridge
-/// until pure mlx-swift LLM packaging is clean. Detects binary; fails loud if missing.
+/// D7 interim decision: ride a user-managed `mlx_lm.generate` process until an
+/// embedded runtime lands. Summon detects it, but never installs or daemonizes it.
 ///
 /// Does **not** auto-download models. Weights path = local HF-style directory
 /// (or MLX-converted tree) under Application Support after consent fetch.
 public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
-    public var generateBinary: String
-    public var maxTokens: Int
-    public var systemPrompt: String
+    public let generateBinary: String
+    public let maxTokens: Int
+    public let systemPrompt: String
+    public let timeout: TimeInterval
+
+    public static let trustedBinaryPaths = [
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin/mlx_lm.generate",
+        "/opt/homebrew/bin/mlx_lm.generate",
+        "/usr/local/bin/mlx_lm.generate",
+    ]
 
     public init(
         generateBinary: String,
         maxTokens: Int = 256,
-        systemPrompt: String = "You are Summon's on-device sidecar. Be concise. Stage, never claim execution."
+        systemPrompt: String = "You are Summon's on-device sidecar. Be concise. Stage, never claim execution.",
+        timeout: TimeInterval = 120
     ) {
         self.generateBinary = generateBinary
         self.maxTokens = maxTokens
         self.systemPrompt = systemPrompt
+        self.timeout = timeout
     }
 
     /// Absolute paths only — no PATH/`env` resolution (supply-chain hardening).
     public static func detectBinary() -> String? {
-        let candidates = [
-            "/Library/Frameworks/Python.framework/Versions/3.12/bin/mlx_lm.generate",
-            "/opt/homebrew/bin/mlx_lm.generate",
-            "/usr/local/bin/mlx_lm.generate",
-        ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+        for path in trustedBinaryPaths where FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
         return nil
@@ -43,10 +47,10 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
     }
 
     public func complete(prompt: String, weightsURL: URL) async throws -> String {
-        guard generateBinary.hasPrefix("/"),
+        guard Self.trustedBinaryPaths.contains(generateBinary),
               FileManager.default.isExecutableFile(atPath: generateBinary) else {
             throw ModelRungError.generationFailed(
-                "mlx_lm.generate not found — install mlx-lm (D7 MLX path)"
+                "trusted mlx_lm.generate unavailable — install mlx-lm at a supported absolute path"
             )
         }
         guard isReady(weightsURL: weightsURL) else {
@@ -57,11 +61,9 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let text = try Self.runGenerate(
-                        binary: self.generateBinary,
+                        engine: self,
                         modelPath: weightsURL.path,
-                        system: self.systemPrompt,
-                        prompt: prompt,
-                        maxTokens: self.maxTokens
+                        prompt: prompt
                     )
                     cont.resume(returning: text)
                 } catch {
@@ -72,40 +74,38 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
     }
 
     private static func runGenerate(
-        binary: String,
+        engine: MLXProcessL0Engine,
         modelPath: String,
-        system: String,
-        prompt: String,
-        maxTokens: Int
+        prompt: String
     ) throws -> String {
-        let process = Process()
-        guard binary.hasPrefix("/") else {
-            throw ModelRungError.generationFailed("MLX binary must be an absolute path")
+        guard trustedBinaryPaths.contains(engine.generateBinary) else {
+            throw ModelRungError.generationFailed("MLX binary is outside the trusted absolute-path allowlist")
         }
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = [
-            "--model", modelPath,
-            "--system-prompt", system,
-            "--prompt", prompt,
-            "--max-tokens", String(maxTokens),
-            "--temp", "0.2",
-        ]
-        let out = Pipe()
-        let err = Pipe()
-        process.standardOutput = out
-        process.standardError = err
+        let result: BoundedProcessResult
         do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            throw ModelRungError.generationFailed("mlx_lm spawn failed: \(error.localizedDescription)")
-        }
-        let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        if process.terminationStatus != 0 {
-            throw ModelRungError.generationFailed(
-                "mlx_lm exited \(process.terminationStatus): \(stderr.prefix(400))"
+            result = try BoundedProcessRunner.run(
+                executableURL: URL(fileURLWithPath: engine.generateBinary),
+                arguments: [
+                    "--model", modelPath,
+                    "--system-prompt", engine.systemPrompt,
+                    "--prompt", prompt,
+                    "--max-tokens", String(engine.maxTokens),
+                    "--temp", "0.2",
+                ],
+                timeout: engine.timeout
             )
+        } catch {
+            throw ModelRungError.generationFailed(error.localizedDescription)
+        }
+        let stdout = String(data: result.standardOutput, encoding: .utf8) ?? ""
+        let stderr = String(data: result.standardError, encoding: .utf8) ?? ""
+        if result.terminationStatus != 0 {
+            throw ModelRungError.generationFailed(
+                "mlx_lm exited \(result.terminationStatus): \(stderr.prefix(400))"
+            )
+        }
+        guard !result.standardOutputTruncated else {
+            throw ModelRungError.generationFailed("mlx_lm output exceeded the 2 MiB response limit")
         }
         let cleaned = stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else {

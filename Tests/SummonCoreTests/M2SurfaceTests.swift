@@ -42,24 +42,22 @@ final class M2SurfaceTests: XCTestCase {
     }
 
     func testAppIntentsSearch() throws {
-        let surface = AppIntentsSurface()
+        let surface = AppIntentsSurface(enumerator: FakeAppIntentEnumerator())
         let hits = try surface.search(query: "mail")
         XCTAssertTrue(hits.contains { $0.title.contains("Email") })
+    }
+
+    func testProductionSearchDoesNotExposeFixtureAppIntents() throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let hits = try core.search.search("action mail")
+
+        XCTAssertFalse(hits.contains { $0.id.hasPrefix("intent:") })
     }
 
     func testL10nKeys() {
         let s = L10n.t(.degradedAI)
         XCTAssertFalse(s.isEmpty)
         XCTAssertTrue(s.contains("search"))
-    }
-
-    func testHyperkeyDefaults() {
-        XCTAssertFalse(HyperkeyConfig.default.enabled)
-    }
-
-    func testMenuItemSearch() throws {
-        let hits = try MenuItemSearch().search(query: "paste")
-        XCTAssertTrue(hits.contains { $0.title == "Paste" })
     }
 
     func testFTSConsentDefaultOff() {

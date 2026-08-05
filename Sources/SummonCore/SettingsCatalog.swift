@@ -1,17 +1,92 @@
 import Foundation
 
-/// Minimal settings surface as launcher results (RC-16). Full prefs window later.
+public enum PreferencesSection: String, Sendable, CaseIterable {
+    case general = "General"
+    case search = "Search & Indexing"
+    case clipboard = "Clipboard & Privacy"
+    case automation = "Automation & Agents"
+    case appearance = "Appearance"
+
+    public var destination: AppDestination {
+        switch self {
+        case .general: return .preferencesGeneral
+        case .search: return .preferencesSearch
+        case .clipboard: return .preferencesClipboard
+        case .automation: return .preferencesAutomation
+        case .appearance: return .preferencesAppearance
+        }
+    }
+}
+
+public struct PreferenceDescriptor: Sendable, Equatable {
+    public let key: String
+    public let title: String
+    public let subtitle: String
+    public let section: PreferencesSection
+}
+
+/// Task-grouped launcher index for the native Preferences window.
 public enum SettingsCatalog {
-    public static let keys: [(key: String, title: String, subtitle: String)] = [
-        ("agent.socket.enabled", "Agent socket", "Default OFF — enable for local agent UNIX socket"),
-        ("search.fts.enabled", "Content search (S2)", "FTS5 index — consent first"),
-        ("web.search.enabled", "Web search (W1)", "User SearXNG only — default OFF"),
-        ("web.search.baseURL", "SearXNG base URL", "Preset http://127.0.0.1:8080"),
-        ("launchAtLogin", "Launch at login", "Default ON — clipboard history needs background"),
-        ("hotkey.primary", "Primary hotkey", "⌥Space launcher"),
-        ("hotkey.clipboard", "Clipboard history", "⌥⇧V dedicated history"),
-        ("theme.appearance", "Appearance", "system / dark / light"),
+    public static let keys: [PreferenceDescriptor] = [
+        PreferenceDescriptor(
+            key: "launchAtLogin",
+            title: "Launch at login",
+            subtitle: "Keep clipboard history ready after sign-in",
+            section: .general
+        ),
+        PreferenceDescriptor(
+            key: "hotkey.primary",
+            title: "Primary hotkey",
+            subtitle: "⌥Space launcher",
+            section: .general
+        ),
+        PreferenceDescriptor(
+            key: "hotkey.clipboard",
+            title: "Clipboard history hotkey",
+            subtitle: "⌥⇧V dedicated history",
+            section: .general
+        ),
+        PreferenceDescriptor(
+            key: "search.fts.enabled",
+            title: "Content search",
+            subtitle: "Local FTS5 index — explicit consent required",
+            section: .search
+        ),
+        PreferenceDescriptor(
+            key: "web.search.enabled",
+            title: "Local web search",
+            subtitle: "User-owned SearXNG only — default OFF",
+            section: .search
+        ),
+        PreferenceDescriptor(
+            key: "web.search.baseURL",
+            title: "SearXNG base URL",
+            subtitle: "Defaults to http://127.0.0.1:8080",
+            section: .search
+        ),
+        PreferenceDescriptor(
+            key: "clipboard.privacy",
+            title: "Clipboard privacy",
+            subtitle: "History, retention, and ignored applications",
+            section: .clipboard
+        ),
+        PreferenceDescriptor(
+            key: "agent.socket.enabled",
+            title: "Agent socket",
+            subtitle: "Default OFF — local automation boundary",
+            section: .automation
+        ),
+        PreferenceDescriptor(
+            key: "theme.appearance",
+            title: "Appearance",
+            subtitle: "System, dark, or light",
+            section: .appearance
+        ),
     ]
+
+    public static func destination(for key: String) -> AppDestination {
+        keys.first { $0.key == key }?.section.destination ?? .preferencesGeneral
+    }
 
     public static func search(query: String) -> [SearchResult] {
         let q = query.lowercased()
@@ -41,7 +116,10 @@ public enum SettingsCatalog {
                     subtitle: $0.subtitle,
                     kind: .setting,
                     score: 0.8,
-                    payload: ["settingsKey": .string($0.key)]
+                    payload: [
+                        "settingsKey": .string($0.key),
+                        "destination": .string($0.section.destination.rawValue),
+                    ]
                 )
             }
     }
@@ -72,7 +150,7 @@ public enum OnboardingCatalog {
             SearchResult(
                 id: "onboard:3",
                 title: "Grant Accessibility when asked",
-                subtitle: "Window layout + menu search",
+                subtitle: "Window arrangement shortcuts",
                 kind: .command,
                 score: 0.9
             ),

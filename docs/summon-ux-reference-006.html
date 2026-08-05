@@ -332,12 +332,15 @@
   <h2>Agent face — same core, second door</h2>
   <p class="rule">CLI + local socket dispatch the same action bus as the hotkey. Off by default; destructive ops are propose-only — they stage in the UI exactly like an AI proposal, because to the core an agent and a model are the same kind of guest.</p>
   <div class="stage"><div class="term">
-<span class="p">$</span> <span class="c">summon run window.arrange --layout=left-right</span><br>
-ok · 2 windows arranged · journal #4d19 actor=agent<br>
-<span class="p">$</span> <span class="c">summon clipboard search "invoice" --json</span><br>
-[{"id":"c81","preview":"INV-2026-0841 · Netcore PS","src":"Mail"}]<br>
-<span class="p">$</span> <span class="c">summon clipboard clear --before=30d</span><br>
-<span class="amber">staged</span> · destructive — awaiting accept in Summon UI (⌘⏎) · journal #4d1a
+<span class="p">$</span> <span class="c">summon --actor agent window leftHalf --apply</span><br>
+layout leftHalf · frame 0,0 716x900<br>
+<span class="amber">outcome staged proposalID=&lt;proposal-id&gt;</span><br>
+<span class="p">$</span> <span class="c">summon settings set agent.search.sensitive.enabled true</span><br>
+ok agent.search.sensitive.enabled=true<br>
+<span class="p">$</span> <span class="c">summon --actor agent clipboard search "invoice"</span><br>
+invoice INV-2026-0841 Netcore PS<br>
+<span class="p">$</span> <span class="c">summon --actor agent clipboard delete c81</span><br>
+<span class="amber">outcome staged proposalID=&lt;proposal-id&gt;</span> · destructive — awaiting review in Summon UI
   </div></div>
   <div class="notes">
     <div class="note"><span class="pin">1</span>Enabled only via developer settings; socket mode 0600; every call journaled with actor tag.</div>

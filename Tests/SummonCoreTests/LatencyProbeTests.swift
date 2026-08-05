@@ -21,4 +21,13 @@ final class LatencyProbeTests: XCTestCase {
         XCTAssertEqual(sample.iterations, 20)
         XCTAssertGreaterThanOrEqual(sample.milliseconds, 0)
     }
+
+    func testMeasureClampsZeroIterationsToOneSample() {
+        var calls = 0
+        let sample = LatencyProbe.measure(label: "zero", iterations: 0) {
+            calls += 1
+        }
+        XCTAssertEqual(sample.iterations, 1)
+        XCTAssertEqual(calls, 2)
+    }
 }

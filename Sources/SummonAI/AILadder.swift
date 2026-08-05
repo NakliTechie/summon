@@ -13,7 +13,7 @@ public final class AILadder: @unchecked Sendable {
         }
     }
 
-    public static func defaultProductionRungs() -> [any ModelRung] {
+    public static func defaultProductionRungs(modelsContainer: URL? = nil) -> [any ModelRung] {
         var list: [any ModelRung] = []
         // L1 first where hardware allows.
         if #available(macOS 26.0, *) {
@@ -21,26 +21,18 @@ public final class AILadder: @unchecked Sendable {
         } else {
             list.append(UnavailableAppleFoundationModelRung())
         }
-        // L0 packaged MLX model — fallback for 8GB / no Apple Intelligence (D7=MLX).
-        if let store = try? FileL0WeightStore() {
+        // Experimental user-managed L0 MLX adapter (D7 interim decision).
+        do {
+            let store = try FileL0WeightStore(container: modelsContainer)
             list.append(L0PackagedModelRung.production(store: store))
+        } catch {
+            list.append(UnavailableProductionModelRung(
+                id: .l0Packaged,
+                displayName: "Experimental local MLX (L0)",
+                reason: "model storage unavailable: \(error.localizedDescription)"
+            ))
         }
         return list
-    }
-
-    /// Test ladder: L1 fake-unavailable + L0 with consent+weights for degrade path.
-    public static func testingL0Fallback(
-        l0: L0PackagedModelRung,
-        l1Available: Bool = false
-    ) -> AILadder {
-        let l1: any ModelRung = l1Available
-            ? FakeModelRung(cannedText: "L1")
-            : FakeUnavailableL1()
-        return AILadder(rungs: [l1, l0])
-    }
-
-    public static func testing(fake: FakeModelRung = FakeModelRung()) -> AILadder {
-        AILadder(rungs: [fake])
     }
 
     public struct StatusRow: Sendable, Hashable, Equatable {
@@ -71,7 +63,7 @@ public final class AILadder: @unchecked Sendable {
     }
 
     public func preferredRung() async -> (any ModelRung)? {
-        let preference: [ModelRungID] = [.l1Apple, .l0Packaged, .l2LocalRuntime, .l3BYOK, .fake]
+        let preference: [ModelRungID] = [.l1Apple, .l0Packaged, .fake]
         for id in preference {
             if let rung = rungs.first(where: { $0.id == id }) {
                 if (await rung.availability()).isAvailable { return rung }
@@ -88,15 +80,17 @@ public final class AILadder: @unchecked Sendable {
     }
 }
 
-/// Marks L1 as down so tests exercise L0 fallback.
-struct FakeUnavailableL1: ModelRung, Sendable {
-    let id: ModelRungID = .l1Apple
-    let displayName = "Apple Foundation Models"
+private struct UnavailableProductionModelRung: ModelRung, Sendable {
+    let id: ModelRungID
+    let displayName: String
+    let reason: String
+
     func availability() async -> RungAvailability {
-        .unavailable(reason: "deviceNotEligible")
+        .unavailable(reason: reason)
     }
+
     func complete(prompt: String) async throws -> ModelCompletion {
-        throw ModelRungError.unavailable(.l1Apple, "deviceNotEligible")
+        throw ModelRungError.unavailable(id, reason)
     }
 }
 
@@ -200,7 +194,6 @@ public final class SummonAIService: @unchecked Sendable {
             output: completion.text,
             egressSummary: completion.egressSummary
         )
-        staging.stage(proposal)
         if let core {
             try core.staged.migrate()
             try core.staged.upsert(PersistedStagedProposal(
@@ -212,39 +205,76 @@ public final class SummonAIService: @unchecked Sendable {
                 egressSummary: completion.egressSummary,
                 state: "staged"
             ))
-            _ = try core.dispatch(
-                action: .settingsSet(
-                    key: "ai.lastInvocation",
-                    value: .object([
-                        "rung": .string(completion.rung.rawValue),
-                        "egress": .string(completion.egressSummary),
-                        "proposalID": .string(proposal.id.uuidString),
-                        "promptChars": .number(Double(prompt.count)),
-                    ])
-                ),
-                actor: actor
-            )
+            do {
+                _ = try core.dispatch(
+                    action: .settingsSet(
+                        key: "ai.lastInvocation",
+                        value: .object([
+                            "rung": .string(completion.rung.rawValue),
+                            "egress": .string(completion.egressSummary),
+                            "proposalID": .string(proposal.id.uuidString),
+                            "promptChars": .number(Double(prompt.count)),
+                        ])
+                    ),
+                    actor: actor
+                )
+            } catch let dispatchError {
+                do {
+                    try core.staged.delete(id: proposal.id.uuidString)
+                } catch let rollbackError {
+                    throw CoreError.store(
+                        "AI invocation audit failed: \(dispatchError.localizedDescription); "
+                            + "proposal rollback failed: \(rollbackError.localizedDescription)"
+                    )
+                }
+                throw dispatchError
+            }
+        } else {
+            staging.stage(proposal)
         }
         return proposal
     }
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {
-        guard let p = staging.accept(id) else { return nil }
         if let core {
-            try core.staged.setState(id: id.uuidString, state: "accepted")
-            _ = try core.dispatch(
-                action: .settingsSet(key: "ai.lastAccept", value: .string(id.uuidString)),
+            guard let persisted = try core.staged.get(id.uuidString),
+                  persisted.state == "staged" else { return nil }
+            try core.acceptStagedTextProposal(
+                id: id.uuidString,
+                reviewedOutput: persisted.output,
                 actor: actor
             )
+            return Self.proposal(from: persisted, state: .accepted)
         }
-        return p
+        return staging.accept(id)
     }
 
     public func reject(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {
-        guard let p = staging.reject(id) else { return nil }
         if let core {
-            try core.staged.setState(id: id.uuidString, state: "rejected")
+            guard let persisted = try core.staged.get(id.uuidString),
+                  persisted.state == "staged" else { return nil }
+            try core.rejectStagedProposal(id: id.uuidString, actor: actor)
+            return Self.proposal(from: persisted, state: .rejected)
         }
-        return p
+        return staging.reject(id)
+    }
+
+    private static func proposal(
+        from persisted: PersistedStagedProposal,
+        state: StagedAIProposal.State
+    ) -> StagedAIProposal? {
+        guard let id = UUID(uuidString: persisted.id),
+              let rung = ModelRungID(rawValue: persisted.rung) else {
+            return nil
+        }
+        return StagedAIProposal(
+            id: id,
+            createdAt: persisted.createdAt,
+            rung: rung,
+            prompt: persisted.prompt,
+            output: persisted.output,
+            egressSummary: persisted.egressSummary,
+            state: state
+        )
     }
 }

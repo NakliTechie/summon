@@ -44,6 +44,7 @@ final class PhaseAStoresTests: XCTestCase {
         let r = GuideContent.searchResults()
         XCTAssertFalse(r.isEmpty)
         XCTAssertTrue(r[0].id.hasPrefix("guide:"))
+        XCTAssertEqual(r[0].payload["action"], .string("snippet.copy"))
     }
 
     func testSessionRecordsFrecencyOnConfirm() throws {
@@ -71,6 +72,7 @@ final class PhaseAStoresTests: XCTestCase {
         if let selectedID {
             XCTAssertGreaterThan(try core.frecency.boost(for: selectedID), 0)
         }
+        XCTAssertEqual(recents.first?.payload["text"], .string("hello-world-frecency"))
     }
 
     func testFTSSearchWhenEnabled() throws {
@@ -85,9 +87,27 @@ final class PhaseAStoresTests: XCTestCase {
     func testClipboardIgnore() throws {
         let core = try SummonCore.inMemory()
         try core.clipboardIgnore.add("1Password")
+        try core.clipboardIgnore.add("com.example.SecretApp")
         XCTAssertTrue(try core.clipboardIgnore.isIgnored("1Password"))
         let r = try core.ingestClipboard(text: "secret", types: ["public.utf8-plain-text"], sourceApp: "1Password")
         XCTAssertNil(r)
+        let bundleIgnored = try core.ingestClipboard(
+            text: "bundle-secret",
+            types: ["public.utf8-plain-text"],
+            sourceApp: "Renamed App",
+            sourceBundleID: "COM.EXAMPLE.SECRETAPP"
+        )
+        XCTAssertNil(bundleIgnored)
+
+        let spoofedSource = try core.ingestClipboard(
+            text: "spoofed source",
+            types: ["public.utf8-plain-text"],
+            sourceApp: "Allowed App",
+            sourceBundleID: "com.example.allowed",
+            observedSourceApp: "1Password",
+            observedSourceBundleID: "com.agilebits.onepassword"
+        )
+        XCTAssertNil(spoofedSource)
     }
 
     func testFavoritesAndHistory() throws {
@@ -100,9 +120,18 @@ final class PhaseAStoresTests: XCTestCase {
 
     func testAliasStore() throws {
         let core = try SummonCore.inMemory()
-        try core.aliases.set(LearnedAlias(keyword: "sl", targetResultID: "app:Slack", title: "Slack", kind: "app"))
+        try core.aliases.set(LearnedAlias(
+            keyword: "sl",
+            targetResultID: "quicklink:slack",
+            title: "Slack",
+            kind: "quicklink",
+            path: "https://app.slack.com",
+            payload: ["url": .string("https://app.slack.com")]
+        ))
         let session = LauncherSession(core: core)
         _ = try session.setQuery("sl")
         XCTAssertEqual(session.results.first?.title, "Slack")
+        XCTAssertEqual(session.results.first?.path, "https://app.slack.com")
+        XCTAssertEqual(session.results.first?.payload["url"], .string("https://app.slack.com"))
     }
 }

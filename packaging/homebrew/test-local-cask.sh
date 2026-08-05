@@ -3,6 +3,13 @@
 # Does not require Developer ID. Requires `brew`.
 set -euo pipefail
 
+if [[ "${SUMMON_CASK_ALLOW_SYSTEM_MUTATION:-0}" != "1" ]]; then
+  echo "cask-local: refused system cask mutation" >&2
+  echo "use 'make distribution-local' for the temporary-root lifecycle verifier" >&2
+  echo "set SUMMON_CASK_ALLOW_SYSTEM_MUTATION=1 only for an intentional system install" >&2
+  exit 2
+fi
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
@@ -11,7 +18,7 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-VERSION="${SUMMON_VERSION:-0.6.0}"
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 DIST="$ROOT/dist"
 ZIP="$DIST/Summon-${VERSION}.zip"
 # Homebrew requires casks to live in a tap under Library/Taps.

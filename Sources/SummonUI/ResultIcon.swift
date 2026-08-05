@@ -3,7 +3,12 @@ import SummonCore
 
 /// Loads and caches result icons (apps via `NSWorkspace`, others via SF Symbols).
 enum ResultIcon {
-    private static let cache = NSCache<NSString, NSImage>()
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 8 * 1_024 * 1_024
+        return cache
+    }()
     private static let iconPointSize = NSSize(width: 28, height: 28)
 
     static func image(for result: SearchResult) -> NSImage {
@@ -14,10 +19,16 @@ enum ResultIcon {
             }
             let icon = NSWorkspace.shared.icon(forFile: path)
             icon.size = iconPointSize
-            cache.setObject(icon, forKey: key)
+            cache.setObject(icon, forKey: key, cost: 28 * 28 * 4)
             return icon
         }
         return symbolFallback(for: result.kind)
+    }
+
+    static func preload(_ results: [SearchResult]) {
+        for result in results where result.kind != .emoji {
+            autoreleasepool { _ = image(for: result) }
+        }
     }
 
     private static func symbolFallback(for kind: SearchResult.Kind) -> NSImage {
@@ -43,7 +54,7 @@ enum ResultIcon {
         let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
         let configured = img.withSymbolConfiguration(config) ?? img
         configured.size = iconPointSize
-        cache.setObject(configured, forKey: key)
+        cache.setObject(configured, forKey: key, cost: 28 * 28 * 4)
         return configured
     }
 }

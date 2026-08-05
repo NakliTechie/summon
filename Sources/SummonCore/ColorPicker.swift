@@ -19,6 +19,8 @@ public enum ColorPickerUtil {
             payload: [
                 "copy": .string("#\(s.uppercased())"),
                 "rgb": .string(rgb),
+                "text": .string("#\(s.uppercased())"),
+                "action": .string("snippet.copy"),
             ]
         )
     }

@@ -19,12 +19,14 @@ Machine-checkable, human-free:
 3. **Lint** — SwiftLint strict.
 4. **Removability** — `SUMMON_AI_ENABLED=0` package dump + build + test (AI product absent).
 5. **Walkthrough** — CLI role walk (`scripts/walkthrough.sh`); not a browser / full AppKit soak.
-6. **Latency-soft** — `summon latency` probe (prints p95 vs budget; **does not fail the gate**).
+6. **Network sovereignty** — direct egress inventory, journal-bound authorization tests, and zero-egress walkthrough.
+7. **Version consistency** — canonical `VERSION` matches Swift, app plist, and cask mirrors.
+8. **Latency-hard** — disposable on-disk stores, live app catalog, and bounded Spotlight p95 on arm64.
+9. **Extension omission** — shipping executables do not depend on `SummonShim`, link JavaScriptCore, or expose extension CLI commands.
 
 ### Deferred (vision / handoff still list; not yet hard-gated)
 
-- Hard **latency** fail (p95 < 50 ms invoke / < 16 ms keystroke on arm64 CI).
-- **Network sovereignty** instrumented egress assert (only appcast + journaled user AI/web).
+- Rendered **invoke-visible latency** fail (p95 < 50 ms) remains a native-session gate.
 - **i18n completeness** as a separate gate line (L10n keys exist; full locale set not gated).
 - Unmodified **third-party store** packages (fixtures are synthetic).
 

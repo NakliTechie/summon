@@ -3,6 +3,9 @@ import Carbon
 import Foundation
 import SummonCore
 import SummonUI
+#if SUMMON_AI
+import SummonAI
+#endif
 
 /// Menu-bar host: ⌥Space launcher, ⌥⇧V clipboard history, resident pasteboard capture, login item.
 @main
@@ -21,51 +24,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var core: SummonCore!
     var panel: LauncherPanelController!
     var clipboardHistory: ClipboardHistoryController!
+    var preferences: PreferencesWindowController?
     var pasteboard: PasteboardService!
-    var hotkey: GlobalHotkey!
-    var clipboardHotkey: GlobalHotkey!
-    var agentSocket: AgentSocketServer?
+    var hotkey: GlobalHotkey?
+    var clipboardHotkey: GlobalHotkey?
+    var windowHotkeys: [GlobalHotkey] = []
+    var windowShortcutRegistrationErrors: [String] = []
+    var windowShortcutLastError: String?
+    var agentSocketLifecycle: AgentSocketLifecycleController?
+    var agentSocketMonitor: Timer?
+    var agentSocketError: String?
     var statusItem: NSStatusItem?
+    var primaryHotkeyLabel = "⌥Space"
+    var primaryHotkeyError: String?
+    let loginChoicePromptedKey = "onboarding.loginChoicePrompted"
+    #if SUMMON_AI
+    var aiService: SummonAIService?
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             core = try SummonCore()
-            core.enableLiveSpotlight()
-            core.setExecutor(
-                ProcessModuleExecutor { text in
-                    let pb = NSPasteboard.general
-                    pb.clearContents()
-                    pb.declareTypes([.string], owner: nil)
-                    pb.setString(text, forType: .string)
+            for warning in core.startupWarnings {
+                fputs("Summon startup warning: \(warning)\n", stderr)
+            }
+            let needsFirstRunLoginChoice = shouldOfferFirstRunLoginChoice()
+
+            #if SUMMON_AI
+            let service = SummonAIService(core: core)
+            aiService = service
+            panel = LauncherPanelController(
+                core: core,
+                aiIntegration: LauncherAIIntegration { [weak service] prompt in
+                    guard let service else {
+                        throw ModelRungError.unavailable(.l0Packaged, "AI service was released")
+                    }
+                    let proposal = try await service.completeAndStage(prompt: prompt, actor: .user)
+                    return LauncherAIStageOutcome(
+                        proposalID: proposal.id.uuidString,
+                        rung: proposal.rung.rawValue,
+                        egressSummary: proposal.egressSummary
+                    )
                 }
             )
-
-            // CB-2: open at login default ON.
-            LoginItemService.applyDefaultIfNeeded(settings: core.settings)
-
+            #else
             panel = LauncherPanelController(core: core)
+            #endif
             clipboardHistory = ClipboardHistoryController(core: core)
+            core.setExecutor(
+                ProcessModuleExecutor(
+                    pasteboardWriter: { text in
+                        try PasteboardService.writeGeneratedText(text)
+                    },
+                    clipboardWriter: { item, asPlainText in
+                        try PasteboardService.writeGeneratedItem(item, asPlainText: asPlainText)
+                    },
+                    destinationOpener: { [weak self] destination in
+                        DispatchQueue.main.async {
+                            self?.open(destination: destination)
+                        }
+                    },
+                    windowArranger: { layout, gap in
+                        try WindowApplicator.apply(layout: layout, gap: gap)
+                    }
+                )
+            )
+
+            LoginItemService.reconcileIfConfigured(core: core)
 
             // CB-1: resident capture for process lifetime (panel need not be open).
             pasteboard = PasteboardService(core: core)
             pasteboard.startPolling()
 
-            // Launcher hotkey is load-bearing — fail hard if it cannot register.
+            // Preserve the resident app and menu fallback when the preferred key is occupied.
             hotkey = GlobalHotkey(id: 1)
-            hotkey.onPressed = { [weak self] in
+            hotkey?.onPressed = { [weak self] in
                 self?.clipboardHistory.hide()
                 self?.panel.toggle()
             }
-            try hotkey.register() // ⌥Space
+            registerPrimaryHotkey()
+            registerWindowHotkeys()
 
             // Clipboard hotkey is optional (another app may own ⌥⇧V).
             clipboardHotkey = GlobalHotkey(id: 2)
-            clipboardHotkey.onPressed = { [weak self] in
+            clipboardHotkey?.onPressed = { [weak self] in
                 self?.panel.hide()
                 self?.clipboardHistory.toggle()
             }
             do {
-                try clipboardHotkey.register(
+                try clipboardHotkey?.register(
                     keyCode: 9, // V
                     modifiers: UInt32(optionKey | shiftKey)
                 )
@@ -73,8 +120,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 fputs("Summon: clipboard hotkey ⌥⇧V not registered: \(error)\n", stderr)
             }
 
-            try startAgentSocketIfEnabled()
+            startAgentSocketMonitoring()
             installStatusItem()
+            if needsFirstRunLoginChoice {
+                panel.show(markFirstRunSeen: false)
+                DispatchQueue.main.async { [weak self] in
+                    self?.offerFirstRunLoginChoice()
+                }
+            }
         } catch {
             fputs("Summon failed to start: \(error)\n", stderr)
             NSApp.terminate(nil)
@@ -82,7 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func installStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if statusItem == nil {
+            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        }
         if let button = statusItem?.button {
             if let img = NSImage(
                 systemSymbolName: "magnifyingglass",
@@ -96,6 +151,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.toolTip = "Summon \(SummonVersion.string)"
         }
         let menu = NSMenu()
+        for warning in core.startupWarnings {
+            let warningItem = NSMenuItem(
+                title: "Store Warning: \(String(warning.prefix(160)))",
+                action: nil,
+                keyEquivalent: ""
+            )
+            warningItem.isEnabled = false
+            menu.addItem(warningItem)
+        }
+        if !core.startupWarnings.isEmpty {
+            menu.addItem(NSMenuItem.separator())
+        }
         menu.addItem(NSMenuItem(
             title: "Show Launcher",
             action: #selector(showLauncher),
@@ -108,6 +175,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         clipItem.keyEquivalentModifierMask = [.option, .shift]
         menu.addItem(clipItem)
+        let shortcutStatus = NSMenuItem(
+            title: primaryHotkeyError == nil
+                ? "Launcher Shortcut: \(primaryHotkeyLabel)"
+                : "Launcher Shortcut Unavailable — use Show Launcher",
+            action: nil,
+            keyEquivalent: ""
+        )
+        shortcutStatus.isEnabled = false
+        menu.addItem(shortcutStatus)
+        let windowShortcutStatus = NSMenuItem(
+            title: "Window Shortcuts: \(windowHotkeys.count)/\(WindowShortcut.defaults.count) active",
+            action: nil,
+            keyEquivalent: ""
+        )
+        windowShortcutStatus.isEnabled = false
+        menu.addItem(windowShortcutStatus)
+        if let windowShortcutLastError {
+            let errorItem = NSMenuItem(
+                title: "Window Action: \(String(windowShortcutLastError.prefix(160)))",
+                action: nil,
+                keyEquivalent: ""
+            )
+            errorItem.isEnabled = false
+            menu.addItem(errorItem)
+        }
+        menu.addItem(NSMenuItem(
+            title: "Clear Clipboard History…",
+            action: #selector(clearClipboardHistory),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Clipboard Ignore List…",
+            action: #selector(showClipboardIgnoreList),
+            keyEquivalent: ""
+        ))
+        menu.addItem(NSMenuItem(
+            title: "Preferences…",
+            action: #selector(showPreferencesMenu),
+            keyEquivalent: ","
+        ))
+        #if SUMMON_AI
+        menu.addItem(NSMenuItem(
+            title: "AI Status…",
+            action: #selector(showAIStatus),
+            keyEquivalent: ""
+        ))
+        #endif
         menu.addItem(NSMenuItem.separator())
         let login = NSMenuItem(
             title: LoginItemService.isEnabled ? "Launch at Login ✓" : "Launch at Login",
@@ -124,17 +238,102 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = menu
     }
 
-    private func startAgentSocketIfEnabled() throws {
-        let enabled: Bool
-        if case .bool(let b) = try core.settings.get(AgentSocketServer.enabledSettingKey) {
-            enabled = b
-        } else {
-            enabled = false
+    private func registerPrimaryHotkey() {
+        guard let hotkey else { return }
+        do {
+            try hotkey.register()
+            primaryHotkeyLabel = "⌥Space"
+            primaryHotkeyError = nil
+        } catch {
+            do {
+                try hotkey.register(
+                    keyCode: 49,
+                    modifiers: UInt32(optionKey | controlKey)
+                )
+                primaryHotkeyLabel = "⌃⌥Space"
+                primaryHotkeyError = nil
+            } catch {
+                primaryHotkeyError = error.localizedDescription
+            }
         }
-        guard enabled else { return }
-        let server = AgentSocketServer(core: core)
-        try server.start()
-        agentSocket = server
+        let state = primaryHotkeyError.map { "unavailable:\($0)" } ?? primaryHotkeyLabel
+        _ = try? core.dispatch(
+            action: .settingsSet(key: "hotkey.primary.active", value: .string(state)),
+            actor: .system
+        )
+    }
+
+    private func registerWindowHotkeys() {
+        windowHotkeys.removeAll()
+        windowShortcutRegistrationErrors.removeAll()
+        for shortcut in WindowShortcut.defaults {
+            let hotkey = GlobalHotkey(id: shortcut.id)
+            hotkey.onPressed = { [weak self] in
+                self?.performWindowShortcut(shortcut)
+            }
+            do {
+                try hotkey.register(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers)
+                windowHotkeys.append(hotkey)
+            } catch {
+                let message = "\(shortcut.label) unavailable"
+                windowShortcutRegistrationErrors.append(message)
+                fputs("Summon: window shortcut \(message): \(error)\n", stderr)
+            }
+        }
+        let state = windowShortcutRegistrationErrors.isEmpty
+            ? "\(windowHotkeys.count)/\(WindowShortcut.defaults.count)"
+            : "\(windowHotkeys.count)/\(WindowShortcut.defaults.count) unavailable:"
+                + windowShortcutRegistrationErrors.joined(separator: ",")
+        _ = try? core.dispatch(
+            action: .settingsSet(key: "hotkey.window.active", value: .string(state)),
+            actor: .system
+        )
+    }
+
+    private func performWindowShortcut(_ shortcut: WindowShortcut) {
+        do {
+            let result = try core.dispatch(action: shortcut.action, actor: .user)
+            switch result.outcome {
+            case .applied:
+                windowShortcutLastError = nil
+            case .rejected(let reason):
+                windowShortcutLastError = reason
+                NSSound.beep()
+            case .staged:
+                windowShortcutLastError = "Window action awaited review instead of running"
+                NSSound.beep()
+            }
+        } catch {
+            windowShortcutLastError = error.localizedDescription
+            NSSound.beep()
+        }
+        installStatusItem()
+    }
+
+    private func startAgentSocketMonitoring() {
+        agentSocketLifecycle = AgentSocketLifecycleController(core: core)
+        reconcileAgentSocket()
+        agentSocketMonitor = Timer.scheduledTimer(
+            withTimeInterval: 0.5,
+            repeats: true
+        ) { [weak self] _ in
+            self?.reconcileAgentSocket()
+        }
+    }
+
+    private func reconcileAgentSocket() {
+        guard let lifecycle = agentSocketLifecycle else { return }
+        switch lifecycle.reconcile() {
+        case .disabled:
+            agentSocketError = nil
+        case .listening:
+            agentSocketError = nil
+        case .failed(let message):
+            if agentSocketError != message {
+                fputs("Summon: agent socket unavailable: \(message)\n", stderr)
+                agentSocketError = message
+            }
+        }
     }
 
     @objc func showLauncher() {
@@ -142,15 +341,166 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
     }
 
+    private func shouldOfferFirstRunLoginChoice() -> Bool {
+        guard (try? core.settings.get(LoginItemService.settingsKey)) == nil else { return false }
+        return (try? core.settings.get(loginChoicePromptedKey))?.boolValue != true
+    }
+
+    private func offerFirstRunLoginChoice() {
+        let alert = NSAlert()
+        alert.messageText = "Keep Summon ready at login?"
+        alert.informativeText = "Summon can keep ⌥Space and local clipboard history ready after sign-in. "
+            + "Clipboard history stays on this Mac. You can change this later in Preferences."
+        alert.addButton(withTitle: "Keep Ready at Login")
+        alert.addButton(withTitle: "Not Now")
+        alert.addButton(withTitle: "Decide Later")
+        alert.beginSheetModal(for: panel.panel) { [weak self] response in
+            guard let self else { return }
+            let choice: FirstRunLoginChoice
+            switch response {
+            case .alertFirstButtonReturn:
+                choice = .keepReady
+            case .alertSecondButtonReturn:
+                choice = .notNow
+            default:
+                choice = .decideLater
+            }
+            if choice.marksPrompted {
+                _ = try? self.core.dispatch(
+                    action: .settingsSet(key: self.loginChoicePromptedKey, value: .bool(true)),
+                    actor: .user
+                )
+            }
+            if let enabled = choice.requestedEnabled {
+                self.applyLoginItemChoice(enabled)
+            }
+            self.markFirstRunLauncherSeen()
+        }
+    }
+
+    private func applyLoginItemChoice(_ enabled: Bool) {
+        switch LoginItemService.applyChoice(enabled) {
+        case .failed:
+            showLoginItemChoiceError("Summon could not change the login item.")
+        case .applied(let observedEnabled):
+            do {
+                _ = try core.dispatch(
+                    action: .settingsSet(
+                        key: LoginItemService.settingsKey,
+                        value: .bool(observedEnabled)
+                    ),
+                    actor: .user
+                )
+                installStatusItem()
+            } catch {
+                showLoginItemChoiceError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func markFirstRunLauncherSeen() {
+        _ = try? core.dispatch(
+            action: .settingsSet(
+                key: LauncherStarterCatalog.firstRunSeenKey,
+                value: .bool(true)
+            ),
+            actor: .system
+        )
+    }
+
+    private func showLoginItemChoiceError(_ detail: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Login setting not changed"
+        alert.informativeText = detail
+        alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: panel.panel)
+    }
+
+    private func open(destination: AppDestination) {
+        panel.hide()
+        clipboardHistory.hide()
+        preferences?.window?.orderOut(nil)
+        switch destination {
+        case .search:
+            panel.show()
+        case .clipboard:
+            clipboardHistory.show()
+        case .help:
+            panel.show(query: "?")
+        case .preferencesGeneral:
+            showPreferences(section: .general)
+        case .preferencesSearch:
+            showPreferences(section: .search)
+        case .preferencesClipboard:
+            showPreferences(section: .clipboard)
+        case .preferencesAutomation:
+            showPreferences(section: .automation)
+        case .preferencesAppearance:
+            showPreferences(section: .appearance)
+        }
+    }
+
+    private func showPreferences(section: PreferencesSection) {
+        if preferences == nil {
+            preferences = PreferencesWindowController(
+                core: core,
+                onOpenClipboard: { [weak self] in self?.showClipboard() },
+                onOpenIgnoreList: { [weak self] in self?.showClipboardIgnoreList() },
+                onLoginItemChanged: { [weak self] in self?.installStatusItem() }
+            )
+        }
+        preferences?.show(section: section)
+    }
+
     @objc func showClipboard() {
         panel.hide()
         clipboardHistory.show()
     }
 
+    @objc func clearClipboardHistory() {
+        clipboardHistory.requestClearHistory()
+    }
+
+    @objc func showClipboardIgnoreList() {
+        panel.hide()
+        clipboardHistory.showIgnoreList()
+    }
+
+    @objc func showPreferencesMenu() {
+        panel.hide()
+        clipboardHistory.hide()
+        showPreferences(section: .general)
+    }
+
+    #if SUMMON_AI
+    @objc func showAIStatus() {
+        guard let aiService else { return }
+        Task { @MainActor in
+            let rows = await aiService.ladder.status()
+            let details = rows.map { row in
+                let state = row.available ? "Available" : "Unavailable"
+                return "\(row.id.rawValue) · \(state) · \(row.detail)"
+            }
+            let alert = NSAlert()
+            alert.messageText = "AI status"
+            alert.informativeText = details.joined(separator: "\n")
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+    #endif
+
     @objc func toggleLoginItem() {
         let next = !LoginItemService.isEnabled
         _ = LoginItemService.setEnabled(next)
-        try? core.settings.set(LoginItemService.settingsKey, value: .bool(next))
+        _ = try? core.dispatch(
+            action: .settingsSet(
+                key: LoginItemService.settingsKey,
+                value: .bool(LoginItemService.isEnabled)
+            ),
+            actor: .system
+        )
         installStatusItem()
     }
 
@@ -158,6 +508,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pasteboard?.stopPolling()
         hotkey?.unregister()
         clipboardHotkey?.unregister()
-        agentSocket?.stop()
+        agentSocketMonitor?.invalidate()
+        agentSocketLifecycle?.stop()
     }
 }

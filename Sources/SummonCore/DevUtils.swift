@@ -4,7 +4,8 @@ import Foundation
 /// Only surfaces when the query is an explicit intent — never on empty query.
 public enum DevUtils {
     public static func search(query freeText: String) -> [SearchResult] {
-        let q = freeText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = freeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = trimmed.lowercased()
         guard !q.isEmpty else { return [] }
 
         var out: [SearchResult] = []
@@ -25,7 +26,7 @@ public enum DevUtils {
             ))
         }
         if q.hasPrefix("base64 ") {
-            let rest = String(freeText.dropFirst(7))
+            let rest = payload(afterCommandIn: trimmed)
             if let data = rest.data(using: .utf8) {
                 let enc = data.base64EncodedString()
                 out.append(SearchResult(
@@ -43,9 +44,7 @@ public enum DevUtils {
             }
         }
         if q.hasPrefix("decode ") || q.hasPrefix("base64d ") {
-            let rest = q.hasPrefix("decode ")
-                ? String(freeText.dropFirst(7))
-                : String(freeText.dropFirst(8))
+            let rest = payload(afterCommandIn: trimmed)
             if let data = Data(base64Encoded: rest.trimmingCharacters(in: .whitespaces)),
                let s = String(data: data, encoding: .utf8) {
                 out.append(SearchResult(
@@ -78,5 +77,10 @@ public enum DevUtils {
             ))
         }
         return out
+    }
+
+    private static func payload(afterCommandIn query: String) -> String {
+        guard let separator = query.firstIndex(where: { $0.isWhitespace }) else { return "" }
+        return String(query[separator...]).trimmingCharacters(in: .whitespaces)
     }
 }

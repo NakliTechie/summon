@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-VERSION="${SUMMON_VERSION:-0.6.0}"
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 OUT_DIR="${SUMMON_APP_OUT:-$ROOT/dist}"
 APP="$OUT_DIR/Summon.app"
 BIN_NAME="summon-app"

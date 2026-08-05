@@ -51,8 +51,16 @@ final class FilterGrammarTests: XCTestCase {
         XCTAssertThrowsError(try FilterGrammar.parse("modified:nope"))
     }
 
-    func testEmptyFilterValueThrows() {
-        XCTAssertThrowsError(try FilterGrammar.parse("kind:"))
+    func testEmptyFilterValueRemainsFreeText() throws {
+        let query = try FilterGrammar.parse("kind:")
+        XCTAssertEqual(query.freeText, "kind:")
+        XCTAssertTrue(query.filters.isEmpty)
+    }
+
+    func testUnknownColonTokenRemainsFreeText() throws {
+        let query = try FilterGrammar.parse("https://example.com owner:chirag")
+        XCTAssertEqual(query.freeText, "https://example.com owner:chirag")
+        XCTAssertTrue(query.filters.isEmpty)
     }
 
     func testRelativeDateWithinMatches() throws {

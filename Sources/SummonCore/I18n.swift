@@ -14,7 +14,7 @@ public enum L10n {
     }
 
     private static let english: [Key: String] = [
-        .searchPlaceholder: "Search apps, files, clipboard…",
+        .searchPlaceholder: "Summon…",
         .emptyResults: "No results",
         .stagedProposal: "Staged for review — not executed",
         .degradedAI: "On-device model unavailable — search still works",

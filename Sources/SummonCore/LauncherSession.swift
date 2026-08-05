@@ -1,5 +1,24 @@
 import Foundation
 
+public struct LauncherConfirmation: Sendable, Equatable {
+    public let actionName: String
+    public let result: SearchResult
+    public let query: String
+    public let requiresUserConfirmation: Bool
+
+    public init(
+        actionName: String,
+        result: SearchResult,
+        query: String,
+        requiresUserConfirmation: Bool
+    ) {
+        self.actionName = actionName
+        self.result = result
+        self.query = query
+        self.requiresUserConfirmation = requiresUserConfirmation
+    }
+}
+
 /// Headless controller for the launcher bar: query → results → selection → invoke.
 /// AppKit panel and CLI both drive this; keeps UI free of business logic.
 public final class LauncherSession: @unchecked Sendable {
@@ -38,7 +57,9 @@ public final class LauncherSession: @unchecked Sendable {
                 title: alias.title,
                 subtitle: "alias · \(alias.keyword)",
                 kind: kind,
-                score: 1.0
+                path: alias.path,
+                score: 1.0,
+                payload: alias.payload ?? [:]
             )
             list.removeAll { $0.id == hit.id }
             list.insert(hit, at: 0)
@@ -95,7 +116,8 @@ public final class LauncherSession: @unchecked Sendable {
         guard let item = selected else { return }
         objectTargetIndex = selectedIndex
         objectMode = true
-        objectActions = ObjectActionGrammar.actions(for: item)
+        let favoriteState = try? core.favorites.contains(resultID: item.id)
+        objectActions = ObjectActionGrammar.actions(for: item, isFavorite: favoriteState)
         selectedIndex = 0
     }
 
@@ -108,23 +130,59 @@ public final class LauncherSession: @unchecked Sendable {
     /// Return / primary action.
     @discardableResult
     public func confirm(actor: ActorTag = .user) throws -> String {
+        try execute(prepareConfirmation(), actor: actor)
+    }
+
+    public func prepareConfirmation() throws -> LauncherConfirmation {
         if objectMode {
             guard objectActions.indices.contains(selectedIndex),
                   let target = objectTarget else {
                 throw CoreError.store("no object action selected")
             }
             let action = objectActions[selectedIndex]
-            try core.invoke(actionName: action.name, result: target, actor: actor)
-            try? core.recordUsage(result: target, query: query)
-            return action.name
+            return LauncherConfirmation(
+                actionName: action.name,
+                result: target,
+                query: query,
+                requiresUserConfirmation: action.isDestructive
+            )
         }
         guard let item = selected else {
             throw CoreError.store("no selection")
         }
         let name = defaultActionName(for: item)
-        try core.invoke(actionName: name, result: item, actor: actor)
-        try? core.recordUsage(result: item, query: query)
-        return name
+        let effectURL = item.payload["url"]?.stringValue ?? item.path
+        return LauncherConfirmation(
+            actionName: name,
+            result: item,
+            query: query,
+            requiresUserConfirmation: effectURL.map(SystemEffects.requiresUserConfirmation) ?? false
+        )
+    }
+
+    @discardableResult
+    public func execute(
+        _ confirmation: LauncherConfirmation,
+        actor: ActorTag = .user
+    ) throws -> String {
+        let outcome = try core.invoke(
+            actionName: confirmation.actionName,
+            result: confirmation.result,
+            actor: actor
+        )
+        switch outcome.outcome {
+        case .applied:
+            try? core.recordUsage(
+                result: confirmation.result,
+                query: confirmation.query,
+                actor: actor
+            )
+            return confirmation.actionName
+        case .rejected(let reason):
+            throw CoreError.store("\(confirmation.actionName) rejected: \(reason)")
+        case .staged(let proposalID):
+            throw CoreError.store("\(confirmation.actionName) staged for approval as \(proposalID)")
+        }
     }
 
     private func defaultActionName(for result: SearchResult) -> String {

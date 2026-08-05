@@ -19,7 +19,7 @@ public protocol AppIntentEnumerating: Sendable {
     func enumerate() throws -> [AppIntentDescriptor]
 }
 
-/// Fixture enumerator for headless tests and until live AppIntents wiring lands.
+/// Fixture enumerator for explicitly injected headless tests.
 public struct FakeAppIntentEnumerator: AppIntentEnumerating, Sendable {
     public var intents: [AppIntentDescriptor]
 
@@ -48,7 +48,7 @@ public struct FakeAppIntentEnumerator: AppIntentEnumerating, Sendable {
 public struct AppIntentsSurface: Sendable {
     public var enumerator: any AppIntentEnumerating
 
-    public init(enumerator: any AppIntentEnumerating = FakeAppIntentEnumerator()) {
+    public init(enumerator: any AppIntentEnumerating) {
         self.enumerator = enumerator
     }
 

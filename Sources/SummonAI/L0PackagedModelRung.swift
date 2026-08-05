@@ -1,26 +1,44 @@
 import Foundation
 
-/// L0 packaged on-device model.
+/// Experimental L0 using a user-managed local MLX runtime.
 ///
 /// **D7 (Chirag 2026-08-04): MLX** via `mlx_lm.generate` process bridge
 /// (`MLXProcessL0Engine`). Weights = HF-style directory under Models/, never in cask.
 /// Fallback fleet: L1 unavailable (8GB / no Apple Intelligence) → L0 after consent.
 public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
+    public struct Artifact: Sendable, Hashable, Codable, Equatable {
+        public enum Role: String, Sendable, Hashable, Codable {
+            case metadata
+            case tokenizer
+            case weight
+        }
+
+        public let path: String
+        public let byteCount: Int64
+        public let sha256: String
+        public let role: Role
+
+        public init(path: String, byteCount: Int64, sha256: String, role: Role) {
+            self.path = path
+            self.byteCount = byteCount
+            self.sha256 = sha256.lowercased()
+            self.role = role
+        }
+    }
+
     public let modelID: String
     public let displayName: String
     public let quant: String
     public let minRAMGB: Int
     public let approxDownloadBytes: Int64
-    /// Expected SHA-256 of config.json, or `PENDING_PIN_AFTER_FIRST_FETCH` (pin written on first fetch).
-    public let sha256: String
     /// Hugging Face repo id for MLX community models (fetch lands with consent).
     public let hfRepo: String
-    /// Optional HF revision/commit; nil uses repo default.
-    public let hfRevision: String?
-
-    public var hasPendingPin: Bool {
-        sha256 == "PENDING_PIN_AFTER_FIRST_FETCH" || sha256.isEmpty
-    }
+    /// Immutable, full-length Hugging Face commit.
+    public let hfRevision: String
+    /// Every inference-critical file, including every weight shard.
+    public let artifacts: [Artifact]
+    /// Upstream license identifier surfaced for consent and diagnostics.
+    public let license: String
 
     public init(
         modelID: String,
@@ -28,18 +46,20 @@ public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
         quant: String,
         minRAMGB: Int,
         approxDownloadBytes: Int64,
-        sha256: String,
         hfRepo: String,
-        hfRevision: String? = nil
+        hfRevision: String,
+        artifacts: [Artifact],
+        license: String
     ) {
         self.modelID = modelID
         self.displayName = displayName
         self.quant = quant
         self.minRAMGB = minRAMGB
         self.approxDownloadBytes = approxDownloadBytes
-        self.sha256 = sha256
         self.hfRepo = hfRepo
         self.hfRevision = hfRevision
+        self.artifacts = artifacts
+        self.license = license
     }
 
     public static let e2bDefault = L0ModelManifest(
@@ -47,10 +67,47 @@ public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
         displayName: "Gemma 2 2B Instruct (MLX 4-bit)",
         quant: "4bit",
         minRAMGB: 8,
-        approxDownloadBytes: 1_500_000_000,
-        sha256: "PENDING_PIN_AFTER_FIRST_FETCH",
+        approxDownloadBytes: 1_492_850_373,
         hfRepo: "mlx-community/gemma-2-2b-it-4bit",
-        hfRevision: nil
+        hfRevision: "2c715097ff9c081a6ac1e5cd239e2ac756b5bd99",
+        artifacts: [
+            Artifact(
+                path: "config.json", byteCount: 982,
+                sha256: "41c1077a8a8b14f3e016c0000365aae99fb9eb128596c8378a178f717dca1640",
+                role: .metadata
+            ),
+            Artifact(
+                path: "model.safetensors", byteCount: 1_470_988_882,
+                sha256: "f87c0f8cfa7bea0d01266bd04fae9b60babfa21a57eefbbaf5354321a0dabbf2",
+                role: .weight
+            ),
+            Artifact(
+                path: "model.safetensors.index.json", byteCount: 46_678,
+                sha256: "cb1ab8d56b40451421668d828f8650cbf17c2d901d6f43a16f9a0f3ab49e42c9",
+                role: .metadata
+            ),
+            Artifact(
+                path: "special_tokens_map.json", byteCount: 555,
+                sha256: "db82f8bd9b25d14f9c788e6bde64de84d42f1c2538f1c245ba6cb3e872d14b18",
+                role: .tokenizer
+            ),
+            Artifact(
+                path: "tokenizer.json", byteCount: 17_525_357,
+                sha256: "3f289bc05132635a8bc7aca7aa21255efd5e18f3710f43e3cdb96bcd41be4922",
+                role: .tokenizer
+            ),
+            Artifact(
+                path: "tokenizer.model", byteCount: 4_241_003,
+                sha256: "61a7b147390c64585d6c3543dd6fc636906c9af3865a5548f27f31aee1d4c8e2",
+                role: .tokenizer
+            ),
+            Artifact(
+                path: "tokenizer_config.json", byteCount: 46_916,
+                sha256: "f3a9ecd05833ba49de8432fff27b66bb061ad6a69d17df158de03dc07420e02a",
+                role: .tokenizer
+            ),
+        ],
+        license: "gemma"
     )
 
     public static let e4bOptional = L0ModelManifest(
@@ -58,10 +115,42 @@ public struct L0ModelManifest: Sendable, Hashable, Codable, Equatable {
         displayName: "Gemma 2 9B Instruct (MLX 4-bit, ≥16GB)",
         quant: "4bit",
         minRAMGB: 16,
-        approxDownloadBytes: 5_000_000_000,
-        sha256: "PENDING_PIN_AFTER_FIRST_FETCH",
+        approxDownloadBytes: 5_217_086_795,
         hfRepo: "mlx-community/gemma-2-9b-it-4bit",
-        hfRevision: nil
+        hfRevision: "ff12eb39da2cd9b3b0f4b4f9ffb274603f05bb29",
+        artifacts: [
+            Artifact(
+                path: "config.json", byteCount: 993,
+                sha256: "3b821ec4de220f280b933ad4ae3fcec37eac558e35dc26c5963b5039eb81e550",
+                role: .metadata
+            ),
+            Artifact(
+                path: "model.safetensors", byteCount: 5_199_450_666,
+                sha256: "48a7ecf7042ed2be8de55f9db624ef25848874a516e4080d29b0db35f4ec2a2c",
+                role: .weight
+            ),
+            Artifact(
+                path: "model.safetensors.index.json", byteCount: 75_366,
+                sha256: "ea25cc56620a9975028634746236dda5b1dff1a079134931e116d5ebbbc1f513",
+                role: .metadata
+            ),
+            Artifact(
+                path: "special_tokens_map.json", byteCount: 636,
+                sha256: "baec30ea10906f16adb8c18af7a34023002c1746542612b8b41c9f09e1351351",
+                role: .tokenizer
+            ),
+            Artifact(
+                path: "tokenizer.json", byteCount: 17_518_525,
+                sha256: "7da53ca29fb16f6b2489482fc0bc6a394162cdab14d12764a1755ebc583fea79",
+                role: .tokenizer
+            ),
+            Artifact(
+                path: "tokenizer_config.json", byteCount: 40_609,
+                sha256: "133af30b591c8b76e1fc15598e5f75423ef451af7d914dbb351cce84ed874312",
+                role: .tokenizer
+            ),
+        ],
+        license: "gemma"
     )
 }
 
@@ -82,10 +171,15 @@ public struct L0Consent: Sendable, Hashable, Codable, Equatable {
 }
 
 public protocol L0WeightStore: Sendable {
+    var requiresInstalledManifestVerification: Bool { get }
     func consent() -> L0Consent
-    func setConsent(_ consent: L0Consent)
+    func setConsent(_ consent: L0Consent) throws
     func weightsPresent(for modelID: String) -> Bool
     func weightsURL(for modelID: String) -> URL?
+}
+
+public extension L0WeightStore {
+    var requiresInstalledManifestVerification: Bool { true }
 }
 
 public struct FileL0WeightStore: L0WeightStore, Sendable {
@@ -110,9 +204,9 @@ public struct FileL0WeightStore: L0WeightStore, Sendable {
         return c
     }
 
-    public func setConsent(_ consent: L0Consent) {
-        guard let data = try? JSONEncoder().encode(consent) else { return }
-        try? data.write(to: consentURL, options: .atomic)
+    public func setConsent(_ consent: L0Consent) throws {
+        let data = try JSONEncoder().encode(consent)
+        try data.write(to: consentURL, options: .atomic)
     }
 
     public func weightsPresent(for modelID: String) -> Bool {
@@ -130,55 +224,9 @@ public struct FileL0WeightStore: L0WeightStore, Sendable {
     }
 }
 
-public final class MemoryL0WeightStore: L0WeightStore, @unchecked Sendable {
-    private var cons = L0Consent()
-    private var weights: Set<String> = []
-    private let lock = NSLock()
-
-    public init() {}
-
-    public func consent() -> L0Consent {
-        lock.lock(); defer { lock.unlock() }
-        return cons
-    }
-
-    public func setConsent(_ consent: L0Consent) {
-        lock.lock(); defer { lock.unlock() }
-        cons = consent
-    }
-
-    public func markWeightsPresent(_ modelID: String) {
-        lock.lock(); defer { lock.unlock() }
-        weights.insert(modelID)
-    }
-
-    public func weightsPresent(for modelID: String) -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        return weights.contains(modelID)
-    }
-
-    public func weightsURL(for modelID: String) -> URL? {
-        weightsPresent(for: modelID)
-            ? URL(fileURLWithPath: "/tmp/summon-l0/\(modelID)")
-            : nil
-    }
-}
-
 public protocol L0InferenceEngine: Sendable {
     func isReady(weightsURL: URL) -> Bool
     func complete(prompt: String, weightsURL: URL) async throws -> String
-}
-
-/// Unit-test stand-in (no MLX binary required). **Not for production paths.**
-public struct FakeL0InferenceEngine: L0InferenceEngine, Sendable {
-    public init() {}
-
-    public func isReady(weightsURL: URL) -> Bool { true }
-
-    public func complete(prompt: String, weightsURL: URL) async throws -> String {
-        let t = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "L0-staged: \(t.prefix(160))"
-    }
 }
 
 /// Production stand-in when MLX binary is absent — never fabricates completions.
@@ -199,7 +247,7 @@ public enum MachineMemory {
     public static func totalRAMGB() -> Int {
         var size: UInt64 = 0
         var len = MemoryLayout<UInt64>.size
-        sysctlbyname("hw.memsize", &size, &len, nil, 0)
+        guard sysctlbyname("hw.memsize", &size, &len, nil, 0) == 0 else { return 0 }
         return Int(size / 1_073_741_824)
     }
 
@@ -210,7 +258,7 @@ public enum MachineMemory {
 
 public struct L0PackagedModelRung: ModelRung, Sendable {
     public let id: ModelRungID = .l0Packaged
-    public let displayName = "Packaged on-device (L0 / MLX)"
+    public let displayName = "Experimental local MLX (L0)"
     public let store: any L0WeightStore
     public let engine: any L0InferenceEngine
     public let manifest: L0ModelManifest
@@ -225,7 +273,8 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
         self.engine = engine
     }
 
-    /// Production default: MLX process bridge only. Never fakes completions.
+    /// Interim production adapter: a user-managed MLX process only. Never installs
+    /// a runtime, starts a daemon, or fabricates completions when unavailable.
     public static func production(
         store: any L0WeightStore,
         manifest: L0ModelManifest = MachineMemory.recommendedL0Manifest()
@@ -249,10 +298,10 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
             return .unavailable(reason: "mlx_lm.generate not installed")
         }
         let c = store.consent()
-        guard c.granted else {
+        guard c.granted, c.modelID == manifest.modelID else {
             let mb = manifest.approxDownloadBytes / 1_000_000
             return .unavailable(
-                reason: "consent required (\(mb) MB \(manifest.displayName) via MLX)"
+                reason: "consent required (\(mb) MB \(manifest.displayName), license \(manifest.license), via MLX)"
             )
         }
         guard store.weightsPresent(for: manifest.modelID) else {
@@ -262,11 +311,26 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
             return .unavailable(reason: "engine not ready")
         }
         // Pin check when weights are a real directory
-        if !(store is MemoryL0WeightStore) {
+        if store.requiresInstalledManifestVerification {
             do {
                 try L0ModelFetch.verifyInstalled(modelDir: url, manifest: manifest)
             } catch {
-                return .unavailable(reason: "pin verify failed: \(error.localizedDescription)")
+                if let fileStore = store as? FileL0WeightStore {
+                    do {
+                        let quarantined = try L0ModelFetch.quarantineInstalled(
+                            modelDir: url,
+                            container: fileStore.container
+                        )
+                        return .unavailable(
+                            reason: "model quarantined at \(quarantined.path): \(error.localizedDescription)"
+                        )
+                    } catch let quarantineError {
+                        return .unavailable(
+                            reason: "model verification failed; quarantine failed: \(quarantineError.localizedDescription)"
+                        )
+                    }
+                }
+                return .unavailable(reason: "model verification failed: \(error.localizedDescription)")
             }
         }
         return .available
@@ -289,14 +353,21 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
         return ModelCompletion(text: text, rung: .l0Packaged, egressSummary: "")
     }
 
-    public func grantConsent() {
-        store.setConsent(L0Consent(granted: true, modelID: manifest.modelID, grantedAt: Date()))
+    public func grantConsent() throws {
+        try store.setConsent(L0Consent(granted: true, modelID: manifest.modelID, grantedAt: Date()))
     }
 }
 
 public enum SummonCorePaths {
-    public static func modelsDirectory() throws -> URL {
+    public static func modelsDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> URL {
         let fm = FileManager.default
+        if let override = environment["SUMMON_CONTAINER_DIR"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+                .appendingPathComponent("Models", isDirectory: true)
+        }
         guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw ModelRungError.generationFailed("Application Support unavailable")
         }

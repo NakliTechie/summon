@@ -3,16 +3,6 @@ import Foundation
 /// Propose-only gate for destructive / elevated ops (RC-42, RC-59).
 /// Non-user actors (agent, extension) must not apply these directly — stage for human accept.
 public enum DestructiveGuard {
-    public static let destructiveActionNames: Set<String> = [
-        "clipboard.delete",
-        "snippet.delete",
-        "quicklink.delete",
-        "file.trash",
-        "process.kill",
-        "clipboard.clearUnpinned",
-        "command.run", // only when path is summon://system/* (see isDestructive)
-    ]
-
     /// Settings keys agents/extensions must not flip without user accept.
     public static let restrictedSettingsKeys: Set<String> = [
         "agent.socket.enabled",
@@ -20,6 +10,7 @@ public enum DestructiveGuard {
         "web.search.baseURL",
         "web.search.allowNonLoopback",
         "search.fts.enabled",
+        "launchAtLogin",
     ]
 
     public static func isDestructive(actionName: String) -> Bool {
@@ -47,7 +38,8 @@ public enum DestructiveGuard {
 
     public static func isDestructive(_ action: CoreAction) -> Bool {
         switch action {
-        case .clipboardDelete, .snippetDelete, .quicklinkDelete, .clipboardClearUnpinned:
+        case .clipboardDelete, .snippetDelete, .quicklinkDelete, .clipboardClearUnpinned,
+             .aliasDelete, .favoriteRemove, .importReset:
             return true
         case .moduleRun(let name, _, let path, let payload):
             if isDestructive(actionName: name) { return true }
@@ -56,8 +48,14 @@ public enum DestructiveGuard {
             if name == "command.run", isSystemEffectURL(path) { return true }
             if case .string(let url) = payload["url"], isSystemEffectURL(url) { return true }
             return false
-        case .settingsSet, .settingsDelete, .snippetUpsert, .clipboardIngest,
-             .clipboardPin, .quicklinkUpsert:
+        case .settingsSet, .settingsDelete, .snippetUpsert, .clipboardIngest, .clipboardIngestRich,
+             .clipboardPin, .clipboardTouch, .clipboardIgnoreAdd, .clipboardIgnoreRemove,
+             .quicklinkUpsert, .aliasSet, .favoriteAdd, .webConfigSet, .ftsConsentGrant,
+             .ftsSetEnabled, .usageRecord, .frecencyRestore, .historyRestore,
+             .stagedRestore, .modelConsentGrant,
+             .proposalDecision,
+             .agentSearch, .agentVersion,
+             .agentCLI, .egressRequested, .extensionInstall, .extensionGrant:
             return false
         }
     }
@@ -65,20 +63,23 @@ public enum DestructiveGuard {
     /// True when actor must stage (or be rejected) instead of applying.
     public static func requiresUserApproval(actor: ActorTag, action: CoreAction) -> Bool {
         guard actor.requiresProposeOnly else { return false }
+        if case .moduleRun = action { return true }
         if isDestructive(action) { return true }
         switch action {
         case .settingsSet(let key, _):
             return isRestrictedSettingKey(key)
         case .settingsDelete(let key):
             return isRestrictedSettingKey(key)
+        case .clipboardIgnoreAdd, .clipboardIgnoreRemove, .aliasSet, .aliasDelete,
+             .favoriteAdd, .favoriteRemove, .importReset, .webConfigSet, .ftsSetEnabled,
+             .ftsConsentGrant, .modelConsentGrant, .egressRequested,
+             .frecencyRestore, .historyRestore, .stagedRestore,
+             .proposalDecision,
+             .extensionInstall, .extensionGrant:
+            return true
         default:
             return false
         }
-    }
-
-    /// Agents/extensions must not apply destructive or restricted actions directly.
-    public static func agentMayApply(actor: ActorTag, action: CoreAction) -> Bool {
-        !requiresUserApproval(actor: actor, action: action)
     }
 }
 

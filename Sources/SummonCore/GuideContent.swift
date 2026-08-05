@@ -26,7 +26,11 @@ public enum GuideContent {
                 subtitle: line.body,
                 kind: .command,
                 score: 1.0 - Double(idx) * 0.01,
-                payload: ["guide": .bool(true)]
+                payload: [
+                    "guide": .bool(true),
+                    "text": .string("\(line.title) — \(line.body)"),
+                    "action": .string("snippet.copy"),
+                ]
             )
         }
     }

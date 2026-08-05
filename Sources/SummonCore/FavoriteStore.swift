@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import GRDB
 
 /// Pinned commands / results (RC-46).
@@ -47,35 +48,59 @@ public struct FavoriteStore: Sendable {
 
     public func add(_ item: FavoriteItem) throws {
         try dbQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO favorites (id, result_id, title, kind, path)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(result_id) DO UPDATE SET title = excluded.title
-                    """,
-                arguments: [item.id, item.resultID, item.title, item.kind, item.path]
-            )
+            try add(item, in: db)
         }
+    }
+
+    func add(_ item: FavoriteItem, in db: Database) throws {
+        guard !item.resultID.isEmpty else {
+            throw CoreError.store("favorite result id must be non-empty")
+        }
+        let conflictingResultID = try String.fetchOne(
+            db,
+            sql: "SELECT result_id FROM favorites WHERE id = ? AND result_id != ?",
+            arguments: [item.id, item.resultID]
+        )
+        let storedID = conflictingResultID == nil ? item.id : Self.alternateID(for: item)
+        try db.execute(
+            sql: """
+                INSERT INTO favorites (id, result_id, title, kind, path)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(result_id) DO UPDATE SET
+                    title = excluded.title,
+                    kind = excluded.kind,
+                    path = excluded.path
+                """,
+            arguments: [storedID, item.resultID, item.title, item.kind, item.path]
+        )
     }
 
     public func remove(resultID: String) throws {
         try dbQueue.write { db in
-            try db.execute(sql: "DELETE FROM favorites WHERE result_id = ?", arguments: [resultID])
+            try remove(resultID: resultID, in: db)
         }
+    }
+
+    func remove(resultID: String, in db: Database) throws {
+        try db.execute(sql: "DELETE FROM favorites WHERE result_id = ?", arguments: [resultID])
     }
 
     public func all() throws -> [FavoriteItem] {
         try dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: "SELECT * FROM favorites ORDER BY title")
-            return rows.map {
-                FavoriteItem(
-                    id: $0["id"],
-                    resultID: $0["result_id"],
-                    title: $0["title"],
-                    kind: $0["kind"],
-                    path: $0["path"]
-                )
-            }
+            try all(in: db)
+        }
+    }
+
+    func all(in db: Database) throws -> [FavoriteItem] {
+        let rows = try Row.fetchAll(db, sql: "SELECT * FROM favorites ORDER BY title")
+        return rows.map {
+            FavoriteItem(
+                id: $0["id"],
+                resultID: $0["result_id"],
+                title: $0["title"],
+                kind: $0["kind"],
+                path: $0["path"]
+            )
         }
     }
 
@@ -87,5 +112,10 @@ public struct FavoriteStore: Sendable {
                 arguments: [resultID]
             ) != nil
         }
+    }
+
+    private static func alternateID(for item: FavoriteItem) -> String {
+        let digest = SHA256.hash(data: Data("\(item.id)\u{0}\(item.resultID)".utf8))
+        return "favorite-" + digest.map { String(format: "%02x", $0) }.joined()
     }
 }

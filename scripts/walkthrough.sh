@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Machine walkthrough — roles: user (CLI), agent (CLI actor=agent paths), extension (swift test fixtures).
+# Machine walkthrough — roles: user, agent, and non-shipping extension development fixtures.
 # Native app has no browser surface; this is the walkthrough-nt equivalent for Summon.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 export HOME="${WALKTHROUGH_HOME:-$(mktemp -d)}"
+export SUMMON_CONTAINER_DIR="${SUMMON_CONTAINER_DIR:-$HOME/container}"
 echo "walkthrough: HOME=$HOME"
+echo "walkthrough: SUMMON_CONTAINER_DIR=$SUMMON_CONTAINER_DIR"
 
 swift build >/dev/null
 BIN="$(swift build --show-bin-path)/summon-cli"
@@ -26,15 +28,16 @@ echo "=== role: human/user (CLI settings + search) ==="
 "$BIN" search "lock kind:command" | grep -qi lock
 
 echo "=== role: agent (same CLI, journals actor=agent) ==="
-"$BIN" settings set agent.walk true
+"$BIN" --actor agent settings set agent.walk true
 "$BIN" ai status || true
-"$BIN" web enable
-"$BIN" settings get web.search.baseURL | grep -q '127.0.0.1' || true
-"$BIN" web disable
+"$BIN" --actor agent settings set agent.socket.enabled true || true
+if "$BIN" settings get agent.socket.enabled 2>/dev/null | grep -q '^true$'; then
+  echo "walkthrough: agent restricted setting applied directly" >&2
+  exit 1
+fi
 "$BIN" window leftHalf | grep -q layout
-"$BIN" ai l0-consent || true
 
-echo "=== role: extension (shim fixtures via swift test) ==="
+echo "=== development seam: non-shipping extension fixtures ==="
 swift test --filter FixtureHarnessTests >/dev/null
 
 echo "=== role: system privacy (clipboard conceal) ==="

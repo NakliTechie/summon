@@ -23,44 +23,62 @@ public struct SnippetStore: Sendable {
     }
 
     public func upsert(_ snippet: Snippet) throws {
+        try dbQueue.write { db in
+            try upsert(snippet, in: db)
+        }
+    }
+
+    func upsert(_ snippet: Snippet, in db: Database) throws {
         guard !snippet.name.isEmpty else {
             throw CoreError.store("snippet name must be non-empty")
         }
-        try dbQueue.write { db in
-            try db.execute(
-                sql: """
-                    INSERT INTO snippets (id, name, body, keyword)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                      name = excluded.name,
-                      body = excluded.body,
-                      keyword = excluded.keyword
-                    """,
-                arguments: [snippet.id, snippet.name, snippet.body, snippet.keyword]
-            )
-        }
+        try db.execute(
+            sql: """
+                INSERT INTO snippets (id, name, body, keyword)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  name = excluded.name,
+                  body = excluded.body,
+                  keyword = excluded.keyword
+                """,
+            arguments: [snippet.id, snippet.name, snippet.body, snippet.keyword]
+        )
     }
 
     public func delete(id: String) throws {
         try dbQueue.write { db in
-            try db.execute(sql: "DELETE FROM snippets WHERE id = ?", arguments: [id])
+            try delete(id: id, in: db)
         }
+    }
+
+    func delete(id: String, in db: Database) throws {
+        try db.execute(sql: "DELETE FROM snippets WHERE id = ?", arguments: [id])
     }
 
     public func get(id: String) throws -> Snippet? {
         try dbQueue.read { db in
-            guard let row = try Row.fetchOne(db, sql: "SELECT * FROM snippets WHERE id = ?", arguments: [id]) else {
-                return nil
-            }
-            return Self.snippet(from: row)
+            try get(id: id, in: db)
         }
+    }
+
+    func get(id: String, in db: Database) throws -> Snippet? {
+        guard let row = try Row.fetchOne(
+            db,
+            sql: "SELECT * FROM snippets WHERE id = ?",
+            arguments: [id]
+        ) else { return nil }
+        return Self.snippet(from: row)
     }
 
     public func all() throws -> [Snippet] {
         try dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: "SELECT * FROM snippets ORDER BY name COLLATE NOCASE ASC")
-            return rows.map(Self.snippet(from:))
+            try all(in: db)
         }
+    }
+
+    func all(in db: Database) throws -> [Snippet] {
+        let rows = try Row.fetchAll(db, sql: "SELECT * FROM snippets ORDER BY name COLLATE NOCASE ASC")
+        return rows.map(Self.snippet(from:))
     }
 
     public func search(query: FilterQuery, limit: Int = 50) throws -> [SearchResult] {

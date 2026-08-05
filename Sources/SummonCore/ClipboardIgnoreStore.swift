@@ -20,39 +20,68 @@ public struct ClipboardIgnoreStore: Sendable {
     }
 
     public func add(_ app: String) throws {
-        let key = app.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
         try dbQueue.write { db in
-            try db.execute(
-                sql: "INSERT OR IGNORE INTO clipboard_ignore (bundle_or_name) VALUES (?)",
-                arguments: [key]
-            )
+            try add(app, in: db)
         }
+    }
+
+    func add(_ app: String, in db: Database) throws {
+        let key = app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty else { return }
+        try db.execute(
+            sql: "INSERT OR IGNORE INTO clipboard_ignore (bundle_or_name) VALUES (?)",
+            arguments: [key]
+        )
     }
 
     public func remove(_ app: String) throws {
         try dbQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM clipboard_ignore WHERE bundle_or_name = ?",
-                arguments: [app]
-            )
+            try remove(app, in: db)
         }
+    }
+
+    func remove(_ app: String, in db: Database) throws {
+        let key = app.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        try db.execute(
+            sql: "DELETE FROM clipboard_ignore WHERE bundle_or_name = ? COLLATE NOCASE",
+            arguments: [key]
+        )
     }
 
     public func all() throws -> [String] {
         try dbQueue.read { db in
-            try String.fetchAll(db, sql: "SELECT bundle_or_name FROM clipboard_ignore ORDER BY 1")
+            try all(in: db)
         }
     }
 
+    func all(in db: Database) throws -> [String] {
+        try String.fetchAll(db, sql: "SELECT bundle_or_name FROM clipboard_ignore ORDER BY 1")
+    }
+
     public func isIgnored(_ app: String?) throws -> Bool {
-        guard let app, !app.isEmpty else { return false }
+        try isIgnored(appName: app, bundleIdentifier: nil)
+    }
+
+    public func isIgnored(
+        appName: String?,
+        bundleIdentifier: String?
+    ) throws -> Bool {
+        let candidates = [appName, bundleIdentifier]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !candidates.isEmpty else { return false }
         return try dbQueue.read { db in
-            try Row.fetchOne(
-                db,
-                sql: "SELECT 1 FROM clipboard_ignore WHERE bundle_or_name = ?",
-                arguments: [app]
-            ) != nil
+            try candidates.contains { candidate in
+                try Row.fetchOne(
+                    db,
+                    sql: """
+                        SELECT 1 FROM clipboard_ignore
+                        WHERE bundle_or_name = ? COLLATE NOCASE
+                        """,
+                    arguments: [candidate]
+                ) != nil
+            }
         }
     }
 }

@@ -9,10 +9,10 @@ A sovereign, native macOS launcher. Local-first. Free and open source (AGPL-3.0)
 - **Launcher** — ⌥Space opens a compact search bar (Spotlight-style: thin until you type, then results expand).
 - **Search ladder** — apps and files via the system metadata index, optional full-text (FTS, consent-gated), room for semantic recall later.
 - **Object → action** — select a result, Tab / ⌘K, choose an action.
-- **Clipboard history** — resident capture while Summon runs; dedicated browser on **⌥⇧V** (text today; image history planned).
+- **Clipboard history** — resident text, image, HTML, and RTF capture while Summon runs; dedicated browser on **⌥⇧V**.
 - **Snippets, quicklinks, calc, emoji**, window layouts, and more modules on the same core.
-- **Extensions** — sandboxed JS shim for third-party packages; App Intents surface evolving.
-- **AI** — staged only (never auto-executes); L1 Apple Foundation Models / L0 packaged model when configured; compile-out removability gate.
+- **Extensions** — deferred from R1. The registry/JSC harness remains a development target; shipping executables expose no installer, grants, results, or runner.
+- **AI** — staged only (never auto-executes); capability-gated L1 Apple Foundation Models plus an experimental, consented, user-managed L0 MLX adapter; compile-out removability gate.
 - **Agent face** — CLI + optional UNIX socket (default **off**), every call journaled with `actor=`.
 
 ## Use (local build)
@@ -30,9 +30,18 @@ open /Applications/Summon.app
 |---|---|
 | Open launcher | **⌥Space** (or menu bar 🔍 → Show Launcher) |
 | Clipboard history | **⌥⇧V** (or menu → Clipboard History) |
+| Arrange focused window | **⌃⌥** + arrows, U/I/J/K, Return/C, or D/F/G |
 | Quit | Menu bar → Quit |
 
-Launch at login defaults **on** (menu bar can toggle). Clipboard history needs the app process running in the background.
+First launch offers an explicit **Keep Ready at Login** choice. The recommended choice is on because clipboard history needs the app process running in the background. Preferences and the menu bar can change it later.
+
+## Current verification boundaries
+
+- [~] Image and rich clipboard storage has automated coverage. Residual verifier: copy screenshots, HTML, and RTF between real Mac applications; inspect target-app paste, rapid-copy retention, rendered failures, and VoiceOver.
+- [~] Window layout targets the focused window on its display, uses the primary-display AX origin, and registers a stable 13-action shortcut map. Cross-Space moves are omitted because macOS has no public API for them. Residual verifier: exercise stacked displays, active Spaces, AX failures, and every shortcut on a real Mac.
+- [~] App Intents, EventKit Calendar, menu AX, hyperkey, Full Disk Access probing, and Screen Recording probing are deferred from R1. Their explicit fixture/configuration seams produce no production results or optimistic permission state. Residual verifier before reopening: live enumerators, invokers, bindings, and permission-denied walkthroughs against installed applications.
+- [~] Raycast-compatible extensions are deferred from R1. `SummonShim` retains registry, grants, JSC runtime, and synthetic fixtures as development seams, while `summon-app` and `summon-cli` do not depend on or link them. Residual verifier before reopening the surface: run 3 unmodified store packages through production install, grant, render, invoke, restart, removal, denial, escape, and resource-limit journeys.
+- [~] AI embeds immutable official revisions and full inference-artifact manifests; valid/tampered fixtures cover verification and quarantine. The native launcher can stage missed typed intent and shows unavailable states. L0 is an experimental user-managed process adapter, not the packaged brain; hash ranking and L2/L3 detection remain internal experiments. Residual verifier: explicitly consent to the 5.2 GB L0 download, exercise live generation on the M4 host, then replace the bridge with an embedded authenticated runtime before calling L0 packaged.
 
 **Install via Homebrew** (when the first notarized release exists):
 
@@ -45,11 +54,11 @@ brew install --cask naklitechie/tap/summon
 ```bash
 make build          # SPM debug
 make test
-make verify         # merge gate (tests, cli-e2e, lint, removability, walkthrough, latency-soft)
+make verify         # merge gate: tests, CLI, lint, removability, extension omission, walkthrough, network, version, hard latency
 make app            # ad-hoc Summon.app under dist/
 ```
 
-SPM targets: `SummonCore` · `SummonUI` · `SummonShim` · `SummonAI` (optional via `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`.
+SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (development-only) · `SummonAI` (optional via `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`.
 
 CLI (from SPM build):
 

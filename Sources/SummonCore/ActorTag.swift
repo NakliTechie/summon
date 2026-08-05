@@ -36,6 +36,15 @@ public enum ActorTag: Sendable, Hashable, Codable, Equatable {
         }
     }
 
+    /// Actors accepted from the public CLI flag. Internal roles are never caller-selectable.
+    public init(cliLabel: String) throws {
+        switch cliLabel {
+        case "user": self = .user
+        case "agent": self = .agent
+        default: throw CoreError.invalidActor(cliLabel)
+        }
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let label = try container.decode(String.self)

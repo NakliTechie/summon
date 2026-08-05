@@ -83,9 +83,51 @@ final class ModuleRouterTests: XCTestCase {
         )
         try ModuleRouter.perform(actionName: "file.getInfo", result: hit, executor: exec)
         XCTAssertTrue(exec.calls.contains { $0.op == "reveal" })
+        XCTAssertTrue(exec.calls.contains { $0.op == "getInfo" })
     }
 
-    func testSettingsOpenCopiesKey() throws {
+    func testGetInfoPassesNewlinePathAsAppleScriptArgument() throws {
+        let exec = RecordingModuleExecutor()
+        let path = "/tmp/line-one\nline-two.txt"
+        let hit = SearchResult(id: "file:newline", title: "newline", kind: .file, path: path)
+
+        try ModuleRouter.perform(actionName: "file.getInfo", result: hit, executor: exec)
+
+        let call = try XCTUnwrap(exec.calls.first { $0.op == "getInfo" })
+        XCTAssertTrue(call.value.contains("item 1 of argv"))
+        XCTAssertTrue(call.value.hasSuffix("-- \(path)"))
+        XCTAssertFalse(call.value.contains("POSIX file \"\(path)\""))
+    }
+
+    func testDictionaryLookupPercentEncodesWords() throws {
+        let exec = RecordingModuleExecutor()
+        let hit = SearchResult(
+            id: "dict:two words",
+            title: "two words",
+            kind: .command,
+            payload: ["word": .string("two words/notes")]
+        )
+
+        try ModuleRouter.perform(actionName: "dict.define", result: hit, executor: exec)
+
+        XCTAssertEqual(exec.calls.last?.value, "dict://two%20words%2Fnotes")
+    }
+
+    func testSpeechUsesOptionDelimiter() throws {
+        let exec = RecordingModuleExecutor()
+        let hit = SearchResult(
+            id: "speech:dash",
+            title: "speak",
+            kind: .command,
+            payload: ["text": .string("-o /tmp/not-an-output")]
+        )
+
+        try ModuleRouter.perform(actionName: "speech.speak", result: hit, executor: exec)
+
+        XCTAssertEqual(exec.calls.last?.value, "-- -o /tmp/not-an-output")
+    }
+
+    func testSettingsOpenRoutesToTaskGroupedPreferences() throws {
         let exec = RecordingModuleExecutor()
         let hit = SearchResult(
             id: "settings:k",
@@ -95,7 +137,31 @@ final class ModuleRouterTests: XCTestCase {
             payload: ["settingsKey": .string("agent.socket.enabled")]
         )
         try ModuleRouter.perform(actionName: "settings.open", result: hit, executor: exec)
-        XCTAssertEqual(exec.pasteboard, "agent.socket.enabled")
+        XCTAssertEqual(exec.calls.last?.op, "app.navigate")
+        XCTAssertEqual(exec.calls.last?.value, AppDestination.preferencesAutomation.rawValue)
+        XCTAssertTrue(exec.pasteboard.isEmpty)
+    }
+
+    func testHiddenPseudoActionsRejectWithoutSideEffects() {
+        let exec = RecordingModuleExecutor()
+        let file = SearchResult(id: "file:x", title: "x", kind: .file, path: "/tmp/x")
+        let snippet = SearchResult(
+            id: "snippet:x",
+            title: "x",
+            kind: .snippet,
+            payload: ["body": .string("secret")]
+        )
+
+        for (name, result) in [
+            ("file.openWith", file),
+            ("snippet.edit", snippet),
+            ("snippet.paste", snippet),
+            ("calc.paste", snippet),
+        ] {
+            XCTAssertThrowsError(try ModuleRouter.perform(actionName: name, result: result, executor: exec))
+        }
+        XCTAssertTrue(exec.calls.isEmpty)
+        XCTAssertTrue(exec.pasteboard.isEmpty)
     }
 
     func testScreenshotActionRoutes() throws {
@@ -109,6 +175,39 @@ final class ModuleRouterTests: XCTestCase {
         )
         try ModuleRouter.perform(actionName: "screenshot.region", result: hit, executor: exec)
         XCTAssertTrue(exec.calls.contains { $0.op == "screenshot.region" })
+    }
+
+    func testWindowArrangementRoutesThroughNativeAdapterSeam() {
+        let exec = RecordingModuleExecutor()
+        let hit = SearchResult(
+            id: "window:left-half",
+            title: "Left half",
+            kind: .command,
+            score: 1,
+            payload: ["action": .string("window.arrange"), "layout": .string("leftHalf")]
+        )
+
+        XCTAssertNoThrow(try ModuleRouter.perform(actionName: "window.arrange", result: hit, executor: exec))
+        XCTAssertEqual(exec.calls.last?.op, "window.arrange")
+        XCTAssertEqual(exec.calls.last?.value, "leftHalf:8.0")
+    }
+
+    func testHiddenPseudoActionsRejectDirectInvocation() {
+        let exec = RecordingModuleExecutor()
+        for action in ["contacts.find", "camera.quick", "apps.autoquit"] {
+            let hit = SearchResult(
+                id: "hidden:\(action)",
+                title: action,
+                kind: .command,
+                score: 1,
+                payload: ["action": .string(action)]
+            )
+
+            XCTAssertThrowsError(try ModuleRouter.perform(actionName: action, result: hit, executor: exec)) { error in
+                XCTAssertEqual(error as? CoreError, .unknownAction(action))
+            }
+        }
+        XCTAssertTrue(exec.calls.isEmpty)
     }
 
     func testSessionDefaultActionUsesPayload() throws {
@@ -146,5 +245,60 @@ final class ModuleRouterTests: XCTestCase {
         }
         XCTAssertFalse(exec.calls.isEmpty)
         _ = session
+    }
+
+    func testRejectedConfirmationThrowsAndDoesNotRecordUsage() throws {
+        let core = try SummonCore.inMemory(executor: RejectingModuleExecutor())
+        let session = LauncherSession(core: core)
+        session.applyResults(
+            "broken",
+            [
+                SearchResult(
+                    id: "app:broken",
+                    title: "Broken",
+                    kind: .app,
+                    path: "/Applications/Broken.app"
+                ),
+            ]
+        )
+
+        XCTAssertThrowsError(try session.confirm(actor: .user))
+        XCTAssertTrue(try core.frecency.recents().isEmpty)
+        XCTAssertTrue(try core.journal.allEntries().last?.outcome.hasPrefix("rejected:") == true)
+    }
+
+    func testEmptyTrashConfirmationIsMarkedDestructive() throws {
+        let core = try SummonCore.inMemory()
+        let session = LauncherSession(core: core)
+        session.applyResults(
+            "empty trash",
+            [
+                SearchResult(
+                    id: "command:empty-trash",
+                    title: "Empty Trash",
+                    kind: .command,
+                    path: "summon://system/empty-trash",
+                    payload: ["url": .string("summon://system/empty-trash")]
+                ),
+            ]
+        )
+
+        let confirmation = try session.prepareConfirmation()
+
+        XCTAssertTrue(confirmation.requiresUserConfirmation)
+    }
+}
+
+private struct RejectingModuleExecutor: ModuleExecuting {
+    func open(pathOrURL: String) throws {
+        throw CoreError.io("injected open failure")
+    }
+
+    func reveal(path: String) throws {
+        throw CoreError.io("injected reveal failure")
+    }
+
+    func copyToPasteboard(text: String) throws {
+        throw CoreError.io("injected pasteboard failure")
     }
 }

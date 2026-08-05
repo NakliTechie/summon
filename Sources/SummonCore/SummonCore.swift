@@ -22,13 +22,18 @@ public final class SummonCore: @unchecked Sendable {
     public var search: SearchService
     public var webConfig: WebSearchConfig = .default
     /// In-memory cores keep consent under a private temp dir (not shared).
-    private let ftsConsentContainer: URL?
+    private let ftsConsentContainer: URL
     /// Migration / startup issues (empty when all optional tables migrated cleanly).
     public private(set) var startupWarnings: [String] = []
 
     public convenience init(containerURL: URL) throws {
         let dbQueue = try SummonDatabase.open(in: containerURL)
-        self.init(dbQueue: dbQueue, containerURL: containerURL)
+        self.init(
+            dbQueue: dbQueue,
+            containerURL: containerURL,
+            spotlight: MdfindSpotlightIndex(),
+            executor: ProcessModuleExecutor()
+        )
     }
 
     public convenience init() throws {
@@ -45,49 +50,56 @@ public final class SummonCore: @unchecked Sendable {
         return SummonCore(
             dbQueue: dbQueue,
             containerURL: nil,
-            spotlight: spotlight,
+            spotlight: spotlight ?? FakeSpotlightIndex(),
             appSearchPaths: appSearchPaths,
-            executor: executor
+            executor: executor ?? RecordingModuleExecutor()
         )
     }
 
     public init(
         dbQueue: DatabaseQueue,
         containerURL: URL?,
-        spotlight: (any SpotlightIndexing)? = nil,
+        spotlight: any SpotlightIndexing,
         appSearchPaths: [URL]? = nil,
-        executor: (any ModuleExecuting)? = nil
+        executor: any ModuleExecuting
     ) {
         self.dbQueue = dbQueue
         self.containerURL = containerURL
-        if containerURL == nil {
+        if let containerURL {
+            self.ftsConsentContainer = containerURL
+        } else {
             let tmp = FileManager.default.temporaryDirectory
                 .appendingPathComponent("summon-fts-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
             self.ftsConsentContainer = tmp
-        } else {
-            self.ftsConsentContainer = nil
         }
         self.settings = SettingsStore(dbQueue: dbQueue)
         self.snippets = SnippetStore(dbQueue: dbQueue)
         self.clipboard = ClipboardStore(dbQueue: dbQueue)
         self.quicklinks = QuicklinkStore(dbQueue: dbQueue)
         self.journal = ActionJournal(dbQueue: dbQueue)
+        let ignoreStore = ClipboardIgnoreStore(dbQueue: dbQueue)
+        let aliasStore = AliasStore(dbQueue: dbQueue)
+        let favoriteStore = FavoriteStore(dbQueue: dbQueue)
+        let stagedStore = StagedProposalStore(dbQueue: dbQueue)
+        let frecencyStore = FrecencyStore(dbQueue: dbQueue)
+        let historyStore = SearchHistoryStore(dbQueue: dbQueue)
         self.bus = ActionBus(
             settings: settings,
             snippets: snippets,
             clipboard: clipboard,
+            clipboardIgnore: ignoreStore,
             quicklinks: quicklinks,
+            aliases: aliasStore,
+            favorites: favoriteStore,
+            staged: stagedStore,
+            frecency: frecencyStore,
+            history: historyStore,
             journal: journal,
-            executor: executor ?? RecordingModuleExecutor()
+            dbQueue: dbQueue,
+            executor: executor
         )
         self.schemaGate = SchemaGate()
-        let stagedStore = StagedProposalStore(dbQueue: dbQueue)
-        let frecencyStore = FrecencyStore(dbQueue: dbQueue)
-        let aliasStore = AliasStore(dbQueue: dbQueue)
-        let historyStore = SearchHistoryStore(dbQueue: dbQueue)
-        let favoriteStore = FavoriteStore(dbQueue: dbQueue)
-        let ignoreStore = ClipboardIgnoreStore(dbQueue: dbQueue)
         let ftsIndex = FTSIndex(dbQueue: dbQueue)
         self.staged = stagedStore
         self.frecency = frecencyStore
@@ -97,31 +109,37 @@ public final class SummonCore: @unchecked Sendable {
         self.clipboardIgnore = ignoreStore
         self.fts = ftsIndex
 
-        // Collect migration failures instead of swallowing silently (Batch E4)
-        var warnings: [String] = []
-        func runMigrate(_ name: String, _ body: () throws -> Void) {
-            do { try body() } catch {
-                warnings.append("\(name): \(error.localizedDescription)")
-            }
-        }
-        runMigrate("staged") { try stagedStore.migrate() }
-        runMigrate("frecency") { try frecencyStore.migrate() }
-        runMigrate("aliases") { try aliasStore.migrate() }
-        runMigrate("history") { try historyStore.migrate() }
-        runMigrate("favorites") { try favoriteStore.migrate() }
-        runMigrate("clipboardIgnore") { try ignoreStore.migrate() }
-        runMigrate("fts") { try ftsIndex.migrate() }
-        self.startupWarnings = warnings
+        self.startupWarnings = Self.collectStartupWarnings(
+            migrations: [
+                ("staged", stagedStore.migrate),
+                ("frecency", frecencyStore.migrate),
+                ("aliases", aliasStore.migrate),
+                ("history", historyStore.migrate),
+                ("favorites", favoriteStore.migrate),
+                ("clipboardIgnore", ignoreStore.migrate),
+                ("fts", ftsIndex.migrate),
+            ],
+            staged: stagedStore,
+            journal: journal
+        )
 
-        let ftsOn: Bool
+        let persistedFTSEnabled: Bool
         if case .bool(let b) = try? settings.get("search.fts.enabled") {
-            ftsOn = b
+            persistedFTSEnabled = b
         } else {
-            ftsOn = false
+            persistedFTSEnabled = false
+        }
+        let consentStore = FTSConsentStore(container: ftsConsentContainer)
+        let ftsHasConsent = consentStore.load().granted
+        let ftsOn = persistedFTSEnabled && ftsHasConsent
+        if persistedFTSEnabled && !ftsHasConsent {
+            self.startupWarnings.append(
+                "fts: enabled setting ignored because consent is absent"
+            )
         }
         self.search = SearchService(
             apps: AppCatalog(searchPaths: appSearchPaths),
-            spotlight: spotlight ?? FakeSpotlightIndex(),
+            spotlight: spotlight,
             snippets: snippets,
             clipboard: clipboard,
             quicklinks: quicklinks,
@@ -138,8 +156,14 @@ public final class SummonCore: @unchecked Sendable {
             webConfig.baseURL = url
         }
 
-        // Wire propose-only staging for agent/ext elevated actions
-        self.bus.stageElevated = { envelope in
+        configureActionBus(stagedStore: stagedStore, consentStore: consentStore)
+    }
+
+    private func configureActionBus(
+        stagedStore: StagedProposalStore,
+        consentStore: FTSConsentStore
+    ) {
+        self.bus.stageElevated = { envelope, db in
             let data = try JSONEncoder().encode(envelope.action)
             guard let json = String(data: data, encoding: .utf8) else {
                 throw CoreError.store("failed to encode staged action")
@@ -153,81 +177,219 @@ public final class SummonCore: @unchecked Sendable {
                 egressSummary: "local-stage",
                 state: "staged"
             )
-            try stagedStore.upsert(proposal)
+            try stagedStore.upsert(proposal, in: db)
             return proposalID
+        }
+        self.bus.didStageElevated = { proposalID in
+            NotificationCenter.default.post(
+                name: .summonStagedProposalDidChange,
+                object: nil,
+                userInfo: ["proposalID": proposalID]
+            )
+        }
+        self.bus.ftsConsentGranted = { [weak self] in
+            self?.ftsConsentGranted() ?? false
+        }
+        self.bus.grantFTSConsent = {
+            var consent = consentStore.load()
+            consent.grant()
+            try consentStore.save(consent)
         }
     }
 
     /// Human accept of an agent/ext staged CoreAction (rung `agent`). Re-dispatches as `.user`.
     @discardableResult
-    public func acceptStagedAgentAction(id: String) throws -> ActionResult {
-        guard let proposal = try staged.get(id), proposal.state == "staged" else {
-            throw CoreError.store("no staged proposal \(id)")
+    public func acceptStagedAgentAction(
+        id: String,
+        reviewedOutput: String,
+        actor: ActorTag
+    ) throws -> ActionResult {
+        guard actor == .user else {
+            throw CoreError.store("staged agent actions require human acceptance in Summon UI")
         }
-        guard proposal.rung == "agent" else {
-            throw CoreError.store("proposal \(id) is not an agent action (rung=\(proposal.rung))")
+        guard let data = reviewedOutput.data(using: .utf8) else {
+            throw CoreError.store("reviewed action payload not UTF-8")
         }
-        guard let data = proposal.output.data(using: .utf8) else {
-            throw CoreError.store("staged action payload not UTF-8")
+        let action = try SchemaGate().decodeReviewedAction(from: data)
+        guard let actionID = UUID(uuidString: id) else {
+            throw CoreError.store("proposal id cannot identify the accepted action")
         }
-        let action = try JSONDecoder().decode(CoreAction.self, from: data)
-        try staged.setState(id: id, state: "accepted")
-        return try dispatch(action: action, actor: .user)
+        guard try staged.claimForApply(
+            id: id,
+            rung: "agent",
+            reviewedOutput: reviewedOutput
+        ) != nil else {
+            throw CoreError.store("proposal \(id) is not a staged agent action")
+        }
+        let result = try dispatch(action: action, actor: .user, id: actionID)
+        let state: String
+        let reason: String?
+        switch result.outcome {
+        case .applied:
+            state = "accepted"
+            reason = nil
+        case .rejected(let rejection):
+            state = "apply_failed"
+            reason = rejection
+        case .staged(let proposalID):
+            state = "apply_failed"
+            reason = "accepted action restaged as \(proposalID)"
+        }
+        try finalizeProposal(
+            id: id,
+            from: "applying",
+            to: state,
+            reason: reason,
+            actor: actor
+        )
+        notifyStagedProposalChange(id: id)
+        return result
     }
 
     /// Human reject of a staged agent action.
-    public func rejectStagedAgentAction(id: String) throws {
-        guard let proposal = try staged.get(id), proposal.state == "staged" else {
-            throw CoreError.store("no staged proposal \(id)")
+    public func rejectStagedAgentAction(id: String, actor: ActorTag) throws {
+        guard actor == .user else {
+            throw CoreError.store("staged agent actions require human rejection in Summon UI")
         }
-        try staged.setState(id: id, state: "rejected")
+        guard let proposal = try staged.get(id), proposal.rung == "agent" else {
+            throw CoreError.store("proposal \(id) is not an agent action")
+        }
+        try rejectStagedProposal(id: id, actor: actor)
     }
 
-    /// Enable S2 FTS only after explicit consent (Batch C).
-    public func setFTSEnabled(_ enabled: Bool) throws {
-        if enabled {
-            let consentStore = ftsConsentStore()
-            var consent = consentStore.load()
-            guard consent.granted else {
-                throw CoreError.store(
-                    "FTS consent required — run: summon fts consent"
-                )
+    /// Human acceptance of staged generated text. The reviewed text and decision commit together.
+    public func acceptStagedTextProposal(
+        id: String,
+        reviewedOutput: String,
+        actor: ActorTag
+    ) throws {
+        guard actor == .user else {
+            throw CoreError.store("staged text requires human acceptance")
+        }
+        guard let proposal = try staged.get(id), proposal.rung != "agent" else {
+            throw CoreError.store("proposal \(id) is not staged generated text")
+        }
+        try finalizeProposal(
+            id: id,
+            from: "staged",
+            to: "accepted",
+            reason: nil,
+            reviewedOutput: reviewedOutput,
+            actor: actor
+        )
+        notifyStagedProposalChange(id: id)
+    }
+
+    /// Human rejection of any staged proposal. State and decision journal commit together.
+    public func rejectStagedProposal(id: String, actor: ActorTag) throws {
+        guard actor == .user else {
+            throw CoreError.store("staged proposals require human rejection")
+        }
+        guard let proposal = try staged.get(id), proposal.state == "staged" else {
+            throw CoreError.store("proposal \(id) is not staged")
+        }
+        try finalizeProposal(
+            id: id,
+            from: "staged",
+            to: "rejected",
+            reason: nil,
+            actor: actor
+        )
+        notifyStagedProposalChange(id: id)
+    }
+
+    private func finalizeProposal(
+        id: String,
+        from expectedState: String,
+        to newState: String,
+        reason: String? = nil,
+        reviewedOutput: String? = nil,
+        actor: ActorTag
+    ) throws {
+        let decision = ActionEnvelope(
+            actor: actor,
+            action: .proposalDecision(id: id, state: newState, reason: reason)
+        )
+        try bus.finalizeProposal(
+            id: id,
+            from: expectedState,
+            to: newState,
+            failureReason: reason,
+            reviewedOutput: reviewedOutput,
+            decision: decision
+        )
+    }
+
+    private static func collectStartupWarnings(
+        migrations: [(String, () throws -> Void)],
+        staged: StagedProposalStore,
+        journal: ActionJournal
+    ) -> [String] {
+        var warnings: [String] = []
+        for (name, migrate) in migrations {
+            do { try migrate() } catch {
+                warnings.append("\(name): \(error.localizedDescription)")
             }
         }
-        try settings.set("search.fts.enabled", value: .bool(enabled))
-        search.ftsEnabled = enabled
-    }
-
-    public func ftsConsentStore() -> FTSConsentStore {
-        if let containerURL {
-            return FTSConsentStore(container: containerURL)
+        do {
+            let recovery = try staged.reconcileApplying(journal: journal)
+            if recovery.total > 0 {
+                warnings.append(
+                    "staged recovery: reset \(recovery.resetToStaged), "
+                        + "accepted \(recovery.accepted), failed \(recovery.failed)"
+                )
+            }
+        } catch {
+            warnings.append("staged recovery: \(error.localizedDescription)")
         }
-        return FTSConsentStore(container: ftsConsentContainer!)
+        do {
+            let expired = try staged.expireStale()
+            if expired > 0 {
+                warnings.append("staged: expired \(expired) unreviewed proposal(s)")
+            }
+        } catch {
+            warnings.append("staged expiry: \(error.localizedDescription)")
+        }
+        do {
+            let readResult = try journal.readAll()
+            for entry in readResult.entries where entry.outcome == "intent" {
+                warnings.append(
+                    "journal effect intent \(entry.seq): \(entry.action.name) outcome unresolved"
+                )
+            }
+            for corruption in readResult.corruptions {
+                let location = corruption.seq.map(String.init) ?? "unknown"
+                warnings.append("journal row \(location): \(corruption.reason)")
+            }
+            if readResult.didReachMaterializationLimit {
+                warnings.append("journal scan stopped at the bounded materialization limit")
+            }
+        } catch {
+            warnings.append("journal scan: \(error.localizedDescription)")
+        }
+        do {
+            _ = try staged.list(state: nil)
+        } catch {
+            warnings.append("staged scan: \(error.localizedDescription)")
+        }
+        return warnings
     }
 
-    public func grantFTSConsent() throws {
-        var c = ftsConsentStore().load()
-        c.grant()
-        try ftsConsentStore().save(c)
-    }
-
-    public func ftsConsentGranted() -> Bool {
-        ftsConsentStore().load().granted
-    }
-
-    public func enableLiveSpotlight() {
-        search.spotlight = MdfindSpotlightIndex()
-    }
-
-    public func setExecutor(_ executor: any ModuleExecuting) {
-        bus.setExecutor(executor)
+    private func notifyStagedProposalChange(id: String) {
+        NotificationCenter.default.post(
+            name: .summonStagedProposalDidChange,
+            object: nil,
+            userInfo: ["proposalID": id]
+        )
     }
 
     // MARK: - Dispatch
 
     @discardableResult
     public func dispatch(_ envelope: ActionEnvelope) throws -> ActionResult {
-        try bus.dispatch(envelope)
+        let result = try bus.dispatch(envelope)
+        synchronizeRuntimeState(after: result, action: envelope.action)
+        return result
     }
 
     @discardableResult
@@ -249,7 +411,48 @@ public final class SummonCore: @unchecked Sendable {
         timestamp: Date = Date()
     ) throws -> ActionResult {
         let envelope = ActionEnvelope(id: id, actor: actor, timestamp: timestamp, action: action)
-        return try bus.dispatch(envelope)
+        let result = try bus.dispatch(envelope)
+        synchronizeRuntimeState(after: result, action: action)
+        return result
+    }
+
+    @discardableResult
+    func dispatchBatch(actions: [CoreAction], actor: ActorTag) throws -> [ActionResult] {
+        let timestamp = Date()
+        let envelopes = actions.map {
+            ActionEnvelope(actor: actor, timestamp: timestamp, action: $0)
+        }
+        let results = try bus.dispatchBatch(envelopes)
+        for (result, action) in zip(results, actions) {
+            synchronizeRuntimeState(after: result, action: action)
+        }
+        return results
+    }
+
+    func synchronizeRuntimeState(after result: ActionResult, action: CoreAction) {
+        guard result.isApplied else { return }
+        switch action {
+        case .webConfigSet(let enabled, let baseURL):
+            webConfig.enabled = enabled
+            webConfig.baseURL = baseURL
+        case .ftsSetEnabled(let enabled):
+            search.ftsEnabled = enabled
+        case .settingsSet(let key, let value):
+            if key == "web.search.enabled", case .bool(let enabled) = value {
+                webConfig.enabled = enabled
+            }
+            if key == "web.search.baseURL", case .string(let baseURL) = value {
+                webConfig.baseURL = baseURL
+            }
+        case .settingsDelete(let key):
+            if key == "web.search.enabled" { webConfig.enabled = false }
+            if key == "web.search.baseURL" { webConfig.baseURL = WebSearchConfig.default.baseURL }
+        case .importReset:
+            webConfig = .default
+            search.ftsEnabled = false
+        default:
+            break
+        }
     }
 
     /// Object→action / default invoke path — journals module.run and executes.
@@ -269,6 +472,10 @@ public final class SummonCore: @unchecked Sendable {
             if case .string(let cid) = result.payload["clipboardID"] {
                 return try dispatch(action: .clipboardPin(id: cid, pinned: true), actor: actor)
             }
+        case "clipboard.unpin":
+            if case .string(let cid) = result.payload["clipboardID"] {
+                return try dispatch(action: .clipboardPin(id: cid, pinned: false), actor: actor)
+            }
         case "snippet.delete":
             if case .string(let sid) = result.payload["snippetID"] {
                 return try dispatch(action: .snippetDelete(id: sid), actor: actor)
@@ -277,13 +484,26 @@ public final class SummonCore: @unchecked Sendable {
             if case .string(let qid) = result.payload["quicklinkID"] {
                 return try dispatch(action: .quicklinkDelete(id: qid), actor: actor)
             }
+        case "favorite.add":
+            return try dispatch(
+                action: .favoriteAdd(
+                    id: UUID().uuidString,
+                    resultID: result.id,
+                    title: result.title,
+                    kind: result.kind.rawValue,
+                    path: result.path
+                ),
+                actor: actor
+            )
+        case "favorite.remove":
+            return try dispatch(action: .favoriteRemove(resultID: result.id), actor: actor)
         default:
             break
         }
 
         var payload = result.payload
         payload["title"] = .string(result.title)
-        return try dispatch(
+        let outcome = try dispatch(
             action: .moduleRun(
                 name: actionName,
                 targetID: result.id,
@@ -292,6 +512,16 @@ public final class SummonCore: @unchecked Sendable {
             ),
             actor: actor
         )
+        if outcome.isApplied,
+           result.kind == .clipboard,
+           ["clipboard.copy", "clipboard.copyPlain"].contains(actionName),
+           case .string(let clipboardID) = result.payload["clipboardID"] {
+            _ = try dispatch(
+                action: .clipboardTouch(id: clipboardID, createdAt: Date()),
+                actor: actor
+            )
+        }
+        return outcome
     }
 
     /// Ingest clipboard text only if privacy gate allows (Maccy parity).
@@ -300,65 +530,108 @@ public final class SummonCore: @unchecked Sendable {
         text: String,
         types: [String],
         sourceApp: String? = nil,
+        sourceBundleID: String? = nil,
+        observedSourceApp: String? = nil,
+        observedSourceBundleID: String? = nil,
         actor: ActorTag = .system
     ) throws -> ActionResult? {
         guard PasteboardPrivacy.isStorableText(types: types, hasString: !text.isEmpty) else {
             return nil
         }
-        if try clipboardIgnore.isIgnored(sourceApp) {
+        if try clipboardIgnore.isIgnored(
+            appName: sourceApp,
+            bundleIdentifier: sourceBundleID
+        ) || clipboardIgnore.isIgnored(
+            appName: observedSourceApp,
+            bundleIdentifier: observedSourceBundleID
+        ) {
             return nil
         }
-        return try dispatch(
-            action: .clipboardIngest(
-                id: UUID().uuidString,
-                text: text,
-                sourceApp: sourceApp,
-                createdAt: Date(),
-                pinned: false
-            ),
+        return try ingestClipboard(
+            item: ClipboardItem(text: text, sourceApp: sourceApp),
+            types: types,
+            sourceApp: sourceApp,
+            sourceBundleID: sourceBundleID,
+            observedSourceApp: observedSourceApp,
+            observedSourceBundleID: observedSourceBundleID,
             actor: actor
         )
     }
 
+    /// Ingest a privacy-vetted text, rich-text, or image clipboard item.
+    @discardableResult
+    public func ingestClipboard(
+        item: ClipboardItem,
+        types: [String],
+        sourceApp: String? = nil,
+        sourceBundleID: String? = nil,
+        observedSourceApp: String? = nil,
+        observedSourceBundleID: String? = nil,
+        actor: ActorTag = .system
+    ) throws -> ActionResult? {
+        guard !PasteboardPrivacy.shouldSkip(types: types) else { return nil }
+        try ClipboardStore.validate(item)
+        if try clipboardIgnore.isIgnored(
+            appName: sourceApp,
+            bundleIdentifier: sourceBundleID
+        ) || clipboardIgnore.isIgnored(
+            appName: observedSourceApp,
+            bundleIdentifier: observedSourceBundleID
+        ) {
+            return nil
+        }
+        let action: CoreAction
+        if item.contentKind == .plainText {
+            action = .clipboardIngest(
+                id: item.id,
+                text: item.text,
+                sourceApp: item.sourceApp,
+                createdAt: item.createdAt,
+                pinned: item.isPinned
+            )
+        } else if let flavor = item.flavor, let data = item.data {
+            action = .clipboardIngestRich(
+                id: item.id,
+                text: item.text,
+                sourceApp: item.sourceApp,
+                createdAt: item.createdAt,
+                pinned: item.isPinned,
+                contentKind: item.contentKind,
+                flavor: flavor,
+                data: data
+            )
+        } else {
+            throw CoreError.store("rich clipboard content is incomplete")
+        }
+        return try dispatch(action: action, actor: actor)
+    }
+
     /// Record usage after a successful confirm (frecency + history).
-    public func recordUsage(result: SearchResult, query: String) throws {
-        try frecency.record(resultID: result.id, title: result.title, kind: result.kind.rawValue)
-        if !query.isEmpty {
-            try history.record(query)
-        }
-    }
-
-    // MARK: - Snapshot / export
-
-    public func snapshot() throws -> CoreSnapshot {
-        CoreSnapshot(
-            settings: try settings.all(),
-            snippets: try snippets.all(),
-            clipboard: try clipboard.all(),
-            quicklinks: try quicklinks.all()
+    public func recordUsage(
+        result: SearchResult,
+        query: String,
+        actor: ActorTag = .user,
+        at date: Date = Date()
+    ) throws {
+        let outcome = try dispatch(
+            action: .usageRecord(
+                resultID: result.id,
+                title: result.title,
+                kind: result.kind.rawValue,
+                path: result.path,
+                payload: result.payload,
+                query: query,
+                historyID: UUID().uuidString,
+                usedAt: date
+            ),
+            actor: actor,
+            timestamp: date
         )
-    }
-
-    public func exportJSON() throws -> Data {
-        try snapshot().canonicalJSON()
-    }
-
-    // MARK: - Replay
-
-    /// Pure store rebuild: applies actions without re-journaling or re-running destructive guard.
-    public func replay(entries: [JournalEntry]) throws {
-        for entry in entries where entry.outcome == "applied" {
-            // Side-effecting module runs are not re-executed on replay (store rebuild only).
-            if case .moduleRun = entry.action { continue }
-            try bus.applyForReplay(entry.action)
+        guard outcome.isApplied else {
+            throw CoreError.store("usage record was not applied: \(outcome.outcome)")
         }
     }
 
-    public func replayedCopy() throws -> SummonCore {
-        let fresh = try SummonCore.inMemory()
-        try fresh.replay(entries: try journal.appliedEntries())
-        return fresh
-    }
 }
 
 public enum SummonVersion {
@@ -367,14 +640,49 @@ public enum SummonVersion {
 }
 
 extension SummonCore {
-    public func persistWebConfig() throws {
-        _ = try dispatch(
-            action: .settingsSet(key: "web.search.enabled", value: .bool(webConfig.enabled)),
-            actor: .user
+    /// Enable S2 FTS only after explicit consent (Batch C).
+    public func setFTSEnabled(_ enabled: Bool, actor: ActorTag = .user) throws {
+        let result = try dispatch(action: .ftsSetEnabled(enabled: enabled), actor: actor)
+        guard result.isApplied else {
+            throw CoreError.store("FTS configuration was not applied: \(result.outcome)")
+        }
+    }
+
+    public func ftsConsentStore() -> FTSConsentStore {
+        FTSConsentStore(container: ftsConsentContainer)
+    }
+
+    public func grantFTSConsent(actor: ActorTag = .user) throws {
+        let result = try dispatch(action: .ftsConsentGrant, actor: actor)
+        guard result.isApplied else {
+            throw CoreError.store("FTS consent was not granted: \(result.outcome)")
+        }
+    }
+
+    public func ftsConsentGranted() -> Bool {
+        ftsConsentStore().load().granted
+    }
+
+    public func enableLiveSpotlight() {
+        search.spotlight = MdfindSpotlightIndex()
+    }
+
+    public func setExecutor(_ executor: any ModuleExecuting) {
+        bus.setExecutor(executor)
+    }
+
+    @discardableResult
+    public func persistWebConfig(actor: ActorTag) throws -> ActionResult {
+        let priorEnabled = try settings.get("web.search.enabled")?.boolValue ?? false
+        let priorBaseURL = try settings.get("web.search.baseURL")?.stringValue ?? ""
+        let result = try dispatch(
+            action: .webConfigSet(enabled: webConfig.enabled, baseURL: webConfig.baseURL),
+            actor: actor
         )
-        _ = try dispatch(
-            action: .settingsSet(key: "web.search.baseURL", value: .string(webConfig.baseURL)),
-            actor: .user
-        )
+        if !result.isApplied {
+            webConfig.enabled = priorEnabled
+            webConfig.baseURL = priorBaseURL
+        }
+        return result
     }
 }

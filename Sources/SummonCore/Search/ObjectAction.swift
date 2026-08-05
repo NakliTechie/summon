@@ -16,69 +16,97 @@ public struct ObjectAction: Sendable, Hashable, Codable, Equatable, Identifiable
 }
 
 public enum ObjectActionGrammar {
-    public static func actions(for result: SearchResult) -> [ObjectAction] {
+    public static func actions(for result: SearchResult, isFavorite: Bool? = nil) -> [ObjectAction] {
+        var actions: [ObjectAction]
         switch result.kind {
         case .app:
-            return [
+            actions = [
                 ObjectAction(id: "open", title: "Open", name: "app.open"),
                 ObjectAction(id: "reveal", title: "Reveal in Finder", name: "app.reveal"),
                 ObjectAction(id: "copy-path", title: "Copy Path", name: "file.copyPath"),
             ]
         case .file:
-            return [
+            actions = [
                 ObjectAction(id: "open", title: "Open", name: "file.open"),
                 ObjectAction(id: "reveal", title: "Reveal in Finder", name: "file.reveal"),
                 ObjectAction(id: "copy-path", title: "Copy Path", name: "file.copyPath"),
                 ObjectAction(id: "trash", title: "Move to Trash", name: "file.trash", isDestructive: true),
                 ObjectAction(id: "get-info", title: "Get Info", name: "file.getInfo"),
-                ObjectAction(id: "open-with", title: "Open With…", name: "file.openWith"),
             ]
         case .folder:
-            return [
+            actions = [
                 ObjectAction(id: "open", title: "Open", name: "file.open"),
                 ObjectAction(id: "reveal", title: "Reveal in Finder", name: "file.reveal"),
                 ObjectAction(id: "copy-path", title: "Copy Path", name: "file.copyPath"),
                 ObjectAction(id: "trash", title: "Move to Trash", name: "file.trash", isDestructive: true),
             ]
         case .snippet:
-            return [
-                ObjectAction(id: "paste", title: "Paste", name: "snippet.paste"),
+            actions = [
                 ObjectAction(id: "copy", title: "Copy", name: "snippet.copy"),
-                ObjectAction(id: "edit", title: "Edit", name: "snippet.edit"),
                 ObjectAction(id: "delete", title: "Delete", name: "snippet.delete", isDestructive: true),
             ]
         case .calculation:
-            return [
+            actions = [
                 ObjectAction(id: "copy", title: "Copy Result", name: "calc.copy"),
-                ObjectAction(id: "paste", title: "Paste Result", name: "calc.paste"),
             ]
         case .setting:
-            return [
+            actions = [
                 ObjectAction(id: "open", title: "Open Setting", name: "settings.open"),
             ]
         case .command:
-            return [
-                ObjectAction(id: "run", title: "Run", name: "command.run"),
-            ]
+            if result.payload["action"]?.stringValue == "ai.stage" {
+                actions = [
+                    ObjectAction(id: "stage", title: "Stage Proposal", name: "ai.stage"),
+                ]
+            } else {
+                actions = [
+                    ObjectAction(id: "run", title: "Run", name: "command.run"),
+                ]
+            }
         case .clipboard:
-            return [
+            let pinned = result.payload["pinned"]?.boolValue ?? false
+            let isImage = result.payload["contentKind"]?.stringValue == ClipboardContentKind.image.rawValue
+            actions = [
                 ObjectAction(id: "copy", title: "Copy", name: "clipboard.copy"),
-                ObjectAction(id: "paste", title: "Paste", name: "clipboard.paste"),
-                ObjectAction(id: "paste-plain", title: "Paste as Plain Text", name: "clipboard.pastePlain"),
-                ObjectAction(id: "pin", title: "Pin", name: "clipboard.pin"),
-                ObjectAction(id: "delete", title: "Delete", name: "clipboard.delete", isDestructive: true),
             ]
+            if !isImage {
+                actions.append(
+                    ObjectAction(
+                        id: "copy-plain",
+                        title: "Copy as Plain Text",
+                        name: "clipboard.copyPlain"
+                    )
+                )
+            }
+            actions.append(
+                ObjectAction(
+                    id: pinned ? "unpin" : "pin",
+                    title: pinned ? "Unpin" : "Pin",
+                    name: pinned ? "clipboard.unpin" : "clipboard.pin"
+                )
+            )
+            actions.append(
+                ObjectAction(id: "delete", title: "Delete", name: "clipboard.delete", isDestructive: true)
+            )
         case .quicklink:
-            return [
+            actions = [
                 ObjectAction(id: "open", title: "Open", name: "quicklink.open"),
                 ObjectAction(id: "copy", title: "Copy URL", name: "file.copyPath"),
                 ObjectAction(id: "delete", title: "Delete", name: "quicklink.delete", isDestructive: true),
             ]
         case .emoji:
-            return [
+            actions = [
                 ObjectAction(id: "copy", title: "Copy emoji", name: "emoji.copy"),
-                ObjectAction(id: "paste", title: "Copy emoji", name: "emoji.paste"),
             ]
         }
+        if let isFavorite, [.app, .file, .folder, .quicklink].contains(result.kind) {
+            actions.append(ObjectAction(
+                id: isFavorite ? "unfavorite" : "favorite",
+                title: isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                name: isFavorite ? "favorite.remove" : "favorite.add",
+                isDestructive: isFavorite
+            ))
+        }
+        return actions
     }
 }

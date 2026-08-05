@@ -9,8 +9,16 @@ final class PolishBatchGTests: XCTestCase {
         XCTAssertFalse(DevUtils.search(query: "timestamp").isEmpty)
     }
 
-    func testPlainTextStripsHTML() {
-        let plain = PasteboardPrivacy.asPlainText("<b>Hi</b>&nbsp;there")
+    func testPlainTextPreservesCodeLikeContent() {
+        let source = #"Vec<String> a < b {"json": true} \alpha"#
+        XCTAssertEqual(PasteboardPrivacy.asPlainText(source), source)
+    }
+
+    func testDeclaredHTMLConvertsToPlainText() {
+        let plain = PasteboardPrivacy.asPlainText(
+            "<b>Hi</b>&nbsp;there",
+            sourceFlavor: "public.html"
+        )
         XCTAssertEqual(plain, "Hi there")
     }
 
@@ -31,9 +39,12 @@ final class PolishBatchGTests: XCTestCase {
             title: "x",
             kind: .clipboard,
             score: 1,
-            payload: ["text": .string("<i>Hello</i>")]
+            payload: [
+                "text": .string("<i>Hello</i>"),
+                "flavor": .string("public.html"),
+            ]
         )
-        try ModuleRouter.perform(actionName: "clipboard.pastePlain", result: hit, executor: exec)
+        try ModuleRouter.perform(actionName: "clipboard.copyPlain", result: hit, executor: exec)
         XCTAssertEqual(exec.pasteboard, "Hello")
     }
 }

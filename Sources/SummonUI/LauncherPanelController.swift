@@ -6,19 +6,20 @@ import SummonCore
 public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     public let session: LauncherSession
     public let panel: KeyablePanel
+    let aiIntegration: LauncherAIIntegration?
 
-    private let rootView: NSView
+    private let rootView: AppearanceAwareView
     private var effectView: NSVisualEffectView?
+    let searchFocusView: NSView
     /// Leading magnifying glass (separate from the text field so they never overlap).
-    private let searchIconView: NSImageView
-    private let searchField: NSTextField
+    let searchIconView: NSImageView
+    let searchField: NSTextField
     private let searchDivider: NSBox
     private let scrollView: NSScrollView
     private let tableView: NSTableView
     private let emptyLabel: NSTextField
-    private let stagedLabel: NSTextField
-    private let acceptButton: NSButton
-    private let rejectButton: NSButton
+    let stagedReviewView: StagedReviewView
+    let stagedTextWriter: (String) throws -> Void
     private let footerLabel: NSTextField
 
     private let panelWidth: CGFloat = 680
@@ -27,20 +28,32 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private let searchBandHeight: CGFloat = 48
     private let maxResultsHeight: CGFloat = 380
     private let footerHeight: CGFloat = 22
-    private let stagedBandHeight: CGFloat = 36
+    private let stagedBandHeight: CGFloat = 148
 
-    private var stagedID: String?
-    private var footerError: String?
+    var stagedID: String?
+    var footerError: String?
     private var permissionHint: String?
     private var resignHideWork: DispatchWorkItem?
     private var suppressResignHide = false
     private var searchGeneration: UInt64 = 0
     private let searchQueue = DispatchQueue(label: "summon.launcher.search", qos: .userInitiated)
+    private let confirmationQueue = DispatchQueue(label: "summon.launcher.confirm", qos: .userInitiated)
     private var searchDebounceWork: DispatchWorkItem?
+    private var stagedRefreshMonitor: StagedProposalRefreshMonitor?
     private let searchDebounceNs: UInt64 = 40_000_000
+    private var eventMonitor: Any?
 
-    public init(core: SummonCore) {
+    // swiftlint:disable:next function_body_length
+    public init(
+        core: SummonCore,
+        aiIntegration: LauncherAIIntegration? = nil,
+        stagedTextWriter: @escaping (String) throws -> Void = {
+            try PasteboardService.writeGeneratedText($0)
+        }
+    ) {
         self.session = LauncherSession(core: core)
+        self.aiIntegration = aiIntegration
+        self.stagedTextWriter = stagedTextWriter
 
         let rect = NSRect(x: 0, y: 0, width: panelWidth, height: collapsedHeight)
         panel = KeyablePanel(
@@ -59,7 +72,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         panel.hidesOnDeactivate = false
         panel.appearance = nil
 
-        rootView = NSView(frame: rect)
+        rootView = AppearanceAwareView(frame: rect)
         rootView.wantsLayer = true
         rootView.layer?.cornerRadius = 12
         if #available(macOS 11.0, *) {
@@ -67,21 +80,24 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         }
         rootView.layer?.masksToBounds = true
         rootView.layer?.borderWidth = 0.5
-        rootView.layer?.borderColor = Tokens.System.separator.withAlphaComponent(0.35).cgColor
         panel.contentView = rootView
 
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
-            rootView.layer?.backgroundColor = Tokens.System.windowBackground.cgColor
-        } else {
-            let effect = NSVisualEffectView(frame: rootView.bounds)
-            effect.autoresizingMask = [.width, .height]
-            // Closest stock material to Spotlight chrome.
-            effect.material = .headerView
-            effect.blendingMode = .behindWindow
-            effect.state = .active
-            rootView.addSubview(effect, positioned: .below, relativeTo: nil)
-            effectView = effect
-        }
+        let effect = NSVisualEffectView(frame: rootView.bounds)
+        effect.autoresizingMask = [.width, .height]
+        // Closest stock material to Spotlight chrome.
+        effect.material = .headerView
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        rootView.addSubview(effect, positioned: .below, relativeTo: nil)
+        effectView = effect
+
+        searchFocusView = NSView(frame: .zero)
+        searchFocusView.identifier = NSUserInterfaceItemIdentifier("summon.search.focus")
+        searchFocusView.wantsLayer = true
+        searchFocusView.layer?.cornerRadius = 8
+        searchFocusView.layer?.borderWidth = 2
+        searchFocusView.isHidden = true
+        rootView.addSubview(searchFocusView)
 
         // Icon + plain text field, shared vertical center in the search band.
         searchIconView = NSImageView(frame: .zero)
@@ -110,13 +126,16 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchField.lineBreakMode = .byTruncatingTail
         searchField.usesSingleLineMode = true
         searchField.placeholderAttributedString = NSAttributedString(
-            string: "Summon…",
+            string: L10n.t(.searchPlaceholder),
             attributes: [
                 .foregroundColor: Tokens.System.secondaryLabel,
                 .font: searchFont,
             ]
         )
+        searchField.setAccessibilityRole(.textField)
+        searchField.setAccessibilitySubrole(.searchField)
         searchField.setAccessibilityLabel("Search")
+        searchField.setAccessibilityHelp("Type to search Summon")
         rootView.addSubview(searchField)
 
         searchDivider = NSBox(frame: .zero)
@@ -124,23 +143,9 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchDivider.isHidden = true
         rootView.addSubview(searchDivider)
 
-        stagedLabel = NSTextField(wrappingLabelWithString: "")
-        stagedLabel.font = Tokens.TypeScale.caption
-        stagedLabel.textColor = Tokens.System.staged
-        stagedLabel.isHidden = true
-        rootView.addSubview(stagedLabel)
-
-        acceptButton = NSButton(title: "Accept", target: nil, action: nil)
-        acceptButton.bezelStyle = .rounded
-        acceptButton.controlSize = .small
-        acceptButton.isHidden = true
-        rootView.addSubview(acceptButton)
-
-        rejectButton = NSButton(title: "Reject", target: nil, action: nil)
-        rejectButton.bezelStyle = .rounded
-        rejectButton.controlSize = .small
-        rejectButton.isHidden = true
-        rootView.addSubview(rejectButton)
+        stagedReviewView = StagedReviewView(frame: .zero)
+        stagedReviewView.isHidden = true
+        rootView.addSubview(stagedReviewView)
 
         scrollView = NSScrollView(frame: .zero)
         scrollView.drawsBackground = false
@@ -186,17 +191,26 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
         super.init()
 
+        rootView.appearanceDidChange = { [weak self] in self?.refreshAppearance() }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(accessibilityDisplayOptionsDidChange(_:)),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil
+        )
+        refreshAppearance()
+
         searchField.delegate = self
         tableView.dataSource = self
         tableView.delegate = self
         tableView.doubleAction = #selector(confirmSelection)
         tableView.target = self
-        acceptButton.target = self
-        acceptButton.action = #selector(acceptStaged)
-        rejectButton.target = self
-        rejectButton.action = #selector(rejectStaged)
+        stagedReviewView.acceptButton.target = self
+        stagedReviewView.acceptButton.action = #selector(acceptStaged)
+        stagedReviewView.rejectButton.target = self
+        stagedReviewView.rejectButton.action = #selector(rejectStaged)
 
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in
             self?.handleKey($0) ?? $0
         }
         NotificationCenter.default.addObserver(
@@ -205,23 +219,48 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             name: NSWindow.didResignKeyNotification,
             object: panel
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification,
+            object: panel
+        )
+        stagedRefreshMonitor = StagedProposalRefreshMonitor { [weak self] in
+            guard let self, self.panel.isVisible else { return }
+            self.refreshStagedStrip()
+            self.applyLayout(animated: true)
+        }
 
         refreshPermissionHint()
         applyLayout(animated: false)
     }
 
     deinit {
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+        }
         NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
     // MARK: - Show / hide
 
-    public func show() {
-        searchField.stringValue = ""
-        session.applyResults("", [])
+    public func show(
+        query initialQuery: String = "",
+        markFirstRunSeen: Bool = true
+    ) {
+        cancelPendingSearch()
+        let firstRun = (try? session.core.settings.get(LauncherStarterCatalog.firstRunSeenKey))?.boolValue != true
+        searchField.stringValue = initialQuery
+        if initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            loadEmptyResults(firstRun: firstRun)
+        } else {
+            session.applyResults(initialQuery, [])
+        }
         footerError = nil
         refreshPermissionHint()
         refreshStagedStrip()
+        stagedRefreshMonitor?.startPolling()
         applyLayout(animated: false)
         positionOnActiveScreen()
 
@@ -233,15 +272,31 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             guard let self else { return }
             self.panel.makeKey()
             _ = self.panel.makeFirstResponder(self.searchField)
+            self.updateSearchFocusState()
             self.suppressResignHide = false
+            if firstRun, markFirstRunSeen {
+                _ = try? self.session.core.dispatch(
+                    action: .settingsSet(
+                        key: LauncherStarterCatalog.firstRunSeenKey,
+                        value: .bool(true)
+                    ),
+                    actor: .system
+                )
+            }
+            if !initialQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+            }
         }
     }
 
     public func hide() {
         resignHideWork?.cancel()
+        cancelPendingSearch()
+        stagedRefreshMonitor?.stopPolling()
         searchField.stringValue = ""
         session.applyResults("", [])
         panel.orderOut(nil)
+        updateSearchFocusState()
     }
 
     public func toggle() {
@@ -249,6 +304,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     }
 
     @objc private func windowDidResignKey(_ note: Notification) {
+        updateSearchFocusState()
         guard !suppressResignHide else { return }
         resignHideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -259,6 +315,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         }
         resignHideWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+    }
+
+    @objc private func windowDidBecomeKey(_ note: Notification) {
+        updateSearchFocusState()
     }
 
     private func positionOnActiveScreen() {
@@ -278,33 +338,35 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     // MARK: - Spotlight compact layout
 
-    private var hasQuery: Bool {
-        !searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    private var hasQuery: Bool { !searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    private var hasBrowsableResults: Bool { !session.results.isEmpty || session.objectMode }
 
     private var showResultsChrome: Bool {
-        hasQuery || !acceptButton.isHidden
+        hasQuery || hasBrowsableResults || !stagedReviewView.isHidden || footerError != nil
     }
 
     private func targetHeight() -> CGFloat {
         var h = searchBandHeight
-        if !acceptButton.isHidden {
+        if !stagedReviewView.isHidden {
             h += stagedBandHeight
         }
-        if hasQuery {
-            let rows = CGFloat(max(session.results.count, session.objectMode ? session.objectActions.count : 0))
+        if hasQuery || hasBrowsableResults {
+            let rows = CGFloat(
+                session.objectMode ? session.objectActions.count : session.results.count
+            )
             if rows == 0 {
                 h += 56 // "No Results" strip
             } else {
                 let listH = min(maxResultsHeight, rows * tableView.rowHeight + 8)
                 h += listH
             }
-            h += footerHeight
         }
+        if showResultsChrome { h += footerHeight }
         return max(collapsedHeight, h)
     }
 
-    private func applyLayout(animated: Bool) {
+    func applyLayout(animated: Bool) {
         let height = targetHeight()
         let expanded = showResultsChrome
 
@@ -324,6 +386,12 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             let inset: CGFloat = 16
             let iconSize: CGFloat = 20
             let bandY = height - self.searchBandHeight
+            self.searchFocusView.frame = NSRect(
+                x: 8,
+                y: bandY + 6,
+                width: self.panelWidth - 16,
+                height: self.searchBandHeight - 12
+            )
             // Shared vertical center for icon + text (optical mid of the 48pt bar).
             let rowH: CGFloat = 28
             let rowY = bandY + (self.searchBandHeight - rowH) / 2
@@ -346,25 +414,13 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             self.searchDivider.isHidden = !expanded
 
             var contentTop = dividerY
-            if !self.acceptButton.isHidden {
+            if !self.stagedReviewView.isHidden {
                 contentTop -= self.stagedBandHeight
-                self.stagedLabel.frame = NSRect(
+                self.stagedReviewView.frame = NSRect(
                     x: inset,
-                    y: contentTop + 6,
-                    width: self.panelWidth - 140,
-                    height: 24
-                )
-                self.acceptButton.frame = NSRect(
-                    x: self.panelWidth - 118,
-                    y: contentTop + 6,
-                    width: 52,
-                    height: 22
-                )
-                self.rejectButton.frame = NSRect(
-                    x: self.panelWidth - 62,
-                    y: contentTop + 6,
-                    width: 48,
-                    height: 22
+                    y: contentTop,
+                    width: self.panelWidth - inset * 2,
+                    height: self.stagedBandHeight
                 )
             }
 
@@ -433,7 +489,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchDebounceWork?.cancel()
 
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            session.applyResults("", [])
+            loadEmptyResults(firstRun: false)
             footerError = nil
             applyLayout(animated: true)
             return
@@ -441,10 +497,15 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            guard self.searchGeneration == generation else { return }
             self.searchQueue.async {
-                guard self.searchGeneration == generation else { return }
                 do {
-                    let list = try self.session.computeResults(for: text)
+                    var list = try self.session.computeResults(for: text)
+                    if list.isEmpty,
+                       let offer = self.aiIntegration?.offerResult(for: text) {
+                        list = [offer]
+                    }
+                    ResultIcon.preload(list)
                     DispatchQueue.main.async {
                         guard self.searchGeneration == generation else { return }
                         self.session.applyResults(text, list)
@@ -465,6 +526,18 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(searchDebounceNs) / 1e9, execute: work)
     }
 
+    private func loadEmptyResults(firstRun: Bool) {
+        let stored = (try? session.computeResults(for: "")) ?? []
+        let combined = LauncherStarterCatalog.combined(firstRun: firstRun, stored: stored)
+        session.applyResults("", combined)
+    }
+
+    private func cancelPendingSearch() {
+        searchGeneration &+= 1
+        searchDebounceWork?.cancel()
+        searchDebounceWork = nil
+    }
+
     // MARK: - Table
 
     public func numberOfRows(in tableView: NSTableView) -> Int {
@@ -483,18 +556,15 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let width = tableView.bounds.width > 0 ? tableView.bounds.width : panelWidth - 16
-        let rowH: CGFloat = 40
-        let cell = NSTableCellView(frame: NSRect(x: 0, y: 0, width: width, height: rowH))
-
-        let iconView = NSImageView(frame: NSRect(x: 12, y: 6, width: 28, height: 28))
-        iconView.imageScaling = .scaleProportionallyUpOrDown
-
-        let title = NSTextField(labelWithString: "")
-        title.frame = NSRect(x: 48, y: 11, width: max(40, width - 60), height: 18)
-        title.font = NSFont.systemFont(ofSize: 14, weight: .regular)
-        title.textColor = Tokens.System.label
-        title.lineBreakMode = .byTruncatingTail
-        title.drawsBackground = false
+        let cell = tableView.makeView(
+            withIdentifier: LauncherResultCellView.reuseIdentifier,
+            owner: self
+        ) as? LauncherResultCellView ?? LauncherResultCellView(
+            frame: NSRect(x: 0, y: 0, width: width, height: 40)
+        )
+        cell.prepareForReuse()
+        let iconView = cell.resultIconView
+        let title = cell.titleLabel
 
         if session.objectMode, session.objectActions.indices.contains(row) {
             let action = session.objectActions[row]
@@ -508,86 +578,88 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                 iconView.isHidden = true
                 title.stringValue = "\(r.title)  \(r.subtitle ?? "")"
                 title.font = NSFont.systemFont(ofSize: 16)
-                title.frame = NSRect(x: 14, y: 10, width: max(40, width - 28), height: 20)
+                cell.updateFrames(width: width, emoji: true)
             } else {
+                cell.updateFrames(width: width)
                 iconView.image = ResultIcon.image(for: r)
                 title.stringValue = r.title
             }
         }
 
-        cell.addSubview(iconView)
-        cell.addSubview(title)
-        cell.imageView = iconView
-        cell.textField = title
         cell.setAccessibilityLabel(title.stringValue)
         return cell
     }
 
+    @objc private func accessibilityDisplayOptionsDidChange(_ notification: Notification) {
+        refreshAppearance()
+    }
+
+    private func refreshAppearance() {
+        rootView.effectiveAppearance.performAsCurrentDrawingAppearance {
+            rootView.layer?.borderColor = Tokens.System.separator.withAlphaComponent(0.35).cgColor
+            let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+            rootView.layer?.backgroundColor = reduceTransparency
+                ? Tokens.System.windowBackground.cgColor
+                : NSColor.clear.cgColor
+            effectView?.isHidden = reduceTransparency
+            let increaseContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            searchFocusView.layer?.borderWidth = increaseContrast ? 3 : 2
+            searchFocusView.layer?.borderColor = Tokens.System.accent.cgColor
+            searchFocusView.layer?.backgroundColor = Tokens.System.accent
+                .withAlphaComponent(increaseContrast ? 0.16 : 0.08)
+                .cgColor
+        }
+    }
+
     // MARK: - Keys / actions
 
-    @objc private func confirmSelection() {
+    @objc func confirmSelection() {
         let row = tableView.selectedRow
         if row >= 0 { session.selectIndex(row) }
         do {
-            _ = try session.confirm(actor: .user)
+            let confirmation = try session.prepareConfirmation()
+            if confirmation.actionName == "ai.stage" {
+                stageAI(confirmation)
+                return
+            }
+            if confirmation.requiresUserConfirmation, !confirmDestructiveAction(confirmation) {
+                return
+            }
             hide()
+            confirmationQueue.async { [weak self] in
+                guard let self else { return }
+                do {
+                    _ = try self.session.execute(confirmation, actor: .user)
+                } catch {
+                    let message = (error as? CoreError)?.message ?? error.localizedDescription
+                    DispatchQueue.main.async { [weak self] in
+                        self?.showConfirmationFailure(message, query: confirmation.query)
+                    }
+                }
+            }
         } catch {
             footerError = (error as? CoreError)?.message ?? error.localizedDescription
             applyLayout(animated: false)
         }
     }
 
-    private func handleKey(_ event: NSEvent) -> NSEvent? {
-        guard panel.isVisible, panel.isKeyWindow || NSApp.keyWindow === panel else {
-            return event
-        }
+    private func confirmDestructiveAction(_ confirmation: LauncherConfirmation) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = confirmation.actionName == "command.run"
+            ? "Empty Trash?"
+            : "Confirm Destructive Action"
+        alert.informativeText = "This action cannot be undone from Summon."
+        alert.addButton(withTitle: "Continue")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
 
-        if event.modifierFlags.contains(.command),
-           event.charactersIgnoringModifiers?.lowercased() == "k" {
-            if session.objectMode { session.exitObjectMode() } else { session.enterObjectMode() }
-            applyLayout(animated: false)
-            return nil
-        }
-
-        switch event.keyCode {
-        case 125:
-            session.moveSelection(by: 1)
-            applyLayout(animated: false)
-            return nil
-        case 126:
-            session.moveSelection(by: -1)
-            applyLayout(animated: false)
-            return nil
-        case 36:
-            if hasQuery { confirmSelection() }
-            return nil
-        case 48:
-            if session.objectMode { session.exitObjectMode() } else { session.enterObjectMode() }
-            applyLayout(animated: false)
-            return nil
-        case 53:
-            if session.objectMode {
-                session.exitObjectMode()
-                applyLayout(animated: false)
-            } else if hasQuery {
-                searchField.stringValue = ""
-                controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
-            } else {
-                hide()
-            }
-            return nil
-        default:
-            let editing = panel.firstResponder === searchField
-                || panel.firstResponder === searchField.currentEditor()
-            if !editing {
-                let chars = event.charactersIgnoringModifiers ?? ""
-                let printable = chars.contains {
-                    $0.isLetter || $0.isNumber || $0.isPunctuation || $0.isSymbol || $0 == " "
-                }
-                if printable { _ = panel.makeFirstResponder(searchField) }
-            }
-            return event
-        }
+    private func showConfirmationFailure(_ message: String, query: String) {
+        show()
+        searchField.stringValue = query
+        footerError = message
+        applyLayout(animated: false)
     }
 
     private func refreshPermissionHint() {
@@ -596,96 +668,20 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         updateFooter()
     }
 
-    private func updateFooter() {
+    func updateFooter() {
         guard showResultsChrome else {
             footerLabel.stringValue = ""
             return
         }
         var parts = ["↩ Open"]
         if session.objectMode { parts = ["↩ Run", "Esc Back"] }
-        if let err = footerError, !err.isEmpty { parts.append(err) }
-        else if let hint = permissionHint { parts.append(hint) }
+        if let err = footerError, !err.isEmpty {
+            parts.append(err)
+        } else if let hint = permissionHint {
+            parts.append(hint)
+        }
+        parts.append("v\(SummonVersion.string)")
         footerLabel.stringValue = parts.joined(separator: "  ·  ")
     }
 
-    private func refreshStagedStrip() {
-        do {
-            let list = try session.core.staged.list(state: "staged")
-            if let first = list.first {
-                stagedID = first.id
-                stagedLabel.stringValue = "Staged (\(first.rung)): \(first.output.prefix(80))"
-                stagedLabel.isHidden = false
-                acceptButton.isHidden = false
-                rejectButton.isHidden = false
-            } else {
-                clearStagedChrome()
-            }
-        } catch {
-            clearStagedChrome()
-        }
-    }
-
-    private func clearStagedChrome() {
-        stagedID = nil
-        stagedLabel.isHidden = true
-        acceptButton.isHidden = true
-        rejectButton.isHidden = true
-    }
-
-    @objc private func acceptStaged() {
-        guard let id = stagedID else { return }
-        guard let p = try? session.core.staged.get(id), p.state == "staged" else {
-            refreshStagedStrip()
-            applyLayout(animated: true)
-            return
-        }
-        if p.rung == "agent" {
-            _ = try? session.core.acceptStagedAgentAction(id: id)
-        } else {
-            try? session.core.staged.setState(id: id, state: "accepted")
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.setString(p.output, forType: .string)
-        }
-        refreshStagedStrip()
-        applyLayout(animated: true)
-    }
-
-    @objc private func rejectStaged() {
-        guard let id = stagedID else { return }
-        if let p = try? session.core.staged.get(id), p.rung == "agent" {
-            try? session.core.rejectStagedAgentAction(id: id)
-        } else {
-            try? session.core.staged.setState(id: id, state: "rejected")
-        }
-        refreshStagedStrip()
-        applyLayout(animated: true)
-    }
-}
-
-/// Centers single-line text vertically inside the control bounds (stock cell sits high).
-private final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
-    override func drawingRect(forBounds rect: NSRect) -> NSRect {
-        let ideal = cellSize(forBounds: rect)
-        var r = super.drawingRect(forBounds: rect)
-        let dy = max(0, (r.height - ideal.height) / 2)
-        r.origin.y += dy
-        r.size.height = min(r.height, ideal.height)
-        return r
-    }
-
-    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
-        super.edit(withFrame: drawingRect(forBounds: rect), in: controlView, editor: textObj, delegate: delegate, event: event)
-    }
-
-    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
-        super.select(
-            withFrame: drawingRect(forBounds: rect),
-            in: controlView,
-            editor: textObj,
-            delegate: delegate,
-            start: selStart,
-            length: selLength
-        )
-    }
 }

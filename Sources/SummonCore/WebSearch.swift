@@ -70,7 +70,7 @@ public enum WebSearchError: Error, Equatable, LocalizedError {
 }
 
 /// SearXNG JSON API client (`/search?q=&format=json`).
-public struct SearXNGClient: WebSearchProviding, Sendable {
+public struct SearXNGClient: Sendable {
     public let config: WebSearchConfig
     public var session: URLSession
 
@@ -79,7 +79,11 @@ public struct SearXNGClient: WebSearchProviding, Sendable {
         self.session = session
     }
 
-    public func search(query: String, limit: Int = 8) async throws -> [WebHit] {
+    public func search(
+        query: String,
+        limit: Int = 8,
+        authorization: EgressAuthorization? = nil
+    ) async throws -> [WebHit] {
         guard config.enabled else { throw WebSearchError.disabled }
         let base = config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let root = URL(string: base), let scheme = root.scheme,
@@ -99,6 +103,9 @@ public struct SearXNGClient: WebSearchProviding, Sendable {
             URLQueryItem(name: "format", value: "json"),
         ]
         guard let url = components?.url else { throw WebSearchError.invalidBaseURL }
+        guard authorization?.permits(url: url, purpose: .userWeb) == true else {
+            throw WebSearchError.network("web request lacks matching journaled egress authorization")
+        }
 
         let (data, response): (Data, URLResponse)
         do {

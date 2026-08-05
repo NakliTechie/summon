@@ -61,7 +61,7 @@ public enum JSONValue: Sendable, Hashable, Codable, Equatable {
         if raw == "false" { return .bool(false) }
         if raw == "null" { return .null }
         if let i = Int64(raw) { return .number(Double(i)) }
-        if let d = Double(raw), raw.contains(".") { return .number(d) }
+        if let d = Double(raw), d.isFinite { return .number(d) }
         return .string(raw)
     }
 
@@ -72,6 +72,11 @@ public enum JSONValue: Sendable, Hashable, Codable, Equatable {
 
     public var boolValue: Bool? {
         if case .bool(let b) = self { return b }
+        return nil
+    }
+
+    public var numberValue: Double? {
+        if case .number(let value) = self { return value }
         return nil
     }
 }

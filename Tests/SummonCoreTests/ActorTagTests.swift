@@ -28,4 +28,11 @@ final class ActorTagTests: XCTestCase {
         XCTAssertThrowsError(try ActorTag(journalLabel: "ext:"))
         XCTAssertThrowsError(try ActorTag(journalLabel: "nope"))
     }
+
+    func testCLIOnlyAcceptsPublicActors() throws {
+        XCTAssertEqual(try ActorTag(cliLabel: "user"), .user)
+        XCTAssertEqual(try ActorTag(cliLabel: "agent"), .agent)
+        XCTAssertThrowsError(try ActorTag(cliLabel: "system"))
+        XCTAssertThrowsError(try ActorTag(cliLabel: "ext:example"))
+    }
 }

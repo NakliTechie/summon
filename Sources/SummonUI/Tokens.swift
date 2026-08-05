@@ -2,6 +2,15 @@ import Foundation
 
 #if canImport(AppKit)
 import AppKit
+
+final class AppearanceAwareView: NSView {
+    var appearanceDidChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        appearanceDidChange?()
+    }
+}
 #endif
 
 /// Semantic design tokens from the UX reference (handoff §3).
@@ -85,13 +94,24 @@ public enum Tokens {
         public static var secondaryLabel: NSColor { .secondaryLabelColor }
         public static var tertiaryLabel: NSColor { .tertiaryLabelColor }
         public static var separator: NSColor { .separatorColor }
-        public static var accent: NSColor { .controlAccentColor }
+        public static var accent: NSColor {
+            adaptive(dark: Color.accent.nsColor, light: .controlAccentColor)
+        }
         public static var danger: NSColor { .systemRed }
         public static var ok: NSColor { .systemGreen }
         /// Propose-don't-dispose only (not decorative).
-        public static var staged: NSColor { .systemOrange }
+        public static var staged: NSColor {
+            adaptive(dark: Color.staged.nsColor, light: .systemOrange)
+        }
         public static var controlBackground: NSColor { .controlBackgroundColor }
         public static var windowBackground: NSColor { .windowBackgroundColor }
+
+        private static func adaptive(dark: NSColor, light: NSColor) -> NSColor {
+            NSColor(name: nil) { appearance in
+                let match = appearance.bestMatch(from: [.darkAqua, .aqua])
+                return match == .darkAqua ? dark : light
+            }
+        }
     }
 
     public enum TypeScale {

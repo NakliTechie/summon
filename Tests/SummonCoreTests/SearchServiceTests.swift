@@ -11,7 +11,26 @@ final class SearchServiceTests: XCTestCase {
 
     func testCalculatorPower() {
         XCTAssertEqual(Calculator.evaluate("2^10"), 1024)
+        XCTAssertEqual(Calculator.evaluate("2^3^2"), 512)
+        XCTAssertEqual(Calculator.evaluate("-2^2"), -4)
+        XCTAssertEqual(Calculator.evaluate("2^-2"), 0.25)
         XCTAssertEqual(Calculator.format(1024), "1024")
+    }
+
+    func testCalculatorParserLimitsAndDecimalComma() {
+        XCTAssertEqual(Calculator.evaluate("1,5 + 2"), 3.5)
+        XCTAssertNil(Calculator.evaluate(String(repeating: "1+", count: 300) + "1"))
+        let excessiveNesting = String(repeating: "(", count: 65)
+            + "1"
+            + String(repeating: ")", count: 65)
+        XCTAssertNil(Calculator.evaluate(excessiveNesting))
+        XCTAssertNil(Calculator.evaluate(String(repeating: "1+", count: 128) + "1"))
+    }
+
+    func testCLIJSONValueParsesExponentNumbers() {
+        XCTAssertEqual(JSONValue.parseCLI("1e3"), .number(1_000))
+        XCTAssertEqual(JSONValue.parseCLI("-2.5E-2"), .number(-0.025))
+        XCTAssertEqual(JSONValue.parseCLI("nan"), .string("nan"))
     }
 
     func testFakeSpotlightFilters() throws {
@@ -53,6 +72,130 @@ final class SearchServiceTests: XCTestCase {
         XCTAssertFalse(titles.contains("Notes.txt"))
     }
 
+    func testMdfindProductionPostFilterAppliesFilesystemModificationDateBeforeLimit() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-mdfind-filter-\(UUID().uuidString)", isDirectory: true)
+        let old = root.appendingPathComponent("Old.pdf")
+        let recent = root.appendingPathComponent("Recent.pdf")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data().write(to: old)
+        try Data().write(to: recent)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-40 * 86_400)],
+            ofItemAtPath: old.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-2 * 86_400)],
+            ofItemAtPath: recent.path
+        )
+        let query = FilterQuery(
+            freeText: "invoice",
+            filters: [.modified(.within(DateComponents(day: 7)))]
+        )
+
+        let results = MdfindSpotlightIndex.results(
+            paths: [old.path, recent.path],
+            query: query,
+            limit: 1,
+            now: now
+        )
+
+        XCTAssertEqual(results.map(\.path), [recent.path])
+        XCTAssertNotNil(results[0].payload["mtime"])
+    }
+
+    func testMdfindDrainsBroadOutputWhileRetainingABoundedPrefix() throws {
+        let scriptURL = try makeExecutableScript(
+            name: "broad-output",
+            body: """
+            i=0
+            while [ "$i" -lt 10000 ]; do
+              printf '/tmp/summon-broad-%05d.txt\\n' "$i"
+              i=$((i + 1))
+            done
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+        let result = try MdfindSpotlightIndex.runBoundedCommand(
+            executableURL: scriptURL,
+            arguments: [],
+            timeout: 2,
+            maximumOutputBytes: 64 * 1_024
+        )
+        let paths = MdfindSpotlightIndex.paths(
+            from: result.standardOutput,
+            truncated: result.standardOutputTruncated
+        )
+
+        XCTAssertFalse(result.didTimeOut)
+        XCTAssertEqual(result.terminationStatus, 0)
+        XCTAssertTrue(result.standardOutputTruncated)
+        XCTAssertEqual(paths.first, "/tmp/summon-broad-00000.txt")
+        XCTAssertGreaterThan(paths.count, 800)
+        XCTAssertLessThan(paths.count, 10_000)
+        XCTAssertLessThanOrEqual(result.standardOutput.count, 64 * 1_024)
+    }
+
+    func testMdfindTimeoutRetainsCompleteFirstResults() throws {
+        let scriptURL = try makeExecutableScript(
+            name: "partial-output",
+            body: """
+            i=0
+            while [ "$i" -lt 100 ]; do
+              printf '/tmp/summon-partial-%03d.txt\\n' "$i"
+              i=$((i + 1))
+            done
+            while :; do :; done
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+        let result = try MdfindSpotlightIndex.runBoundedCommand(
+            executableURL: scriptURL,
+            arguments: [],
+            timeout: 1,
+            maximumOutputBytes: 64 * 1_024
+        )
+        let paths = MdfindSpotlightIndex.paths(
+            from: result.standardOutput,
+            truncated: result.standardOutputTruncated
+        )
+
+        XCTAssertTrue(result.didTimeOut)
+        XCTAssertEqual(paths.first, "/tmp/summon-partial-000.txt")
+        XCTAssertGreaterThanOrEqual(paths.count, 100)
+    }
+
+    func testMdfindTimeoutDropsInterruptedTrailingPath() throws {
+        let scriptURL = try makeExecutableScript(
+            name: "partial-trailing-path",
+            body: """
+            printf '/tmp/summon-complete.txt\n/tmp/summon-interrupted'
+            while :; do :; done
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: scriptURL.deletingLastPathComponent()) }
+
+        let result = try MdfindSpotlightIndex.runBoundedCommand(
+            executableURL: scriptURL,
+            arguments: [],
+            timeout: 1,
+            maximumOutputBytes: 64 * 1_024
+        )
+        let paths = MdfindSpotlightIndex.paths(
+            from: result.standardOutput,
+            truncated: result.standardOutputTruncated || result.didTimeOut
+        )
+
+        XCTAssertTrue(result.didTimeOut)
+        XCTAssertFalse(result.standardOutputTruncated)
+        XCTAssertEqual(paths, ["/tmp/summon-complete.txt"])
+    }
+
     func testSnippetSearchAndReplay() throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let id = "snip-1"
@@ -82,6 +225,16 @@ final class SearchServiceTests: XCTestCase {
         XCTAssertEqual(hits.count, 1)
         XCTAssertEqual(hits[0].title, "FixtureApp")
         XCTAssertEqual(hits[0].kind, .app)
+    }
+
+    private func makeExecutableScript(name: String, body: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-\(name)-\(UUID().uuidString)", isDirectory: true)
+        let scriptURL = directory.appendingPathComponent("fixture.sh")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try "#!/bin/sh\n\(body)\n".write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
+        return scriptURL
     }
 
     /// Prefix must beat alphabetical noise; short contains must not bury Safari-like names.

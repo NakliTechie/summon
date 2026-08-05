@@ -33,7 +33,7 @@ final class SidecarTests: XCTestCase {
     }
 
     func testSemanticRank() {
-        let ranked = SemanticSearchS3.rank(
+        let ranked = ExperimentalHashSemanticSearch.rank(
             query: "quarterly revenue",
             documents: [
                 (id: "a", text: "cat"),
@@ -49,10 +49,5 @@ final class SidecarTests: XCTestCase {
         let p = try await nl.shell(from: "list files")
         XCTAssertTrue(p.output.contains("ls"))
         XCTAssertEqual(p.state, "staged")
-    }
-
-    func testLocalRuntimeDetectStruct() {
-        let d = LocalRuntimeDetect(ollama: false, lmStudio: false, hasBYOK: false)
-        XCTAssertFalse(d.ollama)
     }
 }
