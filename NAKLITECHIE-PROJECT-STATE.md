@@ -5,7 +5,7 @@
 **2026-08-05** — Daily-driver shell on `main` (v0.6.x):
 
 - Compact launcher (⌥Space): collapsed until type; dismiss on resign key
-- Clipboard: resident image/HTML/RTF/text capture, explicit first-run login choice, dedicated history **⌥⇧V**
+- Clipboard: resident image/HTML/RTF/text capture, explicit first-run login choice, dedicated history **⌥⇧C**
 - Clipboard privacy checkpoint: 500 unpinned cap, delete/clear/dedupe journal scrubbing, 0700 container, 0600 database
 - Clipboard controls: Clear History and editable app-name/bundle-ID ignore list
 - Clipboard correctness: self-write suppression, reuse-to-top, unpin, filter reset, explicit mutation errors, dual-source ignore matching
@@ -26,8 +26,19 @@
 - Experimental local L0 uses immutable official revisions, full artifact digests, exact-model consent, quarantine, and bounded user-managed MLX/Hugging Face processes
 - The native launcher offers explicit AI staging on missed natural-language queries, retains edit/accept/reject review, and exposes ladder availability through AI Status
 - `make verify` requires full and AI-off suites, CLI e2e, lint, extension omission, walkthrough, network sovereignty, version consistency, and hard latency
+- Brand concept v1 uses the sigil-violet portal-and-spark direction; application asset integration remains open
 
 **Not** notarized / public cask yet. **Phase H** (Dev ID) remains last.
+
+## No-progress escalations
+
+### 2026-08-05 — external purge handoff
+
+- Failure: Chunk 1 requires purge predicates, execution time, before/after counts, non-target survivor proof, and explicit ownership transfer.
+- Tried: I searched project-local handoff artifacts across three resumed goal turns; no purge result existed.
+- Tried: I inspected the recent task registry twice; no separate Summon purge task existed.
+- Tried: I preserved the real store and gathered only no-store native-host facts.
+- Unblock: provide the purge handoff, transfer ownership for read-only verification, or waive Chunk 1 evidence.
 
 ## Roadmap honesty
 
@@ -55,11 +66,13 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 | 2026-08-05 | The D7 process bridge is user-managed experimental L0, not the packaged brain; Summon never installs or daemonizes it |
 | 2026-08-05 | Raycast-compatible extensions are deferred from R1; `SummonShim` remains a development seam and is not linked into shipping executables |
 | 2026-08-05 | R1 retains active-Space focused-window snapping and a 13-action shortcut map; cross-Space moves, App Intents, EventKit, menu AX, hyperkey, and unverifiable TCC probes remain absent until live adapters and gates exist |
+| 2026-08-05 | Clipboard History uses **⌥⇧C** in source and the release package; installed-build activation and physical verification remain open |
 
 ## Residual
 
 - [~] Image/rich paths — residual verifier: screenshots, rapid copy, target-app paste, broad RTF, rendered errors, and VoiceOver.
-- [~] Native daily-driver controls — residual verifier: real-Mac Clear History, ignore list, focus, IME, screenshot, hotkey conflict, destructive alert, and VoiceOver walkthrough.
+- [~] Native daily-driver controls — residual verifier: install the current build after purge handoff, then exercise real-Mac ⌥⇧C, Clear History, ignore list, focus, IME, screenshot, hotkey conflict, destructive alert, and VoiceOver walkthrough.
+- [~] Brand assets — `assets/brand/summon-logo-concept-v1.png` exists; residual verifier: user selection, vector master, app-icon set, menu-bar template glyph, packaging integration, and native size review.
 - [x] Hard latency and network-sovereignty checks are merge-gate targets in `make verify`.
 - [x] Model supply chain — immutable revisions and full artifact digests use official HF values; valid/tampered/unmanifested-weight fixtures cover verification and quarantine.
 - [~] Experimental MLX process bridge — residual verifier: live L0 on the M4 host plus an embedded authenticated runtime before the packaged-brain claim.
