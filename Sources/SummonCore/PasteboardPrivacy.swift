@@ -19,6 +19,10 @@ public enum PasteboardPrivacy {
         "public.rtf",
     ]
 
+    public static let fileTypes: Set<String> = [
+        "public.file-url",
+    ]
+
     /// Standard privacy type identifiers (Maccy / nspasteboard.org convention).
     public static let concealedTypes: Set<String> = [
         "org.nspasteboard.ConcealedType",
