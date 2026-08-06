@@ -2,6 +2,17 @@
 
 ## Status
 
+**2026-08-06** — Post daily-driver session on `main` (@ `4b236e4`):
+
+- Brand: sigil mark shipped (flowing cyan "S" + gem on teal-black squircle); SVG masters + macOS iconset/`.icns` + menu-bar template + size set in `assets/brand/sigil`; app icon wired into `build-app.sh` + `Info.plist`; new build installed and running (`⌥⇧C` + sigil icon; installed binary SHA matches the build)
+- Native guide: the 2026-08-05 checklist turned into task-based `GuideContent` entries (clipboard controls, Clear History, ignored apps, window layouts, CJK, resident/relaunch/Quit)
+- Native creation: launcher-inline `Create snippet…`/`Create quicklink…` (`CreateActionCatalog` + `LauncherPanelController+Create`); CLI retained as fallback
+- External purge: resolved as a phantom — 47 walkthrough fixtures purged via the journaled CLI (actor=user); 50 real clips intact; the isolation seam had already stopped new pollution
+- Direction: two-app north star — Summon stays the fast launcher (no chat); chat + a GP-assistant live in a separate companion app over the agent socket. Diagram in `assets/architecture/`; vision doc §8 addendum
+- Apple Foundation Models (L1): verified available now on the M4 gate host (macOS 26.5.2, 3B/2-bit) — a wiring task, not a wait
+- Search: reframed as RAG grounding for on-device synthesis (Foundation Models Tool protocol, query-only egress); opt-in provider ladder (BYO-key RAG API default · user SearXNG alt); stays default OFF
+- `make verify` green across the session
+
 **2026-08-05** — Daily-driver shell on `main` (v0.6.x):
 
 - Compact launcher (⌥Space): collapsed until type; dismiss on resign key
@@ -39,6 +50,7 @@
 - Tried: I inspected the recent task registry twice; no separate Summon purge task existed.
 - Tried: I preserved the real store and gathered only no-store native-host facts.
 - Unblock: provide the purge handoff, transfer ownership for read-only verification, or waive Chunk 1 evidence.
+- **Resolved 2026-08-06:** phantom — no external owner existed. The target was walkthrough fixtures (16 `WT` quicklinks + 16 `wt` snippets + 15 `summon-cli` clips, all timestamped pre-isolation ≤2026-08-04), not the recorded `hello-cspine`/`Example`/`cspine.cli` predicates. User authorized a read-only inspection; 47 fixtures purged via the journaled CLI; the 50 real clips were preserved. Chunks 1 & 3 were never truly blocked.
 
 ## Roadmap honesty
 
@@ -52,6 +64,12 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 | When | Decision |
 |---|---|
+| 2026-08-06 | Brand = sigil (cyan "S" + gem); supersedes v1 portal concept; app icon wired; menu-bar template produced, not wired |
+| 2026-08-06 | W1 → native creation (launcher-inline snippet/quicklink); CLI retained as fallback |
+| 2026-08-06 | Web search stays **opt-in** (default OFF, W1 upheld); default-ON rejected — breaks no-ambient-egress |
+| 2026-08-06 | Search = RAG grounding for on-device synthesis (FM Tool protocol, query-only egress); provider ladder BYO-key API / user SearXNG; no native scraper reimplementation |
+| 2026-08-06 | Two-app north star: launcher (no chat) + companion app via agent socket; L1 Apple FM verified live on the M4 gate host |
+| 2026-08-06 | External purge resolved = phantom (walkthrough fixtures); 47 purged, real clips intact |
 | 2026-08-03 | Dev ID last · cask first · ⌥Space · L1 day-1 · M4=L1 gate |
 | 2026-08-04 | **D7 = MLX** · W1 OFF + localhost preset |
 | 2026-08-04 | Socket default **OFF** unless `agent.socket.enabled=true` |
@@ -71,8 +89,8 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 ## Residual
 
 - [~] Image/rich paths — residual verifier: screenshots, rapid copy, target-app paste, broad RTF, rendered errors, and VoiceOver.
-- [~] Native daily-driver controls — residual verifier: install the current build after purge handoff, then exercise real-Mac ⌥⇧C, Clear History, ignore list, focus, IME, screenshot, hotkey conflict, destructive alert, and VoiceOver walkthrough.
-- [~] Brand assets — `assets/brand/summon-logo-concept-v1.png` exists; residual verifier: user selection, vector master, app-icon set, menu-bar template glyph, packaging integration, and native size review.
+- [~] Native daily-driver controls — build installed and running. Residual verifier: real-Mac ⌥⇧C, Clear History, ignore list, focus, IME, screenshot, hotkey conflict, destructive alert, the new inline Create form, and VoiceOver walkthrough.
+- [x] Brand assets — sigil mark shipped; SVG masters + iconset/`.icns` + menu-bar template + size set in `assets/brand/sigil`; app icon wired into packaging and the installed build (SHA-verified). Residual [~]: native Finder/Spotlight/menu-bar visual review; wire the menu-bar template only if a decision reopens the SF-Symbols-only rule.
 - [x] Hard latency and network-sovereignty checks are merge-gate targets in `make verify`.
 - [x] Model supply chain — immutable revisions and full artifact digests use official HF values; valid/tampered/unmanifested-weight fixtures cover verification and quarantine.
 - [~] Experimental MLX process bridge — residual verifier: live L0 on the M4 host plus an embedded authenticated runtime before the packaged-brain claim.
@@ -84,4 +102,4 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 ## Ladder
 
-L1 Apple → experimental user-managed L0 MLX (unavailable if binary, consent, authenticated weights, or storage is missing). Packaged L0, L2, and L3 remain roadmap-only.
+L1 Apple FM — **verified available now** on the M4 gate host (macOS 26.5.2, 3B/2-bit, framework GA); wiring is Chunk C. → experimental user-managed L0 MLX (unavailable if binary, consent, authenticated weights, or storage is missing). Packaged L0 (llama.cpp+Metal, D7), L2, and L3 remain roadmap-only.
