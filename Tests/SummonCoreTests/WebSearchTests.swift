@@ -37,6 +37,37 @@ final class WebSearchTests: XCTestCase {
         }
     }
 
+    func testWikipediaParseMapsPagesToHitsAndStripsMarkup() {
+        let json = """
+        {"pages":[
+          {"key":"Canberra","title":"Canberra","description":"Capital city of Australia",
+           "excerpt":"<span class=\\"searchmatch\\">Canberra</span> is the capital of Australia"},
+          {"key":"Swift_(programming_language)","title":"Swift (programming language)",
+           "description":"Apple's language","excerpt":"a &amp; b"}
+        ]}
+        """
+        let hits = WikipediaSearchClient.parse(Data(json.utf8), host: "en.wikipedia.org", limit: 5)
+        XCTAssertEqual(hits.count, 2)
+        XCTAssertEqual(hits[0].title, "Canberra")
+        XCTAssertEqual(hits[0].url, "https://en.wikipedia.org/wiki/Canberra")
+        XCTAssertTrue(hits[0].snippet.contains("Capital city of Australia"))
+        XCTAssertFalse(hits[0].snippet.contains("<span"))  // markup stripped
+        XCTAssertEqual(hits[1].url, "https://en.wikipedia.org/wiki/Swift_(programming_language)")
+        XCTAssertTrue(hits[1].snippet.contains("a & b"))    // entity decoded
+    }
+
+    func testWikipediaSearchRequiresEgressAuthorization() async {
+        let client = WikipediaSearchClient()
+        do {
+            _ = try await client.search(query: "swift", authorization: nil)
+            XCTFail("expected egress authorization failure")
+        } catch let error as WebSearchError {
+            if case .network = error { /* expected */ } else { XCTFail("\(error)") }
+        } catch {
+            XCTFail("\(error)")
+        }
+    }
+
     func testStagedProposalStore() throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         try core.staged.migrate()

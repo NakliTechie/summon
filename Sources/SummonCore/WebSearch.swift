@@ -129,6 +129,73 @@ public struct SearXNGClient: Sendable {
     }
 }
 
+/// Keyless zero-setup search floor (the "pick your poison" default rung):
+/// Wikipedia's REST search API. No key, no Docker, no CAPTCHA — but encyclopedic
+/// only, no live/current web. HTTPS + journaled `.userWeb` egress, same gate as
+/// SearXNG. Current-web tiers (SearXNG self-host, BYO-key) are the upgrades.
+public struct WikipediaSearchClient: Sendable {
+    public let host: String
+    public var session: URLSession
+
+    public init(host: String = "en.wikipedia.org", session: URLSession = .shared) {
+        self.host = host
+        self.session = session
+    }
+
+    public func search(
+        query: String,
+        limit: Int = 5,
+        authorization: EgressAuthorization? = nil
+    ) async throws -> [WebHit] {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.path = "/w/rest.php/v1/search/page"
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(max(1, min(limit, 10)))),
+        ]
+        guard let url = components.url else { throw WebSearchError.invalidBaseURL }
+        guard authorization?.permits(url: url, purpose: .userWeb) == true else {
+            throw WebSearchError.network("web request lacks matching journaled egress authorization")
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Summon (macOS launcher; on-device AI)", forHTTPHeaderField: "User-Agent")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw WebSearchError.network(error.localizedDescription)
+        }
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw WebSearchError.network("HTTP \(http.statusCode)")
+        }
+        return Self.parse(data, host: host, limit: limit)
+    }
+
+    static func parse(_ data: Data, host: String, limit: Int) -> [WebHit] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pages = object["pages"] as? [[String: Any]] else { return [] }
+        return pages.prefix(limit).compactMap { page in
+            guard let title = page["title"] as? String else { return nil }
+            let key = (page["key"] as? String) ?? title.replacingOccurrences(of: " ", with: "_")
+            let description = (page["description"] as? String) ?? ""
+            let excerpt = stripHTML((page["excerpt"] as? String) ?? "")
+            let snippet = [description, excerpt].filter { !$0.isEmpty }.joined(separator: " — ")
+            return WebHit(title: title, url: "https://\(host)/wiki/\(key)", snippet: snippet)
+        }
+    }
+
+    static func stripHTML(_ raw: String) -> String {
+        raw.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#039;", with: "'")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 /// Test double — no network.
 public struct FakeWebSearchProvider: WebSearchProviding, Sendable {
     public var hits: [WebHit]
