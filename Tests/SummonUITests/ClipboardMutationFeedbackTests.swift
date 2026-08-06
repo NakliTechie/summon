@@ -49,6 +49,33 @@ final class ClipboardMutationFeedbackTests: XCTestCase {
         XCTAssertTrue(buttons.contains("Ignored Apps…"))
     }
 
+    func testCommandDigitQuickSelectGuardsRangeAndModifier() throws {
+        let core = try SummonCore.inMemory()
+        _ = try core.dispatch(
+            action: .clipboardIngest(
+                id: "qc-only", text: "only", sourceApp: "Test", createdAt: Date(), pinned: false
+            ),
+            actor: .user
+        )
+        let controller = ClipboardHistoryController(core: core)
+        controller.show()
+        pumpMainRunLoop()
+        defer { controller.hide() }
+        func digit(_ d: String, _ code: UInt16, command: Bool) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(
+                with: .keyDown, location: .zero,
+                modifierFlags: command ? .command : [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: controller.panel.windowNumber, context: nil,
+                characters: d, charactersIgnoringModifiers: d, isARepeat: false, keyCode: code
+            ))
+        }
+        // ⌘9 with a single item: consumed no-op, no crash (index guard).
+        XCTAssertNil(controller.handleFocusedKey(try digit("9", 25, command: true)))
+        // Plain "1" (no command) passes through so search typing still works.
+        XCTAssertNotNil(controller.handleFocusedKey(try digit("1", 18, command: false)))
+    }
+
     func testAppliedMutationHasNoFailureDetail() {
         let detail = ClipboardActionFeedback.failureDetail(
             label: "Delete",

@@ -130,8 +130,8 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         rootView.addSubview(emptyLabel)
 
         footerLabel = NSTextField(
-            labelWithString: "↑↓ Navigate  ·  ↩ Copy  ·  ⌘⌫ Delete\n"
-                + "⌘P Pin  ·  \(ShortcutCatalog.clearClipboardHistory) Clear  ·  "
+            labelWithString: "↑↓ Navigate  ·  ↩ Copy  ·  ⌥↩ Plain  ·  Space Preview  ·  ⌘1–9 Quick\n"
+                + "⌘P Pin  ·  ⌘⌫ Delete  ·  \(ShortcutCatalog.clearClipboardHistory) Clear  ·  "
                 + "\(ShortcutCatalog.clipboardHistory) Open  ·  Esc Close"
         )
         footerLabel.font = Tokens.TypeScale.footnote
@@ -204,6 +204,8 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
     }
 
     public func hide() {
+        previewPopover?.close()
+        previewPopover = nil
         reloadGeneration &+= 1
         searchField.stringValue = ""
         selectedIndex = 0
@@ -421,6 +423,10 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
     }
 
     @objc private func confirmCopy() {
+        performCopy(asPlainText: false)
+    }
+
+    private func performCopy(asPlainText: Bool) {
         guard items.indices.contains(selectedIndex) else { return }
         let item = items[selectedIndex]
         var payload: [String: JSONValue] = [
@@ -436,11 +442,12 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
             kind: .clipboard,
             payload: payload
         )
+        let actionName = asPlainText ? "clipboard.copyPlain" : "clipboard.copy"
         if let detail = ClipboardActionFeedback.failureDetail(
             label: "Copy Clipboard Item",
             failureContext: "write to the pasteboard",
             operation: {
-                try core.invoke(actionName: "clipboard.copy", result: result, actor: .user)
+                try core.invoke(actionName: actionName, result: result, actor: .user)
             }
         ) {
             let alert = NSAlert()
@@ -498,14 +505,71 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         return handleFocusedKey(event)
     }
 
+    private var previewPopover: NSPopover?
+
+    private func togglePreview() {
+        if let popover = previewPopover, popover.isShown {
+            popover.close()
+            previewPopover = nil
+            return
+        }
+        guard items.indices.contains(selectedIndex),
+              let full = try? core.clipboard.get(id: items[selectedIndex].id) else { return }
+        let content = previewView(for: full)
+        let controller = NSViewController()
+        controller.view = content
+        let popover = NSPopover()
+        popover.contentViewController = controller
+        popover.behavior = .transient
+        popover.contentSize = content.frame.size
+        popover.show(relativeTo: tableView.rect(ofRow: selectedIndex), of: tableView, preferredEdge: .maxX)
+        previewPopover = popover
+    }
+
+    private func previewView(for item: ClipboardItem) -> NSView {
+        if item.contentKind == .image, let data = item.data, let image = NSImage(data: data) {
+            let maxSide: CGFloat = 420
+            let size = image.size
+            let scale = min(1, min(maxSide / max(1, size.width), maxSide / max(1, size.height)))
+            let width = max(120, size.width * scale), height = max(80, size.height * scale)
+            let container = NSView(frame: NSRect(x: 0, y: 0, width: width + 16, height: height + 16))
+            let imageView = NSImageView(frame: NSRect(x: 8, y: 8, width: width, height: height))
+            imageView.image = image
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            container.addSubview(imageView)
+            return container
+        }
+        let width: CGFloat = 420, height: CGFloat = 300
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        textView.isEditable = false
+        textView.string = item.plainText
+        textView.font = .systemFont(ofSize: 13)
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.drawsBackground = false
+        scroll.documentView = textView
+        return scroll
+    }
+
     func handleFocusedKey(_ event: NSEvent) -> NSEvent? {
         let editor = searchField.currentEditor() as? NSTextView
         let isEditingSearch = panel.firstResponder === editor || panel.firstResponder === searchField
-        if editor?.hasMarkedText() == true, [36, 125, 126].contains(event.keyCode) {
+        if editor?.hasMarkedText() == true, [36, 125, 126, 49].contains(event.keyCode) {
             return event
         }
         let cmd = event.modifierFlags.contains(.command)
         let shift = event.modifierFlags.contains(.shift)
+        // ⌘1–9: quick-copy the Nth recent item.
+        if cmd, !shift, let chars = event.charactersIgnoringModifiers, let n = Int(chars), (1...9).contains(n) {
+            let idx = n - 1
+            guard items.indices.contains(idx) else { return nil }
+            selectedIndex = idx
+            tableView.selectRowIndexes(IndexSet(integer: idx), byExtendingSelection: false)
+            performCopy(asPlainText: false)
+            return nil
+        }
         switch event.keyCode {
         case 125:
             selectedIndex = min(selectedIndex + 1, max(0, items.count - 1))
@@ -518,9 +582,17 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
             tableView.scrollRowToVisible(selectedIndex)
             return nil
         case 36:
-            confirmCopy()
+            performCopy(asPlainText: event.modifierFlags.contains(.option))
+            return nil
+        case 49 where searchField.stringValue.isEmpty:
+            togglePreview()
             return nil
         case 53:
+            if let popover = previewPopover, popover.isShown {
+                popover.close()
+                previewPopover = nil
+                return nil
+            }
             if !searchField.stringValue.isEmpty {
                 searchField.stringValue = ""
                 selectedIndex = 0
