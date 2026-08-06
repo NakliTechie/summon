@@ -75,6 +75,9 @@ extension LauncherPanelController {
             }
         }
 
+        // Quick-action chip strip (Macaw-style) — only over an empty query.
+        if handleQuickActionKey(event) { return nil }
+
         if event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers?.lowercased() == "k" {
             if session.objectMode { session.exitObjectMode() } else { session.enterObjectMode() }

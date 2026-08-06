@@ -43,6 +43,13 @@ final class LauncherFocusTests: XCTestCase {
         pumpMainRunLoop()
         defer { controller.hide() }
 
+        // The empty state is Spotlight-bare; supply a query result to navigate.
+        controller.searchField.stringValue = "q"
+        controller.session.applyResults("q", [
+            SearchResult(id: "one", title: "One", kind: .command),
+        ])
+        pumpMainRunLoop()
+
         let event = try XCTUnwrap(NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -78,6 +85,14 @@ final class LauncherFocusTests: XCTestCase {
         controller.show()
         pumpMainRunLoop()
         defer { controller.hide() }
+
+        // The empty state is Spotlight-bare; supply query results to navigate.
+        controller.searchField.stringValue = "q"
+        controller.session.applyResults("q", [
+            SearchResult(id: "one", title: "One", kind: .command),
+            SearchResult(id: "two", title: "Two", kind: .command),
+        ])
+        pumpMainRunLoop()
 
         XCTAssertGreaterThan(controller.session.results.count, 1)
         XCTAssertEqual(controller.session.selectedIndex, 0)

@@ -72,10 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                             egressSummary: response.egressSummary
                         )
                     }
-                }
+                },
+                onNavigate: { [weak self] destination in self?.open(destination: destination) }
             )
             #else
-            panel = LauncherPanelController(core: core)
+            panel = LauncherPanelController(
+                core: core,
+                onNavigate: { [weak self] destination in self?.open(destination: destination) }
+            )
             #endif
             clipboardHistory = ClipboardHistoryController(core: core)
             core.setExecutor(

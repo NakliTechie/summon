@@ -7,6 +7,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     public let session: LauncherSession
     public let panel: KeyablePanel
     let aiIntegration: LauncherAIIntegration?
+    let onNavigate: ((AppDestination) -> Void)?
 
     private let rootView: AppearanceAwareView
     private var effectView: NSVisualEffectView?
@@ -20,13 +21,15 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private let emptyLabel: NSTextField
     let stagedReviewView: StagedReviewView
     let aiAnswerView: AIAnswerView
+    let quickActionStrip: LauncherQuickActionStrip
+    var quickActionsShown = false
     let stagedTextWriter: (String) throws -> Void
     private let footerLabel: NSTextField
 
-    private let panelWidth: CGFloat = 680
+    let panelWidth: CGFloat = 680
     /// Spotlight-like single-line bar.
     private let collapsedHeight: CGFloat = 48
-    private let searchBandHeight: CGFloat = 48
+    let searchBandHeight: CGFloat = 48
     private let maxResultsHeight: CGFloat = 380
     private let footerHeight: CGFloat = 22
     private let stagedBandHeight: CGFloat = 148
@@ -49,12 +52,14 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     public init(
         core: SummonCore,
         aiIntegration: LauncherAIIntegration? = nil,
+        onNavigate: ((AppDestination) -> Void)? = nil,
         stagedTextWriter: @escaping (String) throws -> Void = {
             try PasteboardService.writeGeneratedText($0)
         }
     ) {
         self.session = LauncherSession(core: core)
         self.aiIntegration = aiIntegration
+        self.onNavigate = onNavigate
         self.stagedTextWriter = stagedTextWriter
 
         let rect = NSRect(x: 0, y: 0, width: panelWidth, height: collapsedHeight)
@@ -153,6 +158,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         aiAnswerView.isHidden = true
         rootView.addSubview(aiAnswerView)
 
+        quickActionStrip = LauncherQuickActionStrip(frame: .zero)
+        quickActionStrip.isHidden = true
+        rootView.addSubview(quickActionStrip)
+
         scrollView = NSScrollView(frame: .zero)
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
@@ -219,6 +228,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         aiAnswerView.copyButton.action = #selector(copyAnswer)
         aiAnswerView.insertButton.target = self
         aiAnswerView.insertButton.action = #selector(insertAnswer)
+        quickActionStrip.onActivate = { [weak self] in self?.onNavigate?($0) }
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
@@ -307,6 +317,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchField.stringValue = ""
         session.applyResults("", [])
         aiAnswerView.clear()
+        quickActionsShown = false
         panel.orderOut(nil)
         updateSearchFocusState()
     }
@@ -419,10 +430,18 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                 height: iconSize
             )
             let textX = inset + iconSize + 10
+            // Right-side quick-action chip strip (Macaw-style), shown on → over
+            // an empty query; it shrinks the field to make room.
+            let fieldWidth = self.layoutQuickActionStrip(
+                bandY: bandY,
+                inset: inset,
+                fieldStartX: textX,
+                defaultWidth: self.panelWidth - textX - inset
+            )
             self.searchField.frame = NSRect(
                 x: textX,
                 y: rowY,
-                width: self.panelWidth - textX - inset,
+                width: fieldWidth,
                 height: rowH
             )
 
@@ -512,6 +531,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     public func controlTextDidChange(_ obj: Notification) {
         let text = searchField.stringValue
         aiAnswerView.clear() // a new query dismisses any shown answer
+        quickActionsShown = false // typing supersedes the quick-action strip
         searchGeneration &+= 1
         let generation = searchGeneration
         searchDebounceWork?.cancel()
@@ -555,9 +575,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     }
 
     private func loadEmptyResults(firstRun: Bool) {
-        let stored = (try? session.computeResults(for: "")) ?? []
-        let combined = LauncherStarterCatalog.combined(firstRun: firstRun, stored: stored)
-        session.applyResults("", combined)
+        // Spotlight-bare empty state: no dumped list. Quick actions live in the
+        // →-revealed chip strip; the starter catalog is retained for other callers.
+        _ = firstRun
+        session.applyResults("", [])
     }
 
     private func cancelPendingSearch() {
