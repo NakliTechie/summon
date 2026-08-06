@@ -44,7 +44,11 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
             throw ModelRungError.unavailable(.l1Apple, "unknown availability")
         }
 
-        let session = LanguageModelSession(model: model, instructions: Self.systemInstructions)
+        let session = LanguageModelSession(
+            model: model,
+            tools: SummonToolbox.systemTools(),
+            instructions: Self.systemInstructions
+        )
         do {
             let response = try await session.respond(to: trimmed)
             return ModelCompletion(
@@ -63,6 +67,9 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
     private static let systemInstructions = """
         You are the Summon launcher sidecar on the user's Mac.
         Be concise. Prefer a single command, short answer, or structured action.
+        When the user asks about this Mac's live state — battery, the current \
+        date or time, or system facts — call the matching tool instead of \
+        guessing; you cannot know these without the tool.
         Never claim to have executed anything — Summon stages your output for the user.
         """
 
