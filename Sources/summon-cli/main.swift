@@ -499,7 +499,7 @@ struct SummonCLI {
     static func webCommand(_ args: [String]) throws {
         #if SUMMON_AI
         guard let sub = args.first else {
-            fputs("usage: summon web enable|disable|search <q> [--enrich]\n", stderr); exit(2)
+            fputs("usage: summon web enable|disable|search <q> [--enrich]|answer <q>\n", stderr); exit(2)
         }
         let core = try makeCore()
         switch sub {
@@ -563,6 +563,32 @@ struct SummonCLI {
                 print("---")
                 print("staged enrich \(proposal.id.uuidString) rung=\(proposal.rung.rawValue)")
                 print(proposal.output)
+            }
+        case "answer":
+            try requireUserOperation(.webSearch)
+            let q = args.dropFirst().joined(separator: " ")
+            guard !q.isEmpty else { fputs("usage: summon web answer <query>\n", stderr); exit(2) }
+            guard core.webConfig.enabled else {
+                fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
+            }
+            let service = SummonAIService(core: core)
+            let outcome = try awaitOrRun {
+                try await service.searchAndAnswer(
+                    query: q, provider: WikipediaSearchClient(), allowOnce: true, actor: cliActor
+                )
+            }
+            switch outcome {
+            case .disabled:
+                fputs("error: web search off\n", stderr); exit(1)
+            case .needsConsent(let host):
+                fputs("needs consent for \(host)\n", stderr); exit(3)
+            case .noResults:
+                print("(no results)"); exit(1)
+            case let .answer(text, rung, sources):
+                print("rung \(rung.rawValue)")
+                print("---"); print(text); print("---")
+                print("sources:")
+                for source in sources { print("- \(source.title) \(source.url)") }
             }
         default:
             fputs("error: unknown web subcommand\n", stderr); exit(2)

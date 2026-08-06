@@ -81,6 +81,62 @@ final class AILadderTests: XCTestCase {
         XCTAssertNil(try core.settings.get("ai.lastInvocation"))
     }
 
+    func testSearchAndAnswerSynthesizesFromProviderHitsWhenConsented() async throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        core.webConfig.enabled = true
+        let service = SummonAIService(
+            ladder: .testing(fake: FakeModelRung(cannedText: "SYNTHESIZED")),
+            core: core
+        )
+        try service.grantWebSearchConsentAlways()
+        let provider = FakeAuthorizedWebSearchProvider(
+            host: "example.com",
+            hits: [WebHit(title: "Canberra", url: "https://example.com/c", snippet: "capital")]
+        )
+
+        let outcome = try await service.searchAndAnswer(query: "capital of australia", provider: provider)
+
+        guard case let .answer(text, rung, sources) = outcome else {
+            return XCTFail("expected answer, got \(outcome)")
+        }
+        XCTAssertTrue(text.contains("SYNTHESIZED"))
+        XCTAssertEqual(rung, .fake)
+        XCTAssertEqual(sources.count, 1)
+        // Egress was journaled for the provider host (audit trail).
+        let egress = try core.journal.allEntries().contains { entry in
+            if case .egressRequested(let purpose, let host) = entry.action {
+                return purpose == "user.web" && host == "example.com"
+            }
+            return false
+        }
+        XCTAssertTrue(egress)
+    }
+
+    func testSearchAndAnswerNeedsConsentThenAllowOnceBypasses() async throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        core.webConfig.enabled = true
+        let service = SummonAIService(ladder: .testing(fake: FakeModelRung(cannedText: "S")), core: core)
+        let provider = FakeAuthorizedWebSearchProvider(host: "example.com")
+
+        // No consent → asks.
+        let asked = try await service.searchAndAnswer(query: "x", provider: provider)
+        XCTAssertEqual(asked, .needsConsent(host: "example.com"))
+
+        // allow-once bypasses without persisting.
+        let once = try await service.searchAndAnswer(query: "x", provider: provider, allowOnce: true)
+        if case .answer = once {} else { XCTFail("expected answer, got \(once)") }
+        XCTAssertFalse(service.webSearchConsentGranted())
+    }
+
+    func testSearchAndAnswerDisabledWhenWebOff() async throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let service = SummonAIService(ladder: .testing(fake: FakeModelRung()), core: core)
+        let outcome = try await service.searchAndAnswer(
+            query: "x", provider: FakeAuthorizedWebSearchProvider()
+        )
+        XCTAssertEqual(outcome, .disabled)
+    }
+
     func testFakeUnavailable() async throws {
         let ladder = AILadder.testing(fake: FakeModelRung(forcedAvailable: false))
         do {

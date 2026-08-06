@@ -187,6 +187,14 @@ public struct AIResponse: Sendable, Equatable {
     }
 }
 
+/// Result of a harness-driven web search + on-device synthesis.
+public enum WebSearchOutcome: Sendable, Equatable {
+    case answer(text: String, rung: ModelRungID, sources: [WebHit])
+    case needsConsent(host: String)
+    case disabled
+    case noResults
+}
+
 public final class SummonAIService: @unchecked Sendable {
     public let ladder: AILadder
     public let staging: AIStagingStore
@@ -283,6 +291,58 @@ public final class SummonAIService: @unchecked Sendable {
             rung: completion.rung,
             egressSummary: completion.egressSummary
         )
+    }
+
+    // MARK: - Web search (harness-driven: consent → egress-gated fetch → RAG)
+
+    public func webSearchConsentGranted() -> Bool {
+        guard let core,
+              let value = (try? core.settings.get("web.search.consentAlways")) ?? nil
+        else { return false }
+        return value.boolValue == true
+    }
+
+    public func grantWebSearchConsentAlways(actor: ActorTag = .user) throws {
+        guard let core else { return }
+        _ = try core.dispatch(
+            action: .settingsSet(key: "web.search.consentAlways", value: .bool(true)),
+            actor: actor
+        )
+    }
+
+    /// Answer a query by searching the web and synthesizing on-device (the
+    /// Google-style summary). Harness-driven: consent is checked up front — no
+    /// mid-generation prompt — egress is journaled per call, and only the query
+    /// leaves; the answer is composed locally from the returned passages.
+    public func searchAndAnswer(
+        query: String,
+        provider: AuthorizedWebSearchProvider,
+        allowOnce: Bool = false,
+        actor: ActorTag = .user
+    ) async throws -> WebSearchOutcome {
+        guard let core, core.webConfig.enabled else { return .disabled }
+        guard allowOnce || webSearchConsentGranted() else {
+            return .needsConsent(host: provider.host)
+        }
+        let host = provider.host.lowercased()
+        guard !host.isEmpty, let url = URL(string: "https://\(host)/") else { return .disabled }
+
+        let intent = try core.dispatch(
+            action: .egressRequested(purpose: EgressPurpose.userWeb.rawValue, host: host),
+            actor: actor
+        )
+        guard let entry = try core.journal.entry(id: intent.envelopeID) else {
+            throw CoreError.journal("web egress intent missing after dispatch")
+        }
+        let authorization = try NetworkSovereignty.authorize(
+            url: url, purpose: .userWeb, actor: actor, journalEntry: entry
+        )
+        let hits = try await provider.search(query: query, limit: 5, authorization: authorization)
+        guard !hits.isEmpty else { return .noResults }
+        let completion = try await ladder.complete(
+            prompt: WebEnrich.enrichPrompt(question: query, hits: hits)
+        )
+        return .answer(text: completion.text, rung: completion.rung, sources: hits)
     }
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {

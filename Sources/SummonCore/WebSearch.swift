@@ -69,10 +69,21 @@ public enum WebSearchError: Error, Equatable, LocalizedError {
     }
 }
 
+/// A provider `searchAndAnswer` can drive: it exposes its egress host and takes
+/// the journaled `.userWeb` authorization the sovereignty gate requires.
+public protocol AuthorizedWebSearchProvider: Sendable {
+    var host: String { get }
+    func search(query: String, limit: Int, authorization: EgressAuthorization?) async throws -> [WebHit]
+}
+
 /// SearXNG JSON API client (`/search?q=&format=json`).
-public struct SearXNGClient: Sendable {
+public struct SearXNGClient: AuthorizedWebSearchProvider, Sendable {
     public let config: WebSearchConfig
     public var session: URLSession
+
+    public var host: String {
+        URL(string: config.baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host ?? ""
+    }
 
     public init(config: WebSearchConfig, session: URLSession = .shared) {
         self.config = config
@@ -133,7 +144,7 @@ public struct SearXNGClient: Sendable {
 /// Wikipedia's REST search API. No key, no Docker, no CAPTCHA — but encyclopedic
 /// only, no live/current web. HTTPS + journaled `.userWeb` egress, same gate as
 /// SearXNG. Current-web tiers (SearXNG self-host, BYO-key) are the upgrades.
-public struct WikipediaSearchClient: Sendable {
+public struct WikipediaSearchClient: AuthorizedWebSearchProvider, Sendable {
     public let host: String
     public var session: URLSession
 
@@ -208,6 +219,29 @@ public struct FakeWebSearchProvider: WebSearchProviding, Sendable {
 
     public func search(query: String, limit: Int) async throws -> [WebHit] {
         _ = query
+        return Array(hits.prefix(limit))
+    }
+}
+
+/// Authorized test double — no network; carries a host for the egress journal.
+public struct FakeAuthorizedWebSearchProvider: AuthorizedWebSearchProvider, Sendable {
+    public let host: String
+    public var hits: [WebHit]
+
+    public init(
+        host: String = "example.com",
+        hits: [WebHit] = [WebHit(title: "Example", url: "https://example.com", snippet: "Example domain")]
+    ) {
+        self.host = host
+        self.hits = hits
+    }
+
+    public func search(
+        query: String,
+        limit: Int,
+        authorization: EgressAuthorization?
+    ) async throws -> [WebHit] {
+        _ = (query, authorization)
         return Array(hits.prefix(limit))
     }
 }
