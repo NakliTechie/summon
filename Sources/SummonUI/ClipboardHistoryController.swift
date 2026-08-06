@@ -402,6 +402,7 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         case .plainText: return nil
         case .richText: return item.flavor == "public.html" ? "HTML" : "Rich Text"
         case .image: return "Image"
+        case .file: return "File"
         }
     }
 

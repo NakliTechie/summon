@@ -6,6 +6,7 @@ public enum ClipboardContentKind: String, Sendable, Hashable, Codable, Equatable
     case plainText
     case richText
     case image
+    case file
 }
 
 public struct ClipboardItem: Sendable, Hashable, Codable, Equatable, Identifiable {
@@ -45,11 +46,15 @@ public struct ClipboardItem: Sendable, Hashable, Codable, Equatable, Identifiabl
     }
 
     public var displayText: String {
+        if contentKind == .file, !text.isEmpty {
+            return (text as NSString).lastPathComponent
+        }
         if !text.isEmpty { return text }
         switch contentKind {
         case .plainText: return "Text"
         case .richText: return "Rich Text"
         case .image: return "Image"
+        case .file: return "File"
         }
     }
 
@@ -80,11 +85,15 @@ public struct ClipboardItemSummary: Sendable, Hashable, Equatable, Identifiable 
     public let flavor: String?
 
     public var displayText: String {
+        if contentKind == .file, !text.isEmpty {
+            return (text as NSString).lastPathComponent
+        }
         if !text.isEmpty { return text }
         switch contentKind {
         case .plainText: return "Text"
         case .richText: return "Rich Text"
         case .image: return "Image"
+        case .file: return "File"
         }
     }
 }
@@ -481,6 +490,10 @@ public struct ClipboardStore: Sendable {
             }
             guard PasteboardPrivacy.imageTypes.contains(flavor) else {
                 throw CoreError.store("unsupported image clipboard flavor \(flavor)")
+            }
+        case .file:
+            guard !item.text.isEmpty, item.flavor == "public.file-url", let data = item.data, !data.isEmpty else {
+                throw CoreError.store("file clipboard content requires a path, the public.file-url flavor, and payload")
             }
         }
     }

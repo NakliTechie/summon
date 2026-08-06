@@ -54,6 +54,50 @@ final class PasteboardRichContentTests: XCTestCase {
         XCTAssertEqual(item.sourceApp, "Preview")
     }
 
+    func testFileCopyCapturedAsFileKindAndReCopiesAsFileURL() throws {
+        let url = URL(fileURLWithPath: "/private/tmp/summon-file-capture-\(UUID().uuidString).txt")
+        let pasteboard = NSPasteboard.withUniqueName()
+        pasteboard.clearContents()
+        XCTAssertTrue(pasteboard.writeObjects([url as NSURL]))
+
+        let item = try XCTUnwrap(PasteboardService.item(
+            from: pasteboard,
+            types: pasteboard.types?.map(\.rawValue) ?? [],
+            sourceApp: "Finder"
+        ))
+        XCTAssertEqual(item.contentKind, .file)
+        XCTAssertEqual(item.text, url.path)
+        XCTAssertEqual(item.flavor, "public.file-url")
+        XCTAssertEqual(item.displayText, url.lastPathComponent)
+
+        let out = NSPasteboard.withUniqueName()
+        try PasteboardService.writeGeneratedItem(item, asPlainText: false, to: out)
+        let outTypes = out.types?.map(\.rawValue) ?? []
+        XCTAssertTrue(outTypes.contains("public.file-url"))
+        let recovered = try XCTUnwrap(out.readObjects(forClasses: [NSURL.self]) as? [URL])
+        XCTAssertEqual(recovered.first?.path, url.path)
+    }
+
+    func testFileCopyIngestsGetsAndPurgesEndToEnd() throws {
+        let core = try SummonCore.inMemory()
+        let path = "/private/tmp/summon-e2e-\(UUID().uuidString).txt"
+        let url = URL(fileURLWithPath: path)
+        let item = ClipboardItem(
+            text: path,
+            sourceApp: "Finder",
+            contentKind: .file,
+            flavor: "public.file-url",
+            data: Data(url.absoluteString.utf8)
+        )
+        XCTAssertNotNil(try core.ingestClipboard(item: item, types: ["public.file-url"], sourceApp: "Finder"))
+        XCTAssertTrue(try core.clipboard.all().contains { $0.id == item.id && $0.contentKind == .file })
+        let got = try XCTUnwrap(core.clipboard.get(id: item.id))
+        XCTAssertEqual(got.contentKind, .file)
+        XCTAssertEqual(got.text, path)
+        _ = try core.dispatch(action: .clipboardDelete(id: item.id), actor: .user)
+        XCTAssertFalse(try core.clipboard.all().contains { $0.id == item.id })
+    }
+
     func testConcealedMarkerSkipsImageBeforeReading() {
         let pasteboard = NSPasteboard.withUniqueName()
         let imageType = NSPasteboard.PasteboardType("public.png")

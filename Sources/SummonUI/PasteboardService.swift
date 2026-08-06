@@ -235,6 +235,16 @@ public final class PasteboardService: @unchecked Sendable {
             guard pasteboard.setData(Data(), forType: generatedType) else {
                 throw CoreError.io("pasteboard rejected generated marker")
             }
+        case .file:
+            pasteboard.clearContents()
+            pasteboard.declareTypes([.fileURL, .string, generatedType], owner: nil)
+            let urlString = item.data.flatMap { String(data: $0, encoding: .utf8) }
+                ?? URL(fileURLWithPath: item.text).absoluteString
+            guard pasteboard.setString(urlString, forType: .fileURL),
+                  pasteboard.setString(item.text, forType: .string),
+                  pasteboard.setData(Data(), forType: generatedType) else {
+                throw CoreError.io("pasteboard rejected generated file")
+            }
         }
     }
 
@@ -244,6 +254,18 @@ public final class PasteboardService: @unchecked Sendable {
         sourceApp: String? = nil
     ) -> ClipboardItem? {
         guard !PasteboardPrivacy.shouldSkip(types: types) else { return nil }
+        // File copy (Finder): capture the path + URL so it re-pastes as a file, not text.
+        if types.contains(where: PasteboardPrivacy.fileTypes.contains),
+           let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL],
+           let url = urls.first, url.isFileURL {
+            return ClipboardItem(
+                text: url.path,
+                sourceApp: sourceApp,
+                contentKind: .file,
+                flavor: "public.file-url",
+                data: Data(url.absoluteString.utf8)
+            )
+        }
         if let flavor = types.first(where: imageTypes.contains),
            let data = pasteboard.data(forType: NSPasteboard.PasteboardType(flavor)),
            !data.isEmpty {
