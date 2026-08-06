@@ -549,9 +549,9 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             self.searchQueue.async {
                 do {
                     var list = try self.session.computeResults(for: text)
-                    if list.isEmpty,
-                       let offer = self.aiIntegration?.offerResult(for: text) {
-                        list = [offer]
+                    if list.isEmpty, let ai = self.aiIntegration {
+                        list = [ai.offerResult(for: text), ai.searchOffer(for: text)]
+                            .compactMap { $0 }
                     }
                     ResultIcon.preload(list)
                     DispatchQueue.main.async {
@@ -667,13 +667,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         if row >= 0 { session.selectIndex(row) }
         do {
             let confirmation = try session.prepareConfirmation()
-            if confirmation.actionName == "ai.ask" {
-                runAI(confirmation)
-                return
-            }
-            if confirmation.actionName == "create.snippet" || confirmation.actionName == "create.quicklink" {
-                presentCreate(confirmation)
-                return
+            switch confirmation.actionName {
+            case "ai.ask": runAI(confirmation); return
+            case "web.search": runWebSearch(confirmation); return
+            case "create.snippet", "create.quicklink": presentCreate(confirmation); return
+            default: break
             }
             if confirmation.requiresUserConfirmation, !confirmDestructiveAction(confirmation) {
                 return

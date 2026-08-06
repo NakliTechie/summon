@@ -56,23 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             aiService = service
             panel = LauncherPanelController(
                 core: core,
-                aiIntegration: LauncherAIIntegration { [weak service] prompt in
-                    guard let service else {
-                        throw ModelRungError.unavailable(.l0Packaged, "AI service was released")
-                    }
-                    let response = try await service.respond(prompt: prompt, actor: .user)
-                    let rung = response.rung.rawValue
-                    switch response.kind {
-                    case let .answer(text):
-                        return .answer(text: text, rung: rung, egressSummary: response.egressSummary)
-                    case let .staged(proposalID):
-                        return .staged(
-                            proposalID: proposalID,
-                            rung: rung,
-                            egressSummary: response.egressSummary
-                        )
-                    }
-                },
+                aiIntegration: makeAIIntegration(service: service),
                 onNavigate: { [weak self] destination in self?.open(destination: destination) }
             )
             #else
@@ -461,6 +445,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: "OK")
         alert.beginSheetModal(for: panel.panel)
     }
+
+    #if SUMMON_AI
+    private func makeAIIntegration(service: SummonAIService) -> LauncherAIIntegration {
+        LauncherAIIntegration(
+            handler: { [weak service] prompt in
+                guard let service else {
+                    throw ModelRungError.unavailable(.l0Packaged, "AI service was released")
+                }
+                let response = try await service.respond(prompt: prompt, actor: .user)
+                let rung = response.rung.rawValue
+                switch response.kind {
+                case let .answer(text):
+                    return .answer(text: text, rung: rung, egressSummary: response.egressSummary)
+                case let .staged(proposalID):
+                    return .staged(proposalID: proposalID, rung: rung, egressSummary: response.egressSummary)
+                }
+            },
+            searchHandler: { [weak service] prompt, allowOnce in
+                guard let service, let core = service.core else { return .unavailable }
+                guard allowOnce || service.webSearchConsentGranted() else {
+                    return .needsConsent(host: "en.wikipedia.org")
+                }
+                if !core.webConfig.enabled {
+                    core.webConfig.enabled = true
+                    _ = try? core.persistWebConfig(actor: .user)
+                }
+                switch try await service.searchAndAnswer(
+                    query: prompt, provider: WikipediaSearchClient(), allowOnce: allowOnce, actor: .user
+                ) {
+                case let .answer(text, rung, sources):
+                    return .answer(
+                        text: text,
+                        sources: sources.map { "\($0.title) — \($0.url)" },
+                        rung: rung.rawValue
+                    )
+                case let .needsConsent(host):
+                    return .needsConsent(host: host)
+                case .noResults:
+                    return .noResults
+                case .disabled:
+                    return .unavailable
+                }
+            },
+            consentGranter: { [weak service] always in
+                if always { try? service?.grantWebSearchConsentAlways() }
+            }
+        )
+    }
+    #endif
 
     private func open(destination: AppDestination) {
         panel.hide()

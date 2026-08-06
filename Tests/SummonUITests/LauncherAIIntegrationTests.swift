@@ -97,6 +97,49 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertFalse(panel.footerError?.contains("raw provider failure") == true)
     }
 
+    func testSearchOfferPresentOnlyWhenSearchIsWired() throws {
+        let noSearch = LauncherAIIntegration { _ in .answer(text: "x", rung: "L1", egressSummary: "") }
+        XCTAssertNil(noSearch.searchOffer(for: "who wrote 1984"))
+
+        let withSearch = LauncherAIIntegration(
+            handler: { _ in .answer(text: "x", rung: "L1", egressSummary: "") },
+            searchHandler: { _, _ in .noResults }
+        )
+        let offer = try XCTUnwrap(withSearch.searchOffer(for: "who wrote 1984"))
+        XCTAssertEqual(offer.payload["action"]?.stringValue, "web.search")
+    }
+
+    func testWebSearchAnswerShowsSummaryWithSources() throws {
+        let integration = LauncherAIIntegration(
+            handler: { _ in .answer(text: "x", rung: "L1", egressSummary: "") },
+            searchHandler: { _, _ in
+                .answer(
+                    text: "Canberra is the capital.",
+                    sources: ["Canberra — https://en.wikipedia.org/wiki/Canberra"],
+                    rung: "L1"
+                )
+            }
+        )
+        let panel = LauncherPanelController(core: try SummonCore.inMemory(), aiIntegration: integration)
+        panel.runWebSearch(LauncherConfirmation(
+            actionName: "web.search",
+            result: SearchResult(
+                id: "web:fixture",
+                title: "Search the web & answer",
+                kind: .command,
+                payload: ["prompt": .string("capital of australia")]
+            ),
+            query: "capital of australia",
+            requiresUserConfirmation: false
+        ))
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+
+        XCTAssertFalse(panel.aiAnswerView.isHidden)
+        XCTAssertTrue(panel.aiAnswerView.answer.contains("Canberra is the capital."))
+        XCTAssertTrue(panel.aiAnswerView.answer.contains("Sources:"))
+    }
+
     private func integrationReturningStaged() -> LauncherAIIntegration {
         LauncherAIIntegration { _ in
             .staged(proposalID: "proposal-1", rung: "L0", egressSummary: "")

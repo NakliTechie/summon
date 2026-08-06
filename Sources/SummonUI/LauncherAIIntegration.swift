@@ -10,19 +10,58 @@ public enum LauncherAIResponse: Sendable, Equatable {
     case staged(proposalID: String, rung: String, egressSummary: String)
 }
 
+/// Web search + on-device synthesis outcome (harness-driven), kept AI-free.
+public enum LauncherWebSearchResponse: Sendable, Equatable {
+    case answer(text: String, sources: [String], rung: String)
+    case needsConsent(host: String)
+    case noResults
+    case unavailable
+}
+
 /// App-composed AI seam. SummonUI stays buildable when the optional SummonAI
 /// target is removed, while the shipping app attaches the real ladder.
 public struct LauncherAIIntegration: Sendable {
     private let handler: @Sendable (String) async throws -> LauncherAIResponse
+    private let searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)?
+    private let consentGranter: (@Sendable (Bool) -> Void)?
 
     public init(
-        handler: @escaping @Sendable (String) async throws -> LauncherAIResponse
+        handler: @escaping @Sendable (String) async throws -> LauncherAIResponse,
+        searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)? = nil,
+        consentGranter: (@Sendable (Bool) -> Void)? = nil
     ) {
         self.handler = handler
+        self.searchHandler = searchHandler
+        self.consentGranter = consentGranter
     }
 
     public func respond(prompt: String) async throws -> LauncherAIResponse {
         try await handler(prompt)
+    }
+
+    public var searchAvailable: Bool { searchHandler != nil }
+
+    public func search(prompt: String, allowOnce: Bool) async throws -> LauncherWebSearchResponse {
+        guard let searchHandler else { return .unavailable }
+        return try await searchHandler(prompt, allowOnce)
+    }
+
+    public func grantSearchConsent(always: Bool) { consentGranter?(always) }
+
+    /// The "Search the web & answer" offer, shown only when search is wired.
+    public func searchOffer(for rawQuery: String) -> SearchResult? {
+        guard searchAvailable, let prompt = Self.prompt(from: rawQuery) else { return nil }
+        return SearchResult(
+            id: "web:search:\(prompt)",
+            title: "Search the web & answer",
+            subtitle: "Only your query leaves · answer composed on-device",
+            kind: .command,
+            score: 0.24,
+            payload: [
+                "action": .string("web.search"),
+                "prompt": .string(prompt),
+            ]
+        )
     }
 
     public func offerResult(for rawQuery: String) -> SearchResult? {

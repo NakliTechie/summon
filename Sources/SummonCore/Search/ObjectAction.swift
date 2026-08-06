@@ -58,6 +58,10 @@ public enum ObjectActionGrammar {
                 actions = [
                     ObjectAction(id: "ask", title: "Ask", name: "ai.ask"),
                 ]
+            } else if result.payload["action"]?.stringValue == "web.search" {
+                actions = [
+                    ObjectAction(id: "search", title: "Search & Answer", name: "web.search"),
+                ]
             } else {
                 actions = [
                     ObjectAction(id: "run", title: "Run", name: "command.run"),
