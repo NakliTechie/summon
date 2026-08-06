@@ -40,6 +40,17 @@ else
 	echo "build-app: WARNING missing $ICNS_SRC — icon not bundled" >&2
 fi
 
+# Bundle the opt-in SearXNG assets (ready-to-go; nothing runs until the user opts in).
+SEARXNG_SRC="$ROOT/packaging/searxng"
+if [ -d "$SEARXNG_SRC" ]; then
+	mkdir -p "$APP/Contents/Resources/searxng"
+	cp "$SEARXNG_SRC/docker-compose.yml" "$SEARXNG_SRC/settings.yml" \
+		"$SEARXNG_SRC/searxng-up.sh" "$SEARXNG_SRC/searxng-down.sh" \
+		"$SEARXNG_SRC/README.md" "$APP/Contents/Resources/searxng/"
+	chmod +x "$APP/Contents/Resources/searxng/"*.sh
+	echo "build-app: bundled SearXNG opt-in assets"
+fi
+
 # Ad-hoc sign (identity "-") — enough for local cask install tests; not for distribution.
 codesign --force --deep --sign - "$APP"
 codesign --verify --verbose=2 "$APP"

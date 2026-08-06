@@ -1,0 +1,13 @@
+# Minimal SearXNG override — merges with upstream defaults. Template only:
+# searxng-up.sh copies this to runtime/settings.yml with a generated secret.
+# Loopback use + JSON output for Summon's SearXNGClient.
+use_default_settings: true
+server:
+  secret_key: "__SUMMON_SEARXNG_SECRET__"
+  limiter: false
+  image_proxy: false
+search:
+  # JSON is off by default in SearXNG; Summon needs it.
+  formats:
+    - html
+    - json

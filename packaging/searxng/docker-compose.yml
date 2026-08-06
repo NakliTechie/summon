@@ -1,0 +1,27 @@
+# Summon-managed SearXNG — the opt-in "current web" search provider.
+#
+# Runs ONLY when the user opts in (searxng-up.sh). Summon NEVER auto-starts this,
+# and never installs Docker. Loopback-only bind; JSON API enabled for Summon's
+# SearXNGClient (which queries ?format=json). Stop with searxng-down.sh.
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: summon-searxng
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./runtime/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://127.0.0.1:8080/
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "1"
