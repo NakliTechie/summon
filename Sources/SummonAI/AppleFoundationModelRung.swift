@@ -46,7 +46,7 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
 
         let session = LanguageModelSession(
             model: model,
-            tools: SummonToolbox.systemTools(),
+            tools: SummonToolbox.tools(for: trimmed),
             instructions: Self.systemInstructions
         )
         do {
@@ -65,12 +65,18 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
     }
 
     private static let systemInstructions = """
-        You are the Summon launcher sidecar on the user's Mac.
-        Be concise. Prefer a single command, short answer, or structured action.
-        When the user asks about this Mac's live state — battery, the current \
-        date or time, or system facts — call the matching tool instead of \
-        guessing; you cannot know these without the tool.
-        Never claim to have executed anything — Summon stages your output for the user.
+        You are the Summon launcher sidecar on the user's Mac. Be concise.
+        Tools report this Mac's live state. Call a tool ONLY when the user's \
+        request is specifically about that tool's subject:
+        - battery_status: only for battery, charge, or power questions.
+        - current_datetime: only for the current date, day, or time.
+        - system_info: only for macOS version, memory, CPU, thermal, or uptime.
+        Never call a tool to pad an unrelated answer, and never append tool \
+        output the user did not ask for. If the request is about none of these \
+        subjects, answer directly and call no tool.
+        You cannot perform actions or access anything else on this Mac. Never \
+        claim to have done something. Do not invent facts — versions, dates, \
+        events, or results — and if you are unsure, say so plainly.
         """
 
     #if canImport(FoundationModels)

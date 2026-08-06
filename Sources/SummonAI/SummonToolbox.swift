@@ -72,6 +72,35 @@ public enum SystemReaders {
     }
 }
 
+/// Which read-only system tool a query is about. The harness classifies the
+/// query and attaches ONLY the matched tools to the model session — the
+/// deterministic gate that stops `system_info`/`datetime` bleeding into
+/// unrelated answers (a query that matches nothing gets NO tools).
+public enum SystemToolIntent: String, Sendable, Hashable, CaseIterable {
+    case battery, datetime, systemInfo
+}
+
+extension SystemReaders {
+    public static func intents(for query: String) -> Set<SystemToolIntent> {
+        let q = query.lowercased()
+        func hit(_ terms: [String]) -> Bool { terms.contains { q.contains($0) } }
+        var result: Set<SystemToolIntent> = []
+        if hit(["battery", "charge", "charging", "plugged", "unplugged",
+                "on ac", "ac power", "power source"]) {
+            result.insert(.battery)
+        }
+        if hit(["time", "today", "date", "clock", "what day"]) {
+            result.insert(.datetime)
+        }
+        if hit(["memory", "ram", "cpu", "processor", "core", "macos",
+                "os version", "uptime", "thermal", "running hot",
+                "temperature", "specs", "system info"]) {
+            result.insert(.systemInfo)
+        }
+        return result
+    }
+}
+
 #if canImport(FoundationModels)
 import FoundationModels
 
@@ -81,8 +110,9 @@ import FoundationModels
 @available(macOS 26.0, *)
 struct CurrentDateTimeTool: Tool {
     let name = "current_datetime"
-    let description = "Get the current local date, day of week, and time on this Mac. "
-        + "Use for any question about today's date, the current time, or what day it is."
+    let description = "The current local date, day of week, and time on this Mac. "
+        + "Call ONLY for questions about the current date, day, or time — never to "
+        + "add a timestamp to an unrelated answer."
 
     @Generable
     struct Arguments {}
@@ -95,8 +125,8 @@ struct CurrentDateTimeTool: Tool {
 @available(macOS 26.0, *)
 struct BatteryStatusTool: Tool {
     let name = "battery_status"
-    let description = "Report this Mac's current battery percentage and charging state. "
-        + "Use for any question about battery level, charge, or power."
+    let description = "This Mac's current battery percentage and charging state. "
+        + "Call ONLY for questions about battery, charge level, or power."
 
     @Generable
     struct Arguments {}
@@ -109,8 +139,9 @@ struct BatteryStatusTool: Tool {
 @available(macOS 26.0, *)
 struct SystemInfoTool: Tool {
     let name = "system_info"
-    let description = "Report this Mac's live system facts: macOS version, host name, "
-        + "installed memory, CPU core count, thermal state, and uptime."
+    let description = "This Mac's macOS version, host name, memory, CPU core count, "
+        + "thermal state, and uptime. Call ONLY when the user explicitly asks about "
+        + "these system specs — never to add context to another answer."
 
     @Generable
     struct Arguments {}
@@ -123,8 +154,16 @@ struct SystemInfoTool: Tool {
 /// The read-only tools Summon offers the on-device model. All are zero-egress.
 @available(macOS 26.0, *)
 enum SummonToolbox {
-    static func systemTools() -> [any Tool] {
-        [CurrentDateTimeTool(), BatteryStatusTool(), SystemInfoTool()]
+    /// The tools to attach for a query — only those its intent matches. An
+    /// unrelated query (gibberish, world knowledge, writing) returns [], so the
+    /// model has no tool to bleed into the answer.
+    static func tools(for query: String) -> [any Tool] {
+        let intents = SystemReaders.intents(for: query)
+        var tools: [any Tool] = []
+        if intents.contains(.battery) { tools.append(BatteryStatusTool()) }
+        if intents.contains(.datetime) { tools.append(CurrentDateTimeTool()) }
+        if intents.contains(.systemInfo) { tools.append(SystemInfoTool()) }
+        return tools
     }
 }
 #endif

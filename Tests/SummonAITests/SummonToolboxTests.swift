@@ -17,6 +17,23 @@ final class SummonToolboxTests: XCTestCase {
         XCTAssertTrue(text.contains("CPU cores:"))
     }
 
+    func testIntentClassifierGatesToolsToOnTopicQueriesOnly() {
+        // On-topic → the matching intent.
+        XCTAssertEqual(SystemReaders.intents(for: "what is my battery percentage"), [.battery])
+        XCTAssertEqual(SystemReaders.intents(for: "am i plugged in or on battery"), [.battery])
+        XCTAssertEqual(SystemReaders.intents(for: "what time is it right now"), [.datetime])
+        XCTAssertEqual(SystemReaders.intents(for: "what is today's date"), [.datetime])
+        XCTAssertEqual(SystemReaders.intents(for: "how much memory does this mac have"), [.systemInfo])
+        XCTAssertEqual(SystemReaders.intents(for: "how many cpu cores do i have"), [.systemInfo])
+
+        // The bleed cases from the battery → NO tool (so nothing to bleed).
+        XCTAssertTrue(SystemReaders.intents(for: "convert 100 kilometers to miles").isEmpty)
+        XCTAssertTrue(SystemReaders.intents(for: "asdf qwerty zxcv").isEmpty)
+        XCTAssertTrue(SystemReaders.intents(for: "give me three names for a productivity app").isEmpty)
+        XCTAssertTrue(SystemReaders.intents(for: "tell me about my calendar for tomorrow").isEmpty)
+        XCTAssertTrue(SystemReaders.intents(for: "what is the latest version of swift").isEmpty)
+    }
+
     func testBatteryReaderReturnsAGroundedNonEmptyFact() {
         let text = SystemReaders.battery()
         XCTAssertFalse(text.isEmpty)
