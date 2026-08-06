@@ -97,6 +97,7 @@ public struct SearchService: Sendable {
             results.append(contentsOf: calHits)
         }
         results.append(contentsOf: SettingsCatalog.search(query: free))
+        results.append(contentsOf: CreateActionCatalog.search(query: free))
         let lower = free.lowercased()
         if let appIntents,
            lower.hasPrefix("action ") || lower.hasPrefix("intent ") || lower.hasPrefix("do ") {

@@ -8,6 +8,8 @@
 	<string>Summon</string>
 	<key>CFBundleExecutable</key>
 	<string>summon-app</string>
+	<key>CFBundleIconFile</key>
+	<string>Summon</string>
 	<key>CFBundleIdentifier</key>
 	<string>tech.nakli.Summon</string>
 	<key>CFBundleInfoDictionaryVersion</key>

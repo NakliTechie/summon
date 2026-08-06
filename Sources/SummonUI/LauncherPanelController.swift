@@ -623,6 +623,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                 stageAI(confirmation)
                 return
             }
+            if confirmation.actionName == "create.snippet" || confirmation.actionName == "create.quicklink" {
+                presentCreate(confirmation)
+                return
+            }
             if confirmation.requiresUserConfirmation, !confirmDestructiveAction(confirmation) {
                 return
             }

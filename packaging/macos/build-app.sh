@@ -30,6 +30,16 @@ cp "$PLIST_SRC" "$PLIST_DST"
 cp "$BIN" "$APP/Contents/MacOS/$BIN_NAME"
 chmod +x "$APP/Contents/MacOS/$BIN_NAME"
 
+# Bundle the app icon (sigil mark, sourced from assets/brand/sigil).
+# CFBundleIconFile=Summon in Info.plist resolves to Contents/Resources/Summon.icns.
+ICNS_SRC="$ROOT/assets/brand/sigil/Summon.icns"
+if [ -f "$ICNS_SRC" ]; then
+	cp "$ICNS_SRC" "$APP/Contents/Resources/Summon.icns"
+	echo "build-app: bundled icon $ICNS_SRC"
+else
+	echo "build-app: WARNING missing $ICNS_SRC — icon not bundled" >&2
+fi
+
 # Ad-hoc sign (identity "-") — enough for local cask install tests; not for distribution.
 codesign --force --deep --sign - "$APP"
 codesign --verify --verbose=2 "$APP"

@@ -49,6 +49,31 @@ final class PhaseAStoresTests: XCTestCase {
         XCTAssertTrue(r.contains { $0.subtitle?.contains("summon-cli snippet add") == true })
         XCTAssertTrue(r.contains { $0.subtitle?.contains("summon-cli quicklink add") == true })
         XCTAssertTrue(r.contains { $0.title == "Add favorite" })
+        // 2026-08-05 checklist coverage: clipboard controls, ignored apps, window
+        // layouts, CJK, and Quit consequences must appear in the guide.
+        XCTAssertTrue(r.contains { $0.subtitle?.contains(ShortcutCatalog.clearClipboardHistory) == true })
+        XCTAssertTrue(r.contains { $0.title == "Ignore an app" })
+        XCTAssertTrue(r.contains { $0.title == "Window layouts" })
+        XCTAssertTrue(r.contains { $0.title == "Type CJK" })
+        XCTAssertTrue(r.contains { $0.title == "Quit Summon" && $0.subtitle?.contains("clipboard capture") == true })
+        XCTAssertTrue(r.contains { $0.title == "Create snippet" && $0.subtitle?.contains("Create snippet…") == true })
+    }
+
+    func testCreateActionCatalog() {
+        // Bare verb surfaces both creators.
+        let both = CreateActionCatalog.search(query: "new")
+        XCTAssertEqual(Set(both.map { $0.id }), ["create:snippet", "create:quicklink"])
+        // Scoped snippet carries the trailing seed name and the intercept action.
+        let snip = CreateActionCatalog.search(query: "snippet Greeting")
+        XCTAssertEqual(snip.map { $0.id }, ["create:snippet"])
+        XCTAssertEqual(snip.first?.payload["action"], .string("create.snippet"))
+        XCTAssertEqual(snip.first?.payload["seedName"], .string("Greeting"))
+        // Quicklink verb with no seed.
+        let ql = CreateActionCatalog.search(query: "create quicklink")
+        XCTAssertEqual(ql.map { $0.id }, ["create:quicklink"])
+        XCTAssertEqual(ql.first?.payload["seedName"], .string(""))
+        // Unrelated queries stay empty (no launcher noise).
+        XCTAssertTrue(CreateActionCatalog.search(query: "weather tomorrow").isEmpty)
     }
 
     func testSessionRecordsFrecencyOnConfirm() throws {
