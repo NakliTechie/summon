@@ -60,12 +60,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     guard let service else {
                         throw ModelRungError.unavailable(.l0Packaged, "AI service was released")
                     }
-                    let proposal = try await service.completeAndStage(prompt: prompt, actor: .user)
-                    return LauncherAIStageOutcome(
-                        proposalID: proposal.id.uuidString,
-                        rung: proposal.rung.rawValue,
-                        egressSummary: proposal.egressSummary
-                    )
+                    let response = try await service.respond(prompt: prompt, actor: .user)
+                    let rung = response.rung.rawValue
+                    switch response.kind {
+                    case let .answer(text):
+                        return .answer(text: text, rung: rung, egressSummary: response.egressSummary)
+                    case let .staged(proposalID):
+                        return .staged(
+                            proposalID: proposalID,
+                            rung: rung,
+                            egressSummary: response.egressSummary
+                        )
+                    }
                 }
             )
             #else

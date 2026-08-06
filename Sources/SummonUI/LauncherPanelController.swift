@@ -19,6 +19,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private let tableView: NSTableView
     private let emptyLabel: NSTextField
     let stagedReviewView: StagedReviewView
+    let aiAnswerView: AIAnswerView
     let stagedTextWriter: (String) throws -> Void
     private let footerLabel: NSTextField
 
@@ -29,6 +30,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private let maxResultsHeight: CGFloat = 380
     private let footerHeight: CGFloat = 22
     private let stagedBandHeight: CGFloat = 148
+    private let answerBandHeight: CGFloat = 148
 
     var stagedID: String?
     var footerError: String?
@@ -147,6 +149,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         stagedReviewView.isHidden = true
         rootView.addSubview(stagedReviewView)
 
+        aiAnswerView = AIAnswerView(frame: .zero)
+        aiAnswerView.isHidden = true
+        rootView.addSubview(aiAnswerView)
+
         scrollView = NSScrollView(frame: .zero)
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
@@ -209,6 +215,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         stagedReviewView.acceptButton.action = #selector(acceptStaged)
         stagedReviewView.rejectButton.target = self
         stagedReviewView.rejectButton.action = #selector(rejectStaged)
+        aiAnswerView.copyButton.target = self
+        aiAnswerView.copyButton.action = #selector(copyAnswer)
+        aiAnswerView.insertButton.target = self
+        aiAnswerView.insertButton.action = #selector(insertAnswer)
 
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
@@ -296,6 +306,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         stagedRefreshMonitor?.stopPolling()
         searchField.stringValue = ""
         session.applyResults("", [])
+        aiAnswerView.clear()
         panel.orderOut(nil)
         updateSearchFocusState()
     }
@@ -344,7 +355,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private var hasBrowsableResults: Bool { !session.results.isEmpty || session.objectMode }
 
     private var showResultsChrome: Bool {
-        hasQuery || hasBrowsableResults || !stagedReviewView.isHidden || footerError != nil
+        hasQuery || hasBrowsableResults || !stagedReviewView.isHidden
+            || !aiAnswerView.isHidden || footerError != nil
     }
 
     private func targetHeight() -> CGFloat {
@@ -352,7 +364,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         if !stagedReviewView.isHidden {
             h += stagedBandHeight
         }
-        if hasQuery || hasBrowsableResults {
+        if !aiAnswerView.isHidden {
+            h += answerBandHeight
+        }
+        // The answer band replaces the results list; suppress the list while it shows.
+        if hasQuery || hasBrowsableResults, aiAnswerView.isHidden {
             let rows = CGFloat(
                 session.objectMode ? session.objectActions.count : session.results.count
             )
@@ -424,6 +440,15 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                     height: self.stagedBandHeight
                 )
             }
+            if !self.aiAnswerView.isHidden {
+                contentTop -= self.answerBandHeight
+                self.aiAnswerView.frame = NSRect(
+                    x: inset,
+                    y: contentTop,
+                    width: self.panelWidth - inset * 2,
+                    height: self.answerBandHeight
+                )
+            }
 
             let footerOn = expanded
             self.footerLabel.isHidden = !footerOn
@@ -450,6 +475,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                 && self.session.results.isEmpty
                 && !self.session.objectMode
                 && self.hasQuery
+                && self.aiAnswerView.isHidden
             self.emptyLabel.isHidden = !noHits
             if noHits {
                 self.emptyLabel.frame = NSRect(
@@ -485,6 +511,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     public func controlTextDidChange(_ obj: Notification) {
         let text = searchField.stringValue
+        aiAnswerView.clear() // a new query dismisses any shown answer
         searchGeneration &+= 1
         let generation = searchGeneration
         searchDebounceWork?.cancel()
@@ -619,8 +646,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         if row >= 0 { session.selectIndex(row) }
         do {
             let confirmation = try session.prepareConfirmation()
-            if confirmation.actionName == "ai.stage" {
-                stageAI(confirmation)
+            if confirmation.actionName == "ai.ask" {
+                runAI(confirmation)
                 return
             }
             if confirmation.actionName == "create.snippet" || confirmation.actionName == "create.quicklink" {
@@ -679,7 +706,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             return
         }
         var parts = ["↩ Open"]
-        if session.objectMode { parts = ["↩ Run", "Esc Back"] }
+        if !aiAnswerView.isHidden {
+            parts = ["↩ Insert", "⌘C Copy", "Esc Dismiss"]
+        } else if session.objectMode {
+            parts = ["↩ Run", "Esc Back"]
+        }
         if let err = footerError, !err.isEmpty {
             parts.append(err)
         } else if let hint = permissionHint {

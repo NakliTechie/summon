@@ -55,6 +55,26 @@ extension LauncherPanelController {
             }
         }
 
+        if !aiAnswerView.isHidden {
+            if event.keyCode == 53 { // Esc dismisses the answer
+                dismissAIAnswer()
+                return nil
+            }
+            // Selecting/copying inside the answer text takes precedence over shortcuts.
+            if aiAnswerView.containsFirstResponder(panel.firstResponder) {
+                return event
+            }
+            if event.keyCode == 36 { // Enter inserts (copy + close)
+                insertAnswer()
+                return nil
+            }
+            if event.modifierFlags.contains(.command),
+               event.charactersIgnoringModifiers?.lowercased() == "c" {
+                copyAnswer()
+                return nil
+            }
+        }
+
         if event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers?.lowercased() == "k" {
             if session.objectMode { session.exitObjectMode() } else { session.enterObjectMode() }

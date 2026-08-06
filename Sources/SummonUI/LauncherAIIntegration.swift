@@ -1,43 +1,40 @@
 import Foundation
 import SummonCore
 
-public struct LauncherAIStageOutcome: Sendable, Equatable {
-    public let proposalID: String
-    public let rung: String
-    public let egressSummary: String
-
-    public init(proposalID: String, rung: String, egressSummary: String) {
-        self.proposalID = proposalID
-        self.rung = rung
-        self.egressSummary = egressSummary
-    }
+/// The two shapes AI output can take in the UI (the answer-vs-action split).
+/// Kept AppKit-free and SummonAI-free so SummonUI still builds with AI removed.
+public enum LauncherAIResponse: Sendable, Equatable {
+    /// Plain text — rendered read-only (copy/insert), no Accept gate, executes nothing.
+    case answer(text: String, rung: String, egressSummary: String)
+    /// A machine action — rendered as the amber Accept/Reject staged strip.
+    case staged(proposalID: String, rung: String, egressSummary: String)
 }
 
 /// App-composed AI seam. SummonUI stays buildable when the optional SummonAI
-/// target is removed, while the shipping app can attach a real staged flow.
+/// target is removed, while the shipping app attaches the real ladder.
 public struct LauncherAIIntegration: Sendable {
-    private let stageHandler: @Sendable (String) async throws -> LauncherAIStageOutcome
+    private let handler: @Sendable (String) async throws -> LauncherAIResponse
 
     public init(
-        stageHandler: @escaping @Sendable (String) async throws -> LauncherAIStageOutcome
+        handler: @escaping @Sendable (String) async throws -> LauncherAIResponse
     ) {
-        self.stageHandler = stageHandler
+        self.handler = handler
     }
 
-    public func stage(prompt: String) async throws -> LauncherAIStageOutcome {
-        try await stageHandler(prompt)
+    public func respond(prompt: String) async throws -> LauncherAIResponse {
+        try await handler(prompt)
     }
 
     public func offerResult(for rawQuery: String) -> SearchResult? {
         guard let prompt = Self.prompt(from: rawQuery) else { return nil }
         return SearchResult(
-            id: "ai:stage:\(prompt)",
-            title: "Stage with local AI",
-            subtitle: "Review before accepting · unavailable rungs fail visibly",
+            id: "ai:ask:\(prompt)",
+            title: "Ask local AI",
+            subtitle: "Answers on-device · actions are staged for review",
             kind: .command,
             score: 0.25,
             payload: [
-                "action": .string("ai.stage"),
+                "action": .string("ai.ask"),
                 "prompt": .string(prompt),
             ]
         )

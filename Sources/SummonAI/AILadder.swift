@@ -168,6 +168,25 @@ public final class AIStagingStore: @unchecked Sendable {
 }
 
 /// Day-1 AI face: ladder + staging. Journals via SummonCore when present.
+/// The two shapes an AI invocation can resolve to (the answer-vs-action split).
+public struct AIResponse: Sendable, Equatable {
+    public enum Kind: Sendable, Equatable {
+        /// Plain text — displayed read-only; executes nothing, so it is not staged.
+        case answer(text: String)
+        /// A machine action — staged for explicit Accept/Reject.
+        case staged(proposalID: String)
+    }
+    public let kind: Kind
+    public let rung: ModelRungID
+    public let egressSummary: String
+
+    public init(kind: Kind, rung: ModelRungID, egressSummary: String) {
+        self.kind = kind
+        self.rung = rung
+        self.egressSummary = egressSummary
+    }
+}
+
 public final class SummonAIService: @unchecked Sendable {
     public let ladder: AILadder
     public let staging: AIStagingStore
@@ -233,6 +252,37 @@ public final class SummonAIService: @unchecked Sendable {
             staging.stage(proposal)
         }
         return proposal
+    }
+
+    /// Answer path of the answer-vs-action split. With no tools wired, every model
+    /// completion is a plain answer: it executes nothing, so it is NOT staged — it
+    /// is returned for read-only display. The invocation is still journaled as an
+    /// audit. When tool-use lands (Chunk D), a model tool call routes to the staged
+    /// action path (`completeAndStage`) instead.
+    public func respond(
+        prompt: String,
+        actor: ActorTag = .user
+    ) async throws -> AIResponse {
+        let completion = try await ladder.complete(prompt: prompt)
+        if let core {
+            _ = try core.dispatch(
+                action: .settingsSet(
+                    key: "ai.lastInvocation",
+                    value: .object([
+                        "rung": .string(completion.rung.rawValue),
+                        "egress": .string(completion.egressSummary),
+                        "kind": .string("answer"),
+                        "promptChars": .number(Double(prompt.count)),
+                    ])
+                ),
+                actor: actor
+            )
+        }
+        return AIResponse(
+            kind: .answer(text: completion.text),
+            rung: completion.rung,
+            egressSummary: completion.egressSummary
+        )
     }
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {

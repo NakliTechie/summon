@@ -54,9 +54,9 @@ public enum ObjectActionGrammar {
                 ObjectAction(id: "open", title: "Open Setting", name: "settings.open"),
             ]
         case .command:
-            if result.payload["action"]?.stringValue == "ai.stage" {
+            if result.payload["action"]?.stringValue == "ai.ask" {
                 actions = [
-                    ObjectAction(id: "stage", title: "Stage Proposal", name: "ai.stage"),
+                    ObjectAction(id: "ask", title: "Ask", name: "ai.ask"),
                 ]
             } else {
                 actions = [

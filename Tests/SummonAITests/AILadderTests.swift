@@ -18,6 +18,24 @@ final class AILadderTests: XCTestCase {
         XCTAssertTrue(service.staging.allStaged().isEmpty)
     }
 
+    func testRespondReturnsAnswerWithoutStaging() async throws {
+        let ladder = AILadder.testing(fake: FakeModelRung(cannedText: "answer-text"))
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let service = SummonAIService(ladder: ladder, core: core)
+
+        let response = try await service.respond(prompt: "a plain question", actor: .user)
+
+        guard case let .answer(text) = response.kind else {
+            return XCTFail("expected answer, got \(response.kind)")
+        }
+        XCTAssertTrue(text.contains("answer-text"))
+        XCTAssertEqual(response.rung, .fake)
+        // An answer executes nothing, so it must NOT create a staged proposal.
+        XCTAssertTrue(try core.staged.list(state: nil).isEmpty)
+        // The invocation is still journaled as an audit.
+        XCTAssertNotNil(try core.settings.get("ai.lastInvocation"))
+    }
+
     func testServiceAcceptAndRejectUseTransactionalDecisionJournal() async throws {
         let ladder = AILadder.testing(fake: FakeModelRung(cannedText: "unit"))
         let core = try SummonCore.inMemory(appSearchPaths: [])
