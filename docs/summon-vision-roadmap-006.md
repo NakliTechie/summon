@@ -290,3 +290,19 @@ v1; App Intents = M2; L0 = packaged Gemma 4 E2B (D6 adopted, D7/D8 probe at
 chunk-5 open); D2/D4 resolve at C0. **Parked as separate future specs:**
 (a) standalone sovereign search/actions CLI for agent workflows, (b) local-only
 screen-memory semantic recall (Rewind-class, sovereign). Neither blocks Summon.*
+
+---
+
+## 8. Direction addendum — 2026-08-06 (post daily-driver)
+
+Written after the R0 daily-driver shell shipped (v0.6.x). Clarifies scope; nothing here overrides the §3 invariants.
+
+**Shape thesis (load-bearing).** The right PC interaction is *summon → ask → out*: a global-hotkey launcher, not a resident chat surface. This re-affirms the no-chat-window invariant. Chat + a general-purpose assistant belong in a **separate companion app** (Jan-class) that talks to Summon's core over the **agent socket** (default OFF, journaled, `actor=agent`) — never by sharing the SQLite file directly. Diagram: [`assets/architecture/summon-two-app-architecture.png`](../assets/architecture/summon-two-app-architecture.png).
+
+**Apple Foundation Models — L1 is live, not pending.** Verified 2026-08-06 on the M4 Pro gate host (macOS 26.5.2): the on-device model assets are present (`UAF_FM_GenerativeModels`), `generativeexperiencesd` runs, and the Foundation Models framework is GA (macOS 26, Sept 2025). The model is 3B params / 2-bit, tuned for summarize·extract·classify — **not** world knowledge or reasoning. So D3's L1 floor is *available now* where hardware allows; L0 (Gemma 4 E2B) remains the floor below macOS 26. This is a wiring task, not a waiting one.
+
+**Near-term chunks (detail in `plan/workplan.md`):** (A) rich clipboard — images + RTF/HTML/files, thumbnails, type-correct re-copy; `clipboard_items` is text-only today despite the "v4 rich" label and needs a binary payload store. (B) latency guard. (C) L1 Apple-FM wiring on capable hardware, L0 sub-floor elsewhere.
+
+**Decision — web search stays opt-in (2026-08-06).** The default-ON proposal was considered and rejected: it conflicts with W1 (default OFF) and the no-ambient-egress invariant, and search is SearXNG-only by design (self-hosted, no third-party leak) — so default-ON is meaningless without a default provider that would leak queries. **Resolved: retain opt-in (default OFF, W1 upheld). The remaining work is a one-click enable + a SearXNG quickstart — no default flip.**
+
+**Companion app + GP-assistant** extend the already-parked "sovereign search/actions CLI" future spec above. Separate repo when the launcher is done.
