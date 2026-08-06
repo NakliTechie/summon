@@ -337,7 +337,9 @@ public final class SummonAIService: @unchecked Sendable {
         let authorization = try NetworkSovereignty.authorize(
             url: url, purpose: .userWeb, actor: actor, journalEntry: entry
         )
-        let hits = try await provider.search(query: query, limit: 5, authorization: authorization)
+        let hits = try await provider.search(
+            query: WebEnrich.searchQuery(from: query), limit: 5, authorization: authorization
+        )
         guard !hits.isEmpty else { return .noResults }
         let completion = try await ladder.complete(
             prompt: WebEnrich.enrichPrompt(question: query, hits: hits)

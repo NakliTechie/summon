@@ -247,6 +247,29 @@ public struct FakeAuthorizedWebSearchProvider: AuthorizedWebSearchProvider, Send
 }
 
 public enum WebEnrich {
+    /// Clean a natural-language question into a bare search query — strips
+    /// conversational lead-ins that pollute keyword search (e.g. Wikipedia
+    /// returned no results for "quick, what is quantum computing").
+    public static func searchQuery(from question: String) -> String {
+        var query = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixes = [
+            "tell me about ", "what do you know about ", "quick, ", "quick ",
+            "can you explain ", "explain ", "please ", "hey, ", "so, ", "so ",
+        ]
+        var lowered = query.lowercased()
+        var changed = true
+        while changed {
+            changed = false
+            for prefix in prefixes where lowered.hasPrefix(prefix) {
+                query = String(query.dropFirst(prefix.count))
+                lowered = query.lowercased()
+                changed = true
+                break
+            }
+        }
+        return query.isEmpty ? question : query
+    }
+
     /// Build a prompt for L1/L0 from hits + question.
     public static func enrichPrompt(question: String, hits: [WebHit]) -> String {
         var lines = [

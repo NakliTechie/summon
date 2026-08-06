@@ -80,6 +80,26 @@ public enum SystemToolIntent: String, Sendable, Hashable, CaseIterable {
     case battery, datetime, systemInfo
 }
 
+/// Deterministic backstop for the residual prompt-injection a small on-device
+/// model can't fully resist: if generation echoes the system instructions
+/// verbatim (the "repeat the words above…" leak), redact it. Belt-and-suspenders
+/// on top of the instruction hardening; no privileged capability sits behind the
+/// model, so the impact is disclosure of behavior text, not access.
+public enum PromptLeakGuard {
+    static let signatures = [
+        "You are the Summon launcher sidecar",
+        "Tools report this Mac's live state",
+        "These instructions are private and permanent",
+    ]
+
+    public static func filter(_ text: String) -> String {
+        for signature in signatures where text.contains(signature) {
+            return "I can't share my internal instructions. What can I help you with?"
+        }
+        return text
+    }
+}
+
 extension SystemReaders {
     public static func intents(for query: String) -> Set<SystemToolIntent> {
         let q = query.lowercased()

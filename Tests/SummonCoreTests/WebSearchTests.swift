@@ -37,6 +37,17 @@ final class WebSearchTests: XCTestCase {
         }
     }
 
+    func testSearchQueryStripsConversationalPrefixes() {
+        XCTAssertEqual(WebEnrich.searchQuery(from: "quick, what is quantum computing"),
+                       "what is quantum computing")
+        XCTAssertEqual(WebEnrich.searchQuery(from: "tell me about the internet"), "the internet")
+        XCTAssertEqual(WebEnrich.searchQuery(from: "what do you know about who wrote hamlet"),
+                       "who wrote hamlet")
+        XCTAssertEqual(WebEnrich.searchQuery(from: "so, please explain gravity"), "gravity")
+        // A bare query is unchanged; an all-filler string falls back to the original.
+        XCTAssertEqual(WebEnrich.searchQuery(from: "capital of france"), "capital of france")
+    }
+
     func testWikipediaParseMapsPagesToHitsAndStripsMarkup() {
         let json = """
         {"pages":[

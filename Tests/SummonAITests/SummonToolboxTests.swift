@@ -34,6 +34,17 @@ final class SummonToolboxTests: XCTestCase {
         XCTAssertTrue(SystemReaders.intents(for: "what is the latest version of swift").isEmpty)
     }
 
+    func testPromptLeakGuardRedactsEchoedInstructions() {
+        let leaked = "You are the Summon launcher sidecar on the user's Mac. Be concise."
+        XCTAssertEqual(PromptLeakGuard.filter(leaked),
+                       "I can't share my internal instructions. What can I help you with?")
+        XCTAssertTrue(PromptLeakGuard.filter("Tools report this Mac's live state and more")
+            .hasPrefix("I can't share"))
+        // Normal answers pass through untouched.
+        XCTAssertEqual(PromptLeakGuard.filter("Paris is the capital of France."),
+                       "Paris is the capital of France.")
+    }
+
     func testBatteryReaderReturnsAGroundedNonEmptyFact() {
         let text = SystemReaders.battery()
         XCTAssertFalse(text.isEmpty)
