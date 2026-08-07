@@ -29,6 +29,13 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
         #endif
     }
 
+    public func prewarm() {
+        #if canImport(FoundationModels)
+        guard case .available = SystemLanguageModel.default.availability else { return }
+        LanguageModelSession(model: SystemLanguageModel.default).prewarm()
+        #endif
+    }
+
     public func complete(prompt: String) async throws -> ModelCompletion {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ModelRungError.emptyPrompt }

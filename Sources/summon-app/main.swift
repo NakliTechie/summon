@@ -504,7 +504,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             // An action-shaped query must stage, never web-search. Reuse the same
             // mutating-intent classifier the FM toolbox uses to attach action tools.
-            isActionQuery: { !SystemReaders.mutatingIntents(for: $0).isEmpty }
+            isActionQuery: { !SystemReaders.mutatingIntents(for: $0).isEmpty },
+            // Preload the model on first keystroke so the first Enter is faster.
+            prewarm: { [weak service] in Task { await service?.prewarm() } }
         )
     }
     #endif

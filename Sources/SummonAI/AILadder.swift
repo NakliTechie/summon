@@ -78,6 +78,11 @@ public final class AILadder: @unchecked Sendable {
         }
         return try await rung.complete(prompt: prompt)
     }
+
+    /// Best-effort preload of the preferred rung's model (e.g. on first keystroke).
+    public func prewarm() async {
+        if let rung = await preferredRung() { rung.prewarm() }
+    }
 }
 
 private struct UnavailableProductionModelRung: ModelRung, Sendable {
@@ -412,6 +417,11 @@ public final class SummonAIService: @unchecked Sendable {
         case "local": return false
         default: return nil
         }
+    }
+
+    /// Preload the model ahead of a likely request (wired to first keystroke).
+    public func prewarm() async {
+        await ladder.prewarm()
     }
 
     public func webSearchConsentGranted() -> Bool {

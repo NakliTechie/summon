@@ -46,6 +46,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private var resignHideWork: DispatchWorkItem?
     private var suppressResignHide = false
     private var searchGeneration: UInt64 = 0
+    /// Fires the model prewarm once per typing session (reset when the field clears).
+    private var didPrewarm = false
     private let searchQueue = DispatchQueue(label: "summon.launcher.search", qos: .userInitiated)
     private let confirmationQueue = DispatchQueue(label: "summon.launcher.confirm", qos: .userInitiated)
     private var searchDebounceWork: DispatchWorkItem?
@@ -536,10 +538,18 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchDebounceWork?.cancel()
 
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            didPrewarm = false
             loadEmptyResults(firstRun: false)
             footerError = nil
             applyLayout(animated: true)
             return
+        }
+
+        // Preload the model on the first keystroke of a query so the first Enter is
+        // faster — before, the model was only touched after Enter.
+        if !didPrewarm, let ai = aiIntegration {
+            ai.prewarm()
+            didPrewarm = true
         }
 
         let work = DispatchWorkItem { [weak self] in

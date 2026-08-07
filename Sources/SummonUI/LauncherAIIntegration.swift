@@ -33,6 +33,8 @@ public struct LauncherAIIntegration: Sendable {
     /// True when the query is an action command ("set the volume to 30", "make a
     /// snippet") — such a query must stage, never web search, whatever the default.
     private let isActionQuery: (@Sendable (String) -> Bool)?
+    /// Preload the model ahead of Enter (wired to the first keystroke of a query).
+    private let prewarmHook: (@Sendable () -> Void)?
 
     public init(
         handler: @escaping @Sendable (String) async throws -> LauncherAIResponse,
@@ -40,7 +42,8 @@ public struct LauncherAIIntegration: Sendable {
         consentGranter: (@Sendable (Bool) -> Void)? = nil,
         consentIsSticky: (@Sendable () -> Bool)? = nil,
         searchDefaultIsPrimary: (@Sendable () -> Bool?)? = nil,
-        isActionQuery: (@Sendable (String) -> Bool)? = nil
+        isActionQuery: (@Sendable (String) -> Bool)? = nil,
+        prewarm: (@Sendable () -> Void)? = nil
     ) {
         self.handler = handler
         self.searchHandler = searchHandler
@@ -48,7 +51,11 @@ public struct LauncherAIIntegration: Sendable {
         self.consentIsSticky = consentIsSticky
         self.searchDefaultIsPrimary = searchDefaultIsPrimary
         self.isActionQuery = isActionQuery
+        self.prewarmHook = prewarm
     }
+
+    /// Best-effort model preload; safe to call on every relevant keystroke.
+    public func prewarm() { prewarmHook?() }
 
     public func respond(prompt: String) async throws -> LauncherAIResponse {
         try await handler(prompt)

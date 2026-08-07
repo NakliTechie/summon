@@ -38,6 +38,13 @@ public protocol ModelRung: Sendable {
     var displayName: String { get }
     func availability() async -> RungAvailability
     func complete(prompt: String) async throws -> ModelCompletion
+    /// Preload model resources ahead of a likely request (e.g. on first keystroke),
+    /// so the first `complete` is faster. Best-effort; no-op by default.
+    func prewarm()
+}
+
+public extension ModelRung {
+    func prewarm() {}
 }
 
 public enum ModelRungError: Error, Equatable, Sendable, LocalizedError {
