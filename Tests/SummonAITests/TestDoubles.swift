@@ -7,10 +7,16 @@ struct FakeModelRung: ModelRung, Sendable {
     let displayName = "FakeModelRung"
     var forcedAvailable: Bool
     var cannedText: String
+    var cannedProposals: [ProposedMutation]
 
-    init(forcedAvailable: Bool = true, cannedText: String = "staged:ok") {
+    init(
+        forcedAvailable: Bool = true,
+        cannedText: String = "staged:ok",
+        cannedProposals: [ProposedMutation] = []
+    ) {
         self.forcedAvailable = forcedAvailable
         self.cannedText = cannedText
+        self.cannedProposals = cannedProposals
     }
 
     func availability() async -> RungAvailability {
@@ -26,7 +32,8 @@ struct FakeModelRung: ModelRung, Sendable {
         return ModelCompletion(
             text: "\(cannedText) | echo:\(trimmed.prefix(120))",
             rung: .fake,
-            egressSummary: ""
+            egressSummary: "",
+            proposedActions: cannedProposals
         )
     }
 }

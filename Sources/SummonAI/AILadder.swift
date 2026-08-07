@@ -272,6 +272,14 @@ public final class SummonAIService: @unchecked Sendable {
         actor: ActorTag = .user
     ) async throws -> AIResponse {
         let completion = try await ladder.complete(prompt: prompt)
+        if !completion.proposedActions.isEmpty {
+            return try stageProposedMutations(
+                completion.proposedActions,
+                prompt: prompt,
+                completion: completion,
+                actor: actor
+            )
+        }
         if let core {
             _ = try core.dispatch(
                 action: .settingsSet(
@@ -291,6 +299,104 @@ public final class SummonAIService: @unchecked Sendable {
             rung: completion.rung,
             egressSummary: completion.egressSummary
         )
+    }
+
+    /// Action path of the split. A mutating tool the model called this turn is
+    /// staged UNCONDITIONALLY (even a non-destructive create) as an agent-rung
+    /// proposal — the model never applies it and never truthfully claims it did.
+    /// Accept later rides the existing `acceptStagedAgentAction` rail. Staging is
+    /// direct (not `dispatch(actor:.agent)`), because that path auto-applies a
+    /// non-destructive create — the opposite of the propose-only invariant.
+    private func stageProposedMutations(
+        _ mutations: [ProposedMutation],
+        prompt: String,
+        completion: ModelCompletion,
+        actor: ActorTag
+    ) throws -> AIResponse {
+        let gate = SchemaGate()
+        var firstID: String?
+        if let core {
+            try core.staged.migrate()
+            for mutation in mutations {
+                let reviewedText = try gate.reviewedText(for: mutation.action)
+                let proposalID = UUID().uuidString
+                try core.staged.upsert(PersistedStagedProposal(
+                    id: proposalID,
+                    rung: "agent",
+                    prompt: prompt,
+                    output: reviewedText,
+                    egressSummary: "local-stage",
+                    state: "staged"
+                ))
+                try auditStagedMutation(
+                    proposalID: proposalID,
+                    action: mutation.action,
+                    completion: completion,
+                    actor: actor
+                )
+                if firstID == nil { firstID = proposalID }
+            }
+            if let firstID {
+                NotificationCenter.default.post(
+                    name: .summonStagedProposalDidChange,
+                    object: nil,
+                    userInfo: ["proposalID": firstID]
+                )
+            }
+        } else {
+            for mutation in mutations {
+                let reviewedText = (try? gate.reviewedText(for: mutation.action)) ?? mutation.summary
+                let proposal = StagedAIProposal(
+                    rung: completion.rung,
+                    prompt: prompt,
+                    output: reviewedText,
+                    egressSummary: completion.egressSummary
+                )
+                staging.stage(proposal)
+                if firstID == nil { firstID = proposal.id.uuidString }
+            }
+        }
+        guard let id = firstID else {
+            return AIResponse(
+                kind: .answer(text: completion.text),
+                rung: completion.rung,
+                egressSummary: completion.egressSummary
+            )
+        }
+        return AIResponse(
+            kind: .staged(proposalID: id),
+            rung: completion.rung,
+            egressSummary: completion.egressSummary
+        )
+    }
+
+    /// Journals the staged action as an audit; rolls back the proposal if the
+    /// audit write fails (mirrors `completeAndStage`'s transactional guarantee).
+    private func auditStagedMutation(
+        proposalID: String,
+        action: CoreAction,
+        completion: ModelCompletion,
+        actor: ActorTag
+    ) throws {
+        guard let core else { return }
+        do {
+            _ = try core.dispatch(
+                action: .settingsSet(
+                    key: "ai.lastInvocation",
+                    value: .object([
+                        "rung": .string(completion.rung.rawValue),
+                        "egress": .string(completion.egressSummary),
+                        "kind": .string("staged-action"),
+                        "action": .string(action.name),
+                        "proposalID": .string(proposalID),
+                    ])
+                ),
+                actor: actor
+            )
+        } catch let dispatchError {
+            try? core.staged.delete(id: proposalID)
+            throw dispatchError
+        }
     }
 
     // MARK: - Web search (harness-driven: consent → egress-gated fetch → RAG)
