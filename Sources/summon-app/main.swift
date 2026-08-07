@@ -464,19 +464,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             searchHandler: { [weak service] prompt, allowOnce in
                 guard let service, let core = service.core else { return .unavailable }
-                // Provider: the user's SearXNG when configured or auto-discovered
-                // (on whatever free port searxng-up.sh chose); else the keyless
-                // Wikipedia floor.
-                let provider: AuthorizedWebSearchProvider
-                let configured = core.webConfig.baseURL
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !configured.isEmpty {
-                    provider = SearXNGClient(config: core.webConfig)
-                } else if let discovered = SearXNGDiscovery.discoveredBaseURL() {
-                    provider = SearXNGClient(config: WebSearchConfig(enabled: true, baseURL: discovered))
-                } else {
-                    provider = WikipediaSearchClient()
-                }
+                // SearXNG when configured/auto-discovered (any port), else the
+                // keyless Wikipedia floor.
+                let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
                 guard allowOnce || service.webSearchConsentGranted() else {
                     return .needsConsent(host: provider.host.isEmpty ? "en.wikipedia.org" : provider.host)
                 }

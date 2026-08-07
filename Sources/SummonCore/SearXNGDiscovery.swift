@@ -21,3 +21,19 @@ public enum SearXNGDiscovery {
         return trimmed
     }
 }
+
+/// One place that decides which web-search provider to use, shared by the app
+/// and CLI: the user's explicitly-configured SearXNG, else an auto-discovered
+/// one (any port), else the keyless Wikipedia floor.
+public enum WebSearchProviderResolver {
+    public static func resolve(webConfig: WebSearchConfig) -> AuthorizedWebSearchProvider {
+        let configured = webConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !configured.isEmpty {
+            return SearXNGClient(config: webConfig)
+        }
+        if let discovered = SearXNGDiscovery.discoveredBaseURL() {
+            return SearXNGClient(config: WebSearchConfig(enabled: true, baseURL: discovered))
+        }
+        return WikipediaSearchClient()
+    }
+}

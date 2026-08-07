@@ -572,9 +572,10 @@ struct SummonCLI {
                 fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
             }
             let service = SummonAIService(core: core)
+            let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
             let outcome = try awaitOrRun {
                 try await service.searchAndAnswer(
-                    query: q, provider: WikipediaSearchClient(), allowOnce: true, actor: cliActor
+                    query: q, provider: provider, allowOnce: true, actor: cliActor
                 )
             }
             switch outcome {
