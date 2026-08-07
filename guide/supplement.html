@@ -1,75 +1,75 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Summon — guide supplement</title>
 <style>
-  :root{--bg-glass:#14151A;--surface:#1C1E26;--raised:#24262F;--text:#E8E6DF;
-    --dim:#9A98A0;--accent:#7C6FE8;--staged:#E5A54B;--ok:#5FB37A;--danger:#E06C5F;
-    --hairline:#33353F;--doc-ink:#C9C7CE;--doc-faint:#6E6C76}
+  :root{--bg-glass:#F3EFE6;--surface:#FBF8F1;--raised:#E7E1D3;--text:#1D2430;
+    --dim:#4E5766;--accent:#1F5FA6;--staged:#B9770C;--ok:#2F8F4E;--danger:#C0392B;
+    --hairline:#E2DDD0;--doc-ink:#2A313C;--doc-faint:#6C7480}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--doc-bg,#0E0F12);color:var(--text);
+  body{margin:0;background:var(--doc-bg,#EDE8DC);color:var(--text);
     font:14px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
   .wrap{display:flex}
-  nav{width:210px;flex:none;border-right:1px solid #1E2027;padding:16px 0}
+  nav{width:210px;flex:none;border-right:1px solid #E2DDD0;padding:16px 0}
   nav button{display:block;width:100%;text-align:left;background:none;border:0;
     border-left:2px solid transparent;color:var(--doc-faint);
     font:12.5px ui-monospace,monospace;padding:7px 20px;cursor:pointer}
-  nav button.on{color:var(--text);border-left-color:var(--accent);background:#13141A}
+  nav button.on{color:var(--text);border-left-color:var(--accent);background:#ECE7DB}
   main{flex:1;padding:28px 30px 60px}
   section{display:none}section.on{display:block}
   h2{font-size:16px;font-weight:600;margin:0 0 2px}
   .rule{font-size:12.5px;color:var(--doc-faint);margin-bottom:18px;max-width:640px}
   .rule b{color:var(--staged);font-weight:600}
-  .stage{background:#17181E;border:1px solid #23242C;border-radius:14px;
+  .stage{background:#FAF6EE;border:1px solid #E2DDD0;border-radius:14px;
     padding:34px 26px;display:flex;justify-content:center}
   .notes{margin-top:16px;display:grid;gap:8px;max-width:680px}
   .note{display:flex;gap:10px;font-size:12.5px;color:var(--doc-ink)}
   .pin{flex:none;width:18px;height:18px;border-radius:50%;background:var(--accent);
-    color:#0E0F12;font:600 10.5px/18px ui-monospace,monospace;text-align:center}
+    color:#EDE8DC;font:600 10.5px/18px ui-monospace,monospace;text-align:center}
   .pin.amb{background:var(--staged)}
   .panel{width:560px;max-width:100%;background:var(--bg-glass);border:1px solid var(--hairline);
-    border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+    border-radius:12px;box-shadow:0 24px 60px rgba(31,41,51,.14);overflow:hidden}
   .qrow{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--hairline)}
   .qrow .glyph{color:var(--accent);font-size:15px}
   .qrow input{flex:1;background:none;border:0;outline:0;color:var(--text);font:16px ui-monospace,monospace}
   .list{padding:6px}
   .row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text);font-size:13.5px}
   .row .ic{width:22px;text-align:center;color:var(--dim)}
-  .row .sub{margin-left:auto;color:#55545E;font:11px ui-monospace,monospace}
+  .row .sub{margin-left:auto;color:#8A8F99;font:11px ui-monospace,monospace}
   .row.sel{background:var(--raised)}
   .foot{display:flex;gap:14px;padding:8px 14px;border-top:1px solid var(--hairline);
-    color:#55545E;font:10.5px ui-monospace,monospace}
+    color:#8A8F99;font:10.5px ui-monospace,monospace}
   .foot .ver{margin-left:auto}
   /* answer card */
-  .ans{margin:8px;border:1px solid var(--hairline);border-left:3px solid var(--accent);
-    border-radius:10px;background:#191A22}
+  .ans{margin:8px;border:1px solid var(--hairline);
+    border-radius:10px;background:#FBF8F1}
   .ans .ah{display:flex;align-items:center;gap:8px;padding:8px 12px;
     color:var(--accent);font:600 10.5px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
   .ans .body{padding:2px 14px 10px;color:var(--text);font-size:13.5px;line-height:1.55}
   .ans .src{padding:0 14px 12px;color:var(--dim);font:11.5px ui-monospace,monospace}
   .ans .src a{color:var(--accent);text-decoration:none}
   /* staged proposal card — the signature */
-  .prop{margin:8px;border:1px solid var(--staged);border-radius:10px;background:#1E1B15}
+  .prop{margin:8px;border:1px solid var(--staged);border-radius:10px;background:#FBF3E1}
   .prop .ph{display:flex;align-items:center;gap:8px;padding:8px 12px;
     color:var(--staged);font:600 10.5px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
   .prop .ph .dot{width:7px;height:7px;border-radius:50%;background:var(--staged)}
   .prop pre{margin:0;padding:4px 14px 12px;color:var(--text);font:13.5px/1.5 ui-monospace,monospace;white-space:pre-wrap}
-  .prop .acts{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #3A3222}
+  .prop .acts{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #E8D9B8}
   .btn{border:1px solid var(--hairline);background:var(--raised);color:var(--text);
     font:12px ui-monospace,monospace;padding:6px 12px;border-radius:7px}
-  .btn.pri{background:var(--staged);border-color:var(--staged);color:#14151A;font-weight:600}
+  .btn.pri{background:var(--staged);border-color:var(--staged);color:#F3EFE6;font-weight:600}
   .btn.ghost{background:none;color:var(--dim)}
-  .hint{padding:0 14px 10px;color:#7A6B45;font-size:11px}
+  .hint{padding:0 14px 10px;color:#8A6D2E;font-size:11px}
   /* preferences sheet */
   .sheet{width:460px;max-width:100%;background:var(--surface);border:1px solid var(--hairline);
     border-radius:14px;padding:22px}
   .sheet h3{color:var(--text);font-size:14.5px;margin:0 0 4px}
   .sheet .sub2{color:var(--dim);font-size:12px;margin-bottom:16px}
-  .prefrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #23242C;font-size:13px}
+  .prefrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #E2DDD0;font-size:13px}
   .prefrow .lab{color:var(--text)}
   .prefrow .val{margin-left:auto;color:var(--dim);font:12px ui-monospace,monospace}
   .sw{width:34px;height:20px;border-radius:20px;background:var(--ok);position:relative}
   .sw::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff}
   .seg{display:flex;gap:6px}
-  .seg span{border:1px solid #2C2E38;color:var(--doc-faint);font:11px ui-monospace,monospace;
+  .seg span{border:1px solid #DDD6C8;color:var(--doc-faint);font:11px ui-monospace,monospace;
     padding:5px 10px;border-radius:20px}
   .seg span.on{color:var(--text);border-color:var(--accent)}
   .field{flex:1;background:var(--bg-glass);border:1px solid var(--hairline);border-radius:7px;

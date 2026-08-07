@@ -19,26 +19,26 @@ final class AppearanceAwareView: NSView {
 /// `staged` is reserved exclusively for propose-don't-dispose states.
 public enum Tokens {
     public enum Color {
-        /// `#14151A` — glass background
-        public static let bgGlass = RGBA(r: 0x14, g: 0x15, b: 0x1A)
-        /// `#1C1E26`
-        public static let surface = RGBA(r: 0x1C, g: 0x1E, b: 0x26)
-        /// `#24262F`
-        public static let surfaceRaised = RGBA(r: 0x24, g: 0x26, b: 0x2F)
-        /// `#E8E6DF`
-        public static let text = RGBA(r: 0xE8, g: 0xE6, b: 0xDF)
-        /// `#9A98A0`
-        public static let textDim = RGBA(r: 0x9A, g: 0x98, b: 0xA0)
-        /// `#7C6FE8` — sigil violet
-        public static let accent = RGBA(r: 0x7C, g: 0x6F, b: 0xE8)
-        /// `#E5A54B` — propose-don't-dispose only; never decorative
-        public static let staged = RGBA(r: 0xE5, g: 0xA5, b: 0x4B)
-        /// `#5FB37A`
-        public static let ok = RGBA(r: 0x5F, g: 0xB3, b: 0x7A)
-        /// `#E06C5F`
-        public static let danger = RGBA(r: 0xE0, g: 0x6C, b: 0x5F)
-        /// `#33353F`
-        public static let hairline = RGBA(r: 0x33, g: 0x35, b: 0x3F)
+        /// `#F3EFE6` — dull cream background
+        public static let bgGlass = RGBA(r: 0xF3, g: 0xEF, b: 0xE6)
+        /// `#FBF8F1` — near-white surface
+        public static let surface = RGBA(r: 0xFB, g: 0xF8, b: 0xF1)
+        /// `#E7E1D3` — warm selection
+        public static let surfaceRaised = RGBA(r: 0xE7, g: 0xE1, b: 0xD3)
+        /// `#1D2430` — dark-slate ink
+        public static let text = RGBA(r: 0x1D, g: 0x24, b: 0x30)
+        /// `#4E5766`
+        public static let textDim = RGBA(r: 0x4E, g: 0x57, b: 0x66)
+        /// `#1F5FA6` — corporate blue
+        public static let accent = RGBA(r: 0x1F, g: 0x5F, b: 0xA6)
+        /// `#B9770C` — propose-don't-dispose only; never decorative
+        public static let staged = RGBA(r: 0xB9, g: 0x77, b: 0x0C)
+        /// `#2F8F4E`
+        public static let ok = RGBA(r: 0x2F, g: 0x8F, b: 0x4E)
+        /// `#C0392B`
+        public static let danger = RGBA(r: 0xC0, g: 0x39, b: 0x2B)
+        /// `#E2DDD0` — warm hairline
+        public static let hairline = RGBA(r: 0xE2, g: 0xDD, b: 0xD0)
     }
 
     public struct RGBA: Sendable, Equatable {
@@ -94,24 +94,14 @@ public enum Tokens {
         public static var secondaryLabel: NSColor { .secondaryLabelColor }
         public static var tertiaryLabel: NSColor { .tertiaryLabelColor }
         public static var separator: NSColor { .separatorColor }
-        public static var accent: NSColor {
-            adaptive(dark: Color.accent.nsColor, light: .controlAccentColor)
-        }
+        /// Corporate blue is the brand accent in every appearance.
+        public static var accent: NSColor { Color.accent.nsColor }
         public static var danger: NSColor { .systemRed }
         public static var ok: NSColor { .systemGreen }
-        /// Propose-don't-dispose only (not decorative).
-        public static var staged: NSColor {
-            adaptive(dark: Color.staged.nsColor, light: .systemOrange)
-        }
+        /// Propose-don't-dispose only (not decorative). Amber in every appearance.
+        public static var staged: NSColor { Color.staged.nsColor }
         public static var controlBackground: NSColor { .controlBackgroundColor }
         public static var windowBackground: NSColor { .windowBackgroundColor }
-
-        private static func adaptive(dark: NSColor, light: NSColor) -> NSColor {
-            NSColor(name: nil) { appearance in
-                let match = appearance.bestMatch(from: [.darkAqua, .aqua])
-                return match == .darkAqua ? dark : light
-            }
-        }
     }
 
     public enum TypeScale {

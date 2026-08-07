@@ -5,9 +5,9 @@
 <title>Summon — the sovereign macOS launcher</title>
 <meta name="description" content="A sovereign, native macOS launcher. Local-first, on-device AI, no account, no server, no telemetry. Free and open source.">
 <style>
-  :root{--bg:#0E0F12;--glass:#14151A;--surface:#1C1E26;--raised:#24262F;--text:#E8E6DF;
-    --dim:#9A98A0;--faint:#6E6C76;--accent:#7C6FE8;--staged:#E5A54B;--ok:#5FB37A;
-    --danger:#E06C5F;--hairline:#33353F}
+  :root{--bg:#EDE8DC;--glass:#F3EFE6;--surface:#FBF8F1;--raised:#E7E1D3;--text:#1D2430;
+    --dim:#4E5766;--faint:#6C7480;--accent:#1F5FA6;--staged:#B9770C;--ok:#2F8F4E;
+    --danger:#C0392B;--hairline:#E2DDD0}
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{margin:0;background:var(--bg);color:var(--text);
@@ -18,7 +18,7 @@
   code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   /* hero */
   .hero{padding:96px 0 40px;text-align:center;
-    background:radial-gradient(60% 80% at 50% 0%,rgba(124,111,232,.16),transparent 70%)}
+    background:radial-gradient(60% 80% at 50% 0%,rgba(31,95,166,.16),transparent 70%)}
   .hero h1{font-size:64px;line-height:1;margin:0;font-weight:750;letter-spacing:-.03em;
     background:linear-gradient(92deg,var(--text) 20%,var(--accent));
     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
@@ -31,11 +31,11 @@
   .sub{color:var(--faint);font-size:13px;margin-top:6px}
   .cta{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
   .cta a{border:1px solid var(--hairline);border-radius:10px;padding:10px 18px;color:var(--text)}
-  .cta a.pri{background:var(--accent);border-color:var(--accent);color:#0E0F12;font-weight:600}
+  .cta a.pri{background:var(--accent);border-color:var(--accent);color:#EDE8DC;font-weight:600}
   .cta a:hover{text-decoration:none;border-color:var(--accent)}
   .shot{margin:40px auto 0;max-width:720px}
   .shot img{width:100%;height:auto;border:1px solid var(--hairline);border-radius:16px;
-    box-shadow:0 30px 80px rgba(0,0,0,.5)}
+    box-shadow:0 30px 80px rgba(31,41,51,.13)}
   /* sections */
   section{padding:56px 0;border-top:1px solid var(--hairline)}
   h2{font-size:30px;letter-spacing:-.02em;margin:0 0 8px;font-weight:680}
@@ -55,7 +55,7 @@
   thead th{background:var(--surface);color:var(--dim);font-weight:600;position:sticky;top:0}
   thead th.us{color:var(--text)}
   tbody tr:last-child td{border-bottom:0}
-  td.us{background:rgba(124,111,232,.07)}
+  td.us{background:rgba(31,95,166,.07)}
   .yes{color:var(--ok);font-weight:700}
   .no{color:var(--faint)}
   .part{color:var(--staged)}
