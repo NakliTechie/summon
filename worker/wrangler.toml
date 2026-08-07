@@ -1,0 +1,10 @@
+name = "summon-site"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Bind the custom domain. wrangler provisions the DNS record + TLS cert on the
+# naklitechie.com zone; the Worker reverse-proxies the GitHub Pages origin (built
+# from git) so summon.naklitechie.com always reflects main.
+routes = [
+  { pattern = "summon.naklitechie.com", custom_domain = true }
+]
