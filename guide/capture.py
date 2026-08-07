@@ -15,10 +15,12 @@ from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 UX = ROOT / "docs" / "summon-ux-reference-006.html"
+SUPPLEMENT = ROOT / "guide" / "supplement.html"
 OUT = ROOT / "guide" / "screenshots"
 
+# The drawn product (docs/summon-ux-reference-006.html), rev 006.
 # (slug, nav section data-s, launcher sub-mode data-m or None)
-ROUTE_PLAN = [
+UX_ROUTES = [
     ("launcher-fuzzy", "launcher", "fuzzy"),
     ("launcher-staged", "launcher", "staged"),
     ("launcher-degraded", "launcher", "degraded"),
@@ -33,45 +35,63 @@ ROUTE_PLAN = [
     ("agent-face", "agent", None),
 ]
 
+# Guide-owned mockups for features shipped after the rev-006 reference
+# (web search, staged mutating actions, search preferences). Same tokens/classes.
+SUPPLEMENT_ROUTES = [
+    ("web-search", "websearch", None),
+    ("staged-volume", "volume", None),
+    ("search-preferences", "prefs", None),
+]
+
+
+def walk(page, source, routes, log):
+    """Walk one HTML source's route-plan, screenshotting each active section."""
+    page.goto(source.as_uri())
+    page.wait_for_load_state("load")
+    page.evaluate("() => document.fonts && document.fonts.ready")
+    ok = 0
+    for slug, section, mode in routes:
+        page.click(f'nav button[data-s="{section}"]')
+        if mode:
+            page.click(f'.tg[data-m="{mode}"]')
+        page.wait_for_timeout(280)
+        html_len = page.evaluate(
+            "() => { const s = document.querySelector('section.on');"
+            " return s ? s.innerHTML.length : 0; }"
+        )
+        page.locator("section.on").screenshot(path=str(OUT / f"{slug}.png"))
+        status = "ok" if html_len > 50 else "empty"
+        ok += 1 if status == "ok" else 0
+        log.append(
+            f"- {slug}: {status} ({source.name}#{section}, mode={mode or '-'}, "
+            f"html_len={html_len})"
+        )
+    return ok
+
 
 def main() -> None:
-    if not UX.exists():
-        print(f"capture: UX reference missing at {UX}", file=sys.stderr)
-        sys.exit(1)
+    for path in (UX, SUPPLEMENT):
+        if not path.exists():
+            print(f"capture: source missing at {path}", file=sys.stderr)
+            sys.exit(1)
     OUT.mkdir(parents=True, exist_ok=True)
     log: list[str] = []
-    ok = 0
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         page = browser.new_page(
             viewport={"width": 1400, "height": 900}, device_scale_factor=2
         )
-        page.goto(UX.as_uri())
-        page.wait_for_load_state("load")
-        page.evaluate("() => document.fonts && document.fonts.ready")
-        for slug, section, mode in ROUTE_PLAN:
-            page.click(f'nav button[data-s="{section}"]')
-            if mode:
-                page.click(f'.tg[data-m="{mode}"]')
-            page.wait_for_timeout(280)
-            html_len = page.evaluate(
-                "() => { const s = document.querySelector('section.on');"
-                " return s ? s.innerHTML.length : 0; }"
-            )
-            dest = OUT / f"{slug}.png"
-            page.locator("section.on").screenshot(path=str(dest))
-            status = "ok" if html_len > 50 else "empty"
-            ok += 1 if status == "ok" else 0
-            log.append(
-                f"- {slug}: {status} (section=#{section}, mode={mode or '-'}, html_len={html_len})"
-            )
+        ok = walk(page, UX, UX_ROUTES, log)
+        ok += walk(page, SUPPLEMENT, SUPPLEMENT_ROUTES, log)
         browser.close()
+    total = len(UX_ROUTES) + len(SUPPLEMENT_ROUTES)
     (ROOT / "guide" / "CAPTURE-LOG.md").write_text(
         "# Capture log\n\n"
-        f"{ok}/{len(ROUTE_PLAN)} screens captured ok "
-        "(source: docs/summon-ux-reference-006.html)\n\n" + "\n".join(log) + "\n"
+        f"{ok}/{total} screens captured ok "
+        "(sources: docs/summon-ux-reference-006.html + guide/supplement.html)\n\n"
+        + "\n".join(log) + "\n"
     )
-    print(f"capture: {ok}/{len(ROUTE_PLAN)} ok -> {OUT}")
+    print(f"capture: {ok}/{total} ok -> {OUT}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Summon — guide supplement</title>
+<style>
+  :root{--bg-glass:#14151A;--surface:#1C1E26;--raised:#24262F;--text:#E8E6DF;
+    --dim:#9A98A0;--accent:#7C6FE8;--staged:#E5A54B;--ok:#5FB37A;--danger:#E06C5F;
+    --hairline:#33353F;--doc-ink:#C9C7CE;--doc-faint:#6E6C76}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--doc-bg,#0E0F12);color:var(--text);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,system-ui,sans-serif}
+  .wrap{display:flex}
+  nav{width:210px;flex:none;border-right:1px solid #1E2027;padding:16px 0}
+  nav button{display:block;width:100%;text-align:left;background:none;border:0;
+    border-left:2px solid transparent;color:var(--doc-faint);
+    font:12.5px ui-monospace,monospace;padding:7px 20px;cursor:pointer}
+  nav button.on{color:var(--text);border-left-color:var(--accent);background:#13141A}
+  main{flex:1;padding:28px 30px 60px}
+  section{display:none}section.on{display:block}
+  h2{font-size:16px;font-weight:600;margin:0 0 2px}
+  .rule{font-size:12.5px;color:var(--doc-faint);margin-bottom:18px;max-width:640px}
+  .rule b{color:var(--staged);font-weight:600}
+  .stage{background:#17181E;border:1px solid #23242C;border-radius:14px;
+    padding:34px 26px;display:flex;justify-content:center}
+  .notes{margin-top:16px;display:grid;gap:8px;max-width:680px}
+  .note{display:flex;gap:10px;font-size:12.5px;color:var(--doc-ink)}
+  .pin{flex:none;width:18px;height:18px;border-radius:50%;background:var(--accent);
+    color:#0E0F12;font:600 10.5px/18px ui-monospace,monospace;text-align:center}
+  .pin.amb{background:var(--staged)}
+  .panel{width:560px;max-width:100%;background:var(--bg-glass);border:1px solid var(--hairline);
+    border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+  .qrow{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--hairline)}
+  .qrow .glyph{color:var(--accent);font-size:15px}
+  .qrow input{flex:1;background:none;border:0;outline:0;color:var(--text);font:16px ui-monospace,monospace}
+  .list{padding:6px}
+  .row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--text);font-size:13.5px}
+  .row .ic{width:22px;text-align:center;color:var(--dim)}
+  .row .sub{margin-left:auto;color:#55545E;font:11px ui-monospace,monospace}
+  .row.sel{background:var(--raised)}
+  .foot{display:flex;gap:14px;padding:8px 14px;border-top:1px solid var(--hairline);
+    color:#55545E;font:10.5px ui-monospace,monospace}
+  .foot .ver{margin-left:auto}
+  /* answer card */
+  .ans{margin:8px;border:1px solid var(--hairline);border-left:3px solid var(--accent);
+    border-radius:10px;background:#191A22}
+  .ans .ah{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    color:var(--accent);font:600 10.5px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase}
+  .ans .body{padding:2px 14px 10px;color:var(--text);font-size:13.5px;line-height:1.55}
+  .ans .src{padding:0 14px 12px;color:var(--dim);font:11.5px ui-monospace,monospace}
+  .ans .src a{color:var(--accent);text-decoration:none}
+  /* staged proposal card — the signature */
+  .prop{margin:8px;border:1px solid var(--staged);border-radius:10px;background:#1E1B15}
+  .prop .ph{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    color:var(--staged);font:600 10.5px ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+  .prop .ph .dot{width:7px;height:7px;border-radius:50%;background:var(--staged)}
+  .prop pre{margin:0;padding:4px 14px 12px;color:var(--text);font:13.5px/1.5 ui-monospace,monospace;white-space:pre-wrap}
+  .prop .acts{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #3A3222}
+  .btn{border:1px solid var(--hairline);background:var(--raised);color:var(--text);
+    font:12px ui-monospace,monospace;padding:6px 12px;border-radius:7px}
+  .btn.pri{background:var(--staged);border-color:var(--staged);color:#14151A;font-weight:600}
+  .btn.ghost{background:none;color:var(--dim)}
+  .hint{padding:0 14px 10px;color:#7A6B45;font-size:11px}
+  /* preferences sheet */
+  .sheet{width:460px;max-width:100%;background:var(--surface);border:1px solid var(--hairline);
+    border-radius:14px;padding:22px}
+  .sheet h3{color:var(--text);font-size:14.5px;margin:0 0 4px}
+  .sheet .sub2{color:var(--dim);font-size:12px;margin-bottom:16px}
+  .prefrow{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #23242C;font-size:13px}
+  .prefrow .lab{color:var(--text)}
+  .prefrow .val{margin-left:auto;color:var(--dim);font:12px ui-monospace,monospace}
+  .sw{width:34px;height:20px;border-radius:20px;background:var(--ok);position:relative}
+  .sw::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+  .seg{display:flex;gap:6px}
+  .seg span{border:1px solid #2C2E38;color:var(--doc-faint);font:11px ui-monospace,monospace;
+    padding:5px 10px;border-radius:20px}
+  .seg span.on{color:var(--text);border-color:var(--accent)}
+  .field{flex:1;background:var(--bg-glass);border:1px solid var(--hairline);border-radius:7px;
+    padding:6px 10px;color:var(--dim);font:12px ui-monospace,monospace}
+</style></head>
+<body>
+<div class="wrap">
+<nav id="nav">
+  <button data-s="websearch" class="on">web search</button>
+  <button data-s="volume">staged action</button>
+  <button data-s="prefs">search preferences</button>
+</nav>
+<main>
+  <section id="websearch" class="on">
+    <h2>Web search &amp; answer</h2>
+    <div class="rule">A question can be answered on-device or by searching the web. Only your query leaves; the answer is composed on this Mac from the results, and the first search always asks permission.</div>
+    <div class="stage">
+      <div class="panel">
+        <div class="qrow"><span class="glyph">⌕</span><input value="capital of australia" readonly></div>
+        <div class="list">
+          <div class="row sel"><span class="ic">🌐</span>Search the web &amp; answer<span class="sub">only your query leaves</span></div>
+        </div>
+        <div class="ans">
+          <div class="ah"><span>Answer · L1 · query sent to the web</span></div>
+          <div class="body">Canberra is the capital of Australia — a purpose-built city between Sydney and Melbourne, chosen as a compromise in 1908 and home to Parliament House.</div>
+          <div class="src">Sources:<br>· Canberra — <a>en.wikipedia.org</a><br>· Australian Capital Territory — <a>en.wikipedia.org</a></div>
+        </div>
+        <div class="foot"><span>↩ open</span><span>⌘C copy</span><span class="ver">on-device synthesis</span></div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="pin">1</span>Providers are a ladder: a keyless Wikipedia floor by default, your self-hosted SearXNG for full web search, on by default at the back.</div>
+      <div class="note"><span class="pin">2</span>Egress is journaled per search; the answer is synthesized locally, so nothing but the query leaves the machine.</div>
+    </div>
+  </section>
+
+  <section id="volume">
+    <h2>Staged action — the AI never auto-runs</h2>
+    <div class="rule">Ask the AI to <i>do</i> something and it stages the exact typed action in <b>amber</b>. It never executes, and never claims it did what it only proposed — you Accept or Reject.</div>
+    <div class="stage">
+      <div class="panel">
+        <div class="qrow"><span class="glyph">⌕</span><input value="set the volume to 30" readonly></div>
+        <div class="prop">
+          <div class="ph"><span class="dot"></span>staged · set volume</div>
+          <pre>set output volume → 30%
+command.run · summon://system/set-volume/30</pre>
+          <div class="acts"><button class="btn pri">Accept ↩</button><button class="btn">Edit ⌘E</button><button class="btn ghost">Reject esc</button></div>
+          <div class="hint">Summon staged this — it has not run. It applies only when you Accept.</div>
+        </div>
+        <div class="foot"><span>↩ accept</span><span>esc reject</span><span class="ver">nothing ran</span></div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="pin amb">✓</span>The same rail carries "make a snippet", "create a quicklink", "set the volume" — every mutating tool proposes, the harness stages, you accept.</div>
+      <div class="note"><span class="pin amb">✓</span>Read-only questions ("what's my battery?") answer directly; only actions stage.</div>
+    </div>
+  </section>
+
+  <section id="prefs">
+    <h2>Search preferences</h2>
+    <div class="rule">Web search is available by default (no enable step) — a persisted choice, including turning it off, always wins. You pick whether a question leads with a local answer or a web search.</div>
+    <div class="stage">
+      <div class="sheet">
+        <h3>Search</h3>
+        <div class="sub2">On-device first, or web-first — your call. The first web search still asks permission.</div>
+        <div class="prefrow"><span class="lab">Search the web</span><span class="val"></span><span class="sw"></span></div>
+        <div class="prefrow"><span class="lab">Default for a question</span><span class="seg"><span>Automatic</span><span class="on">Local answer first</span><span>Web search first</span></span></div>
+        <div class="prefrow"><span class="lab">SearXNG URL</span><span class="field">http://127.0.0.1:8080</span></div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="pin">1</span>"Automatic" keeps the sovereign default: local until you grant sticky web consent, then web-first. "Local" or "Web" pins it.</div>
+      <div class="note"><span class="pin">2</span>Point it at a bundled, opt-in SearXNG for full web search — or stay on the keyless Wikipedia floor.</div>
+    </div>
+  </section>
+</main>
+</div>
+<script>
+  const nav=document.getElementById('nav');
+  nav.addEventListener('click',e=>{
+    const b=e.target.closest('button[data-s]'); if(!b)return;
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('section').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); document.getElementById(b.dataset.s).classList.add('on');
+  });
+</script>
+</body></html>

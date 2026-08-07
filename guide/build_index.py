@@ -77,6 +77,24 @@ CAPTIONS = {
         "The dark-glass palette, accent, and type scale the whole app is built from — "
         "the same tokens theme this guide.",
     ),
+    "web-search": (
+        "Web search & answer",
+        "Ask a question and Summon can search the web — a keyless Wikipedia floor by "
+        "default, or your own SearXNG — then compose the answer on-device. Only your "
+        "query leaves, and the first search asks permission.",
+    ),
+    "staged-volume": (
+        "Staged action — never auto-run",
+        "Ask the AI to do something ('set the volume to 30', 'make a snippet') and it "
+        "stages the exact typed action in amber. It never executes, and never claims "
+        "it did what it only proposed — you Accept or Reject.",
+    ),
+    "search-preferences": (
+        "Search preferences",
+        "Web search is on by default; you choose whether a question leads with a local "
+        "answer or a web search. A persisted choice always wins, and the first web "
+        "search still asks permission.",
+    ),
 }
 
 # ordered feature groups: (id, title, intro, [slugs])
@@ -87,7 +105,11 @@ SECTIONS = [
      "Answers on your Mac; actions staged for one-click Accept, never auto-run. A "
      "question can be answered on-device or by searching the web — a keyless "
      "Wikipedia floor, or your own SearXNG — and only your query ever leaves.",
-     ["launcher-staged", "ai-ladder", "quickfix", "launcher-degraded"]),
+     ["staged-volume", "launcher-staged", "web-search", "ai-ladder", "quickfix",
+      "launcher-degraded"]),
+    ("search", "Search & preferences",
+     "Web search on by default; local-first or web-first for a question, your call.",
+     ["search-preferences"]),
     ("clipboard", "Clipboard", "Local clipboard history, private by default.",
      ["clipboard"]),
     ("firstrun", "First run & states",
