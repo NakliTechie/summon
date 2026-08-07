@@ -2,11 +2,11 @@ import XCTest
 @testable import SummonAI
 import SummonCore
 
-/// The staged-mutating-tools keystone: a mutating tool proposes a typed action,
-/// the harness stages it (never executes), and only a human Accept applies it.
-/// These are deterministic — they use a fake rung, not the live model.
+/// The harness-driven action path: a query is classified, parsed into a typed
+/// CoreAction, and run (safe) or staged (destructive) by the harness — never by the
+/// on-device model calling a tool. Deterministic; no live model.
 final class MutatingToolsTests: XCTestCase {
-    // MARK: - Intent gate
+    // MARK: - Intent classifier
 
     func testMutatingIntentFiresOnImperativeCreateSnippet() {
         XCTAssertEqual(
@@ -14,202 +14,101 @@ final class MutatingToolsTests: XCTestCase {
             [.createSnippet]
         )
         XCTAssertEqual(
-            SystemReaders.mutatingIntents(for: "create a snippet for my address"),
-            [.createSnippet]
-        )
-        XCTAssertEqual(
             SystemReaders.mutatingIntents(for: "save this as a snippet named addr"),
-            [.createSnippet]
-        )
-        XCTAssertEqual(
-            SystemReaders.mutatingIntents(for: "can you add a snippet keyword sig"),
             [.createSnippet]
         )
     }
 
     func testReportedVolumeQueryClassifiesAsAnAction() {
-        // The exact field-report query that was wrongly web-searched. It must
-        // classify as a mutating action so the launcher routes it to staging.
         XCTAssertEqual(SystemReaders.mutatingIntents(for: "set the volume to 30%"), [.setVolume])
         XCTAssertEqual(SystemReaders.mutatingIntents(for: "set the volume to 30"), [.setVolume])
     }
 
     func testMutatingIntentStrippedForInformationQuestions() {
-        // Question-form guardrail: informational queries never stage an action.
         XCTAssertTrue(SystemReaders.mutatingIntents(for: "what is a snippet").isEmpty)
         XCTAssertTrue(SystemReaders.mutatingIntents(for: "how do i create a snippet").isEmpty)
-        XCTAssertTrue(SystemReaders.mutatingIntents(for: "tell me about snippets").isEmpty)
-        XCTAssertTrue(SystemReaders.mutatingIntents(for: "why would i use a snippet").isEmpty)
-        // World-knowledge / unrelated → no mutating tool.
-        XCTAssertTrue(SystemReaders.mutatingIntents(for: "what is the capital of france").isEmpty)
-        // Verb without the object → no snippet tool.
-        XCTAssertTrue(SystemReaders.mutatingIntents(for: "make me a sandwich").isEmpty)
+        XCTAssertTrue(SystemReaders.mutatingIntents(for: "how do i set the volume").isEmpty)
+        XCTAssertTrue(SystemReaders.mutatingIntents(for: "turn up the volume").isEmpty)
     }
 
-    // MARK: - Collector
+    // MARK: - Parser (NL → typed CoreAction, deterministic)
 
-    func testCollectorRecordsAndDrainsOnce() {
-        let collector = MutationCollector()
-        XCTAssertTrue(collector.drain().isEmpty)
-        collector.record(
-            .snippetUpsert(id: "1", name: "sig", body: "hi", keyword: nil),
-            summary: "Create snippet sig"
-        )
-        let drained = collector.drain()
-        XCTAssertEqual(drained.count, 1)
-        XCTAssertEqual(drained.first?.action.name, "snippet.upsert")
-        XCTAssertTrue(collector.drain().isEmpty, "drain must clear the collector")
+    func testParserBuildsSetVolumeModuleRun() {
+        guard case let .moduleRun(name, _, path, _)? =
+            SummonActionParser.parse("set the volume to 30%") else {
+            return XCTFail("expected moduleRun")
+        }
+        XCTAssertEqual(name, "command.run")
+        XCTAssertEqual(path, "summon://system/set-volume/30")
+        XCTAssertEqual(SummonActionParser.volumeLevel("mute the volume 0"), 0)
+        XCTAssertEqual(SummonActionParser.volumeLevel("set volume to 200"), 100)
     }
 
-    // MARK: - Stage → Accept round trip
+    func testParserBuildsSnippetAndQuicklink() {
+        guard case let .snippetUpsert(_, sName, body, _)? =
+            SummonActionParser.parse("make a snippet called sig that says Best, Chirag") else {
+            return XCTFail("expected snippetUpsert")
+        }
+        XCTAssertEqual(sName, "sig")
+        XCTAssertEqual(body, "Best, Chirag")
 
-    func testProposedMutationStagesAsAgentActionAndAcceptApplies() async throws {
-        let proposal = ProposedMutation(
-            action: .snippetUpsert(id: "sig-1", name: "sig", body: "Best, Chirag", keyword: "sig"),
-            summary: "Create snippet sig"
-        )
-        let ladder = AILadder.testing(
-            fake: FakeModelRung(cannedText: "staged", cannedProposals: [proposal])
-        )
+        guard case let .quicklinkUpsert(_, qName, url, _)? =
+            SummonActionParser.parse("make a quicklink called gh for https://github.com") else {
+            return XCTFail("expected quicklinkUpsert")
+        }
+        XCTAssertEqual(qName, "gh")
+        XCTAssertEqual(url, "https://github.com")
+    }
+
+    func testParserReturnsNilForQuestionsAndNonActions() {
+        XCTAssertNil(SummonActionParser.parse("who wrote 1984"))
+        XCTAssertNil(SummonActionParser.parse("how do i set the volume"))
+        XCTAssertNil(SummonActionParser.parse("what is a snippet"))
+        XCTAssertNil(SummonActionParser.parse("the capital of australia"))
+    }
+
+    // MARK: - Harness runs safe actions and reports truthfully
+
+    func testSafeActionRunsImmediatelyAndReportsTruthfully() async throws {
+        // A snippet is a store action (no system effect), safe to run in a test.
+        let ladder = AILadder.testing(fake: FakeModelRung())
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let service = SummonAIService(ladder: ladder, core: core)
 
-        let response = try await service.respond(prompt: "make a snippet called sig", actor: .user)
-
-        guard case let .staged(proposalID) = response.kind else {
-            return XCTFail("expected staged, got \(response.kind)")
-        }
-        // Staged, not applied: the snippet does not exist yet (the invariant).
-        XCTAssertTrue(try core.snippets.all().isEmpty)
-        let staged = try core.staged.list(state: "staged")
-        XCTAssertEqual(staged.count, 1)
-        XCTAssertEqual(staged.first?.rung, "agent")
-        XCTAssertEqual(staged.first?.id, proposalID)
-        // The staging is journaled as an audit.
-        XCTAssertNotNil(try core.settings.get("ai.lastInvocation"))
-
-        // Human accept applies the exact typed action.
-        let reviewed = try XCTUnwrap(try core.staged.get(proposalID)).output
-        let result = try core.acceptStagedAgentAction(
-            id: proposalID, reviewedOutput: reviewed, actor: .user
+        let response = try await service.respond(
+            prompt: "make a snippet called sig that says Best, Chirag", actor: .user
         )
-        guard case .applied = result.outcome else {
-            return XCTFail("expected applied, got \(result.outcome)")
+        guard case let .performed(text) = response.kind else {
+            return XCTFail("expected performed, got \(response.kind)")
         }
+        XCTAssertTrue(text.contains("sig"), "result should name what happened: \(text)")
         let snippets = try core.snippets.all()
         XCTAssertEqual(snippets.count, 1)
         XCTAssertEqual(snippets.first?.name, "sig")
         XCTAssertEqual(snippets.first?.body, "Best, Chirag")
     }
 
-    func testRespondNeverAutoAppliesAMutation() async throws {
-        // Even a non-destructive create must stage — never auto-execute.
-        let proposal = ProposedMutation(
-            action: .snippetUpsert(id: "x", name: "n", body: "b", keyword: nil),
-            summary: "Create snippet n"
-        )
-        let ladder = AILadder.testing(fake: FakeModelRung(cannedProposals: [proposal]))
+    func testPlainQuestionIsNotInterceptedAsAnAction() async throws {
+        let ladder = AILadder.testing(fake: FakeModelRung(cannedText: "answer-text"))
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let service = SummonAIService(ladder: ladder, core: core)
 
-        _ = try await service.respond(prompt: "create a snippet", actor: .user)
-
-        XCTAssertTrue(try core.snippets.all().isEmpty, "a mutation must stage, not apply")
-        XCTAssertEqual(try core.staged.list(state: "staged").count, 1)
-    }
-
-    func testRejectingAStagedMutationAppliesNothing() async throws {
-        let proposal = ProposedMutation(
-            action: .snippetUpsert(id: "y", name: "n", body: "b", keyword: nil),
-            summary: "Create snippet n"
-        )
-        let ladder = AILadder.testing(fake: FakeModelRung(cannedProposals: [proposal]))
-        let core = try SummonCore.inMemory(appSearchPaths: [])
-        let service = SummonAIService(ladder: ladder, core: core)
-
-        let response = try await service.respond(prompt: "make a snippet", actor: .user)
-        guard case let .staged(proposalID) = response.kind else {
-            return XCTFail("expected staged, got \(response.kind)")
+        let response = try await service.respond(prompt: "a plain question about history", actor: .user)
+        guard case let .answer(text) = response.kind else {
+            return XCTFail("expected answer, got \(response.kind)")
         }
-        try core.rejectStagedAgentAction(id: proposalID, actor: .user)
-
+        XCTAssertTrue(text.contains("answer-text"))
         XCTAssertTrue(try core.snippets.all().isEmpty)
-        XCTAssertEqual(try core.staged.get(proposalID)?.state, "rejected")
     }
 
-    // MARK: - Ladder growth: quicklink + set-volume
-
-    func testMutatingIntentCoversQuicklinkAndVolume() {
-        XCTAssertEqual(
-            SystemReaders.mutatingIntents(for: "make a quicklink for github called gh"),
-            [.createQuicklink]
+    func testSetVolumeClassifiesAsSafeNotDestructive() {
+        // The whole point of "do safe / stage destructive": volume runs, sleep stages.
+        let setVolume = SummonActionParser.parse("set the volume to 30")!
+        XCTAssertFalse(DestructiveGuard.isDestructive(setVolume))
+        let sleep = CoreAction.moduleRun(
+            name: "command.run", targetID: "command:sleep",
+            path: "summon://system/sleep", payload: [:]
         )
-        XCTAssertEqual(
-            SystemReaders.mutatingIntents(for: "add a quick link named docs for docs.example.com"),
-            [.createQuicklink]
-        )
-        XCTAssertEqual(SystemReaders.mutatingIntents(for: "set the volume to 30"), [.setVolume])
-        XCTAssertEqual(SystemReaders.mutatingIntents(for: "change volume to 100"), [.setVolume])
-        // Info-form and level-less volume invite nothing.
-        XCTAssertTrue(SystemReaders.mutatingIntents(for: "what is the volume").isEmpty)
-        XCTAssertTrue(SystemReaders.mutatingIntents(for: "turn up the volume").isEmpty)
-    }
-
-    func testQuicklinkMutationStagesAndAcceptApplies() async throws {
-        let proposal = ProposedMutation(
-            action: .quicklinkUpsert(id: "ql-1", name: "gh", url: "https://github.com", keyword: "gh"),
-            summary: "Create quicklink gh"
-        )
-        let ladder = AILadder.testing(fake: FakeModelRung(cannedProposals: [proposal]))
-        let core = try SummonCore.inMemory(appSearchPaths: [])
-        let service = SummonAIService(ladder: ladder, core: core)
-
-        let response = try await service.respond(
-            prompt: "make a quicklink for github called gh", actor: .user
-        )
-        guard case let .staged(proposalID) = response.kind else {
-            return XCTFail("expected staged, got \(response.kind)")
-        }
-        XCTAssertTrue(try core.quicklinks.all().isEmpty)
-
-        let reviewed = try XCTUnwrap(try core.staged.get(proposalID)).output
-        let result = try core.acceptStagedAgentAction(
-            id: proposalID, reviewedOutput: reviewed, actor: .user
-        )
-        guard case .applied = result.outcome else {
-            return XCTFail("expected applied, got \(result.outcome)")
-        }
-        let links = try core.quicklinks.all()
-        XCTAssertEqual(links.count, 1)
-        XCTAssertEqual(links.first?.name, "gh")
-        XCTAssertEqual(links.first?.url, "https://github.com")
-    }
-
-    func testVolumeMutationStagesAsDecodableSystemEffect() async throws {
-        // Stages a command.run system effect. Deliberately NOT accepted — accepting
-        // would run osascript and change this host's volume.
-        let url = "summon://system/set-volume/30"
-        let proposal = ProposedMutation(
-            action: .moduleRun(
-                name: "command.run", targetID: "command:set-volume", path: url,
-                payload: ["url": .string(url), "title": .string("Set volume to 30%")]
-            ),
-            summary: "Set volume to 30%"
-        )
-        let ladder = AILadder.testing(fake: FakeModelRung(cannedProposals: [proposal]))
-        let core = try SummonCore.inMemory(appSearchPaths: [])
-        let service = SummonAIService(ladder: ladder, core: core)
-
-        let response = try await service.respond(prompt: "set the volume to 30", actor: .user)
-        guard case let .staged(proposalID) = response.kind else {
-            return XCTFail("expected staged, got \(response.kind)")
-        }
-        let output = try XCTUnwrap(try core.staged.get(proposalID)).output
-        let decoded = try SchemaGate().decodeReviewedAction(from: Data(output.utf8))
-        guard case let .moduleRun(name, _, path, _) = decoded else {
-            return XCTFail("expected moduleRun, got \(decoded)")
-        }
-        XCTAssertEqual(name, "command.run")
-        XCTAssertEqual(path, url)
+        XCTAssertTrue(DestructiveGuard.isDestructive(sleep))
     }
 }

@@ -6,8 +6,10 @@ import SummonCore
 public enum LauncherAIResponse: Sendable, Equatable {
     /// Plain text — rendered read-only (copy/insert), no Accept gate, executes nothing.
     case answer(text: String, rung: String, egressSummary: String)
-    /// A machine action — rendered as the amber Accept/Reject staged strip.
+    /// A destructive action — rendered as the amber Accept/Reject staged strip.
     case staged(proposalID: String, rung: String, egressSummary: String)
+    /// A safe action the harness already ran — a truthful result, no gate.
+    case performed(text: String)
 }
 
 /// Web search + on-device synthesis outcome (harness-driven), kept AI-free.

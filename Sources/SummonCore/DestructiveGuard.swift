@@ -36,6 +36,14 @@ public enum DestructiveGuard {
         return true
     }
 
+    /// Reversible, low-stakes system effects that are safe to run without a gate
+    /// (e.g. set-volume). Everything else under summon://system/ (sleep, lock,
+    /// empty-trash) stays destructive.
+    public static func isSafeSystemEffect(_ path: String?) -> Bool {
+        guard let path else { return false }
+        return path.hasPrefix("summon://system/set-volume/")
+    }
+
     public static func isDestructive(_ action: CoreAction) -> Bool {
         switch action {
         case .clipboardDelete, .snippetDelete, .quicklinkDelete, .clipboardClearUnpinned,
@@ -44,9 +52,14 @@ public enum DestructiveGuard {
         case .moduleRun(let name, _, let path, let payload):
             if isDestructive(actionName: name) { return true }
             if case .bool(true) = payload["destructive"] { return true }
-            // command.run → empty-trash / sleep / lock
-            if name == "command.run", isSystemEffectURL(path) { return true }
-            if case .string(let url) = payload["url"], isSystemEffectURL(url) { return true }
+            // command.run → empty-trash / sleep / lock are destructive; set-volume is not.
+            if name == "command.run", isSystemEffectURL(path), !isSafeSystemEffect(path) {
+                return true
+            }
+            if case .string(let url) = payload["url"], isSystemEffectURL(url),
+               !isSafeSystemEffect(url) {
+                return true
+            }
             return false
         case .settingsSet, .settingsDelete, .snippetUpsert, .clipboardIngest, .clipboardIngestRich,
              .clipboardPin, .clipboardTouch, .clipboardIgnoreAdd, .clipboardIgnoreRemove,

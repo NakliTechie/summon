@@ -49,6 +49,9 @@ extension LauncherPanelController {
                     let e = egress.isEmpty ? "nothing left this Mac" : egress
                     self.footerError = "Staged via \(rung) · \(e)"
                     self.applyLayout(animated: true)
+                case let .performed(text):
+                    // A safe action the harness ran — show the truthful result.
+                    self.presentAIAnswer(text: text, rung: "done", egress: "nothing left this Mac")
                 }
             } catch {
                 self.stopSpinner()

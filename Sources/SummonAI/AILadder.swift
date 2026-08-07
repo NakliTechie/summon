@@ -173,8 +173,10 @@ public struct AIResponse: Sendable, Equatable {
     public enum Kind: Sendable, Equatable {
         /// Plain text — displayed read-only; executes nothing, so it is not staged.
         case answer(text: String)
-        /// A machine action — staged for explicit Accept/Reject.
+        /// A destructive action — staged for explicit Accept/Reject.
         case staged(proposalID: String)
+        /// A safe, reversible action the harness already ran — a truthful result.
+        case performed(text: String)
     }
     public let kind: Kind
     public let rung: ModelRungID
@@ -271,15 +273,13 @@ public final class SummonAIService: @unchecked Sendable {
         prompt: String,
         actor: ActorTag = .user
     ) async throws -> AIResponse {
-        let completion = try await ladder.complete(prompt: prompt)
-        if !completion.proposedActions.isEmpty {
-            return try stageProposedMutations(
-                completion.proposedActions,
-                prompt: prompt,
-                completion: completion,
-                actor: actor
-            )
+        // Action commands are harness-driven: parse the typed action deterministically,
+        // then do the safe thing or stage the destructive one. The model is never
+        // asked to act, so it can never fail to call a tool or claim it did.
+        if let action = SummonActionParser.parse(prompt) {
+            return try performOrStage(action, prompt: prompt, actor: actor)
         }
+        let completion = try await ladder.complete(prompt: prompt)
         if let core {
             _ = try core.dispatch(
                 action: .settingsSet(
@@ -301,101 +301,95 @@ public final class SummonAIService: @unchecked Sendable {
         )
     }
 
-    /// Action path of the split. A mutating tool the model called this turn is
-    /// staged UNCONDITIONALLY (even a non-destructive create) as an agent-rung
-    /// proposal — the model never applies it and never truthfully claims it did.
-    /// Accept later rides the existing `acceptStagedAgentAction` rail. Staging is
-    /// direct (not `dispatch(actor:.agent)`), because that path auto-applies a
-    /// non-destructive create — the opposite of the propose-only invariant.
-    private func stageProposedMutations(
-        _ mutations: [ProposedMutation],
+    /// Do-safe / stage-destructive. A reversible action runs immediately (actor
+    /// `.user`) and returns a truthful result; a destructive one is staged for
+    /// Accept. The harness performs and reports — the model never claims it acted.
+    private func performOrStage(
+        _ action: CoreAction,
         prompt: String,
-        completion: ModelCompletion,
         actor: ActorTag
     ) throws -> AIResponse {
-        let gate = SchemaGate()
-        var firstID: String?
-        if let core {
-            try core.staged.migrate()
-            for mutation in mutations {
-                let reviewedText = try gate.reviewedText(for: mutation.action)
-                let proposalID = UUID().uuidString
-                try core.staged.upsert(PersistedStagedProposal(
-                    id: proposalID,
-                    rung: "agent",
-                    prompt: prompt,
-                    output: reviewedText,
-                    egressSummary: "local-stage",
-                    state: "staged"
-                ))
-                try auditStagedMutation(
-                    proposalID: proposalID,
-                    action: mutation.action,
-                    completion: completion,
-                    actor: actor
-                )
-                if firstID == nil { firstID = proposalID }
-            }
-            if let firstID {
-                NotificationCenter.default.post(
-                    name: .summonStagedProposalDidChange,
-                    object: nil,
-                    userInfo: ["proposalID": firstID]
-                )
-            }
-        } else {
-            for mutation in mutations {
-                let reviewedText = (try? gate.reviewedText(for: mutation.action)) ?? mutation.summary
-                let proposal = StagedAIProposal(
-                    rung: completion.rung,
-                    prompt: prompt,
-                    output: reviewedText,
-                    egressSummary: completion.egressSummary
-                )
-                staging.stage(proposal)
-                if firstID == nil { firstID = proposal.id.uuidString }
-            }
+        if DestructiveGuard.isDestructive(action) {
+            let id = try stageAction(action, prompt: prompt, actor: actor)
+            return AIResponse(kind: .staged(proposalID: id), rung: .l1Apple, egressSummary: "")
         }
-        guard let id = firstID else {
+        guard let core else {
             return AIResponse(
-                kind: .answer(text: completion.text),
-                rung: completion.rung,
-                egressSummary: completion.egressSummary
+                kind: .answer(text: "That action isn't available in this build."),
+                rung: .l1Apple, egressSummary: ""
             )
         }
-        return AIResponse(
-            kind: .staged(proposalID: id),
-            rung: completion.rung,
-            egressSummary: completion.egressSummary
-        )
+        let result = try core.dispatch(action: action, actor: actor)
+        switch result.outcome {
+        case .applied:
+            return AIResponse(
+                kind: .performed(text: Self.performedSummary(action)),
+                rung: .l1Apple, egressSummary: ""
+            )
+        case .rejected(let reason):
+            return AIResponse(
+                kind: .answer(text: "Couldn't do that: \(reason)"),
+                rung: .l1Apple, egressSummary: ""
+            )
+        case .staged(let proposalID):
+            return AIResponse(kind: .staged(proposalID: proposalID), rung: .l1Apple, egressSummary: "")
+        }
     }
 
-    /// Journals the staged action as an audit; rolls back the proposal if the
-    /// audit write fails (mirrors `completeAndStage`'s transactional guarantee).
-    private func auditStagedMutation(
-        proposalID: String,
-        action: CoreAction,
-        completion: ModelCompletion,
-        actor: ActorTag
-    ) throws {
-        guard let core else { return }
+    /// Stages a destructive action as an agent-rung proposal (the amber Accept path),
+    /// journals it, notifies observers, and rolls back if the audit write fails.
+    private func stageAction(_ action: CoreAction, prompt: String, actor: ActorTag) throws -> String {
+        guard let core else {
+            let proposal = StagedAIProposal(
+                rung: .l1Apple, prompt: prompt,
+                output: (try? SchemaGate().reviewedText(for: action)) ?? action.name,
+                egressSummary: ""
+            )
+            staging.stage(proposal)
+            return proposal.id.uuidString
+        }
+        try core.staged.migrate()
+        let reviewedText = try SchemaGate().reviewedText(for: action)
+        let proposalID = UUID().uuidString
+        try core.staged.upsert(PersistedStagedProposal(
+            id: proposalID, rung: "agent", prompt: prompt,
+            output: reviewedText, egressSummary: "local-stage", state: "staged"
+        ))
         do {
             _ = try core.dispatch(
-                action: .settingsSet(
-                    key: "ai.lastInvocation",
-                    value: .object([
-                        "rung": .string(completion.rung.rawValue),
-                        "egress": .string(completion.egressSummary),
-                        "kind": .string("staged-action"),
-                        "action": .string(action.name),
-                        "proposalID": .string(proposalID),
-                    ])
-                ),
+                action: .settingsSet(key: "ai.lastInvocation", value: .object([
+                    "kind": .string("staged-action"),
+                    "action": .string(action.name),
+                    "proposalID": .string(proposalID),
+                ])),
                 actor: actor
             )
-        } catch let dispatchError {
+        } catch {
             try? core.staged.delete(id: proposalID)
-            throw dispatchError
+            throw error
+        }
+        NotificationCenter.default.post(
+            name: .summonStagedProposalDidChange, object: nil,
+            userInfo: ["proposalID": proposalID]
+        )
+        return proposalID
+    }
+
+    /// Truthful past-tense summary of an action the harness just applied.
+    static func performedSummary(_ action: CoreAction) -> String {
+        switch action {
+        case .moduleRun(_, _, let path, let payload):
+            if let path, path.contains("set-volume/"), let level = path.split(separator: "/").last {
+                return "Volume set to \(level)%."
+            }
+            if case .string(let title) = payload["title"] { return "\(title) — done." }
+            return "Done."
+        case .snippetUpsert(_, let name, _, _):
+            return "Snippet “\(name)” saved."
+        case .quicklinkUpsert(_, let name, _, _):
+            return "Quicklink “\(name)” saved."
+        default:
+            return "Done."
         }
     }
 

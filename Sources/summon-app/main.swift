@@ -460,6 +460,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     return .answer(text: text, rung: rung, egressSummary: response.egressSummary)
                 case let .staged(proposalID):
                     return .staged(proposalID: proposalID, rung: rung, egressSummary: response.egressSummary)
+                case let .performed(text):
+                    return .performed(text: text)
                 }
             },
             searchHandler: { [weak service] prompt, allowOnce in

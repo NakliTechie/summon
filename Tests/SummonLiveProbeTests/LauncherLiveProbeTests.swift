@@ -29,6 +29,8 @@ final class LauncherLiveProbeTests: XCTestCase {
                 case let .staged(proposalID):
                     return .staged(proposalID: proposalID, rung: response.rung.rawValue,
                                    egressSummary: response.egressSummary)
+                case let .performed(text):
+                    return .performed(text: text)
                 }
             },
             searchHandler: { prompt, _ in
