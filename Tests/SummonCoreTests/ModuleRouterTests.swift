@@ -267,6 +267,25 @@ final class ModuleRouterTests: XCTestCase {
         XCTAssertTrue(try core.journal.allEntries().last?.outcome.hasPrefix("rejected:") == true)
     }
 
+    /// The parameterized set-volume effect must reject a bad level BEFORE running
+    /// osascript, so a malformed AI proposal can never drive the host volume.
+    func testSetVolumeEffectRejectsBadLevelWithoutSideEffects() {
+        let exec = RecordingModuleExecutor()
+        for bad in [
+            "summon://system/set-volume/abc",
+            "summon://system/set-volume/200",
+            "summon://system/set-volume/-5",
+            "summon://system/set-volume/",
+        ] {
+            XCTAssertThrowsError(
+                try SystemEffects.perform(url: bad, executor: exec),
+                "expected \(bad) to reject"
+            )
+        }
+        XCTAssertTrue(exec.calls.isEmpty)
+        XCTAssertTrue(exec.pasteboard.isEmpty)
+    }
+
     func testEmptyTrashConfirmationIsMarkedDestructive() throws {
         let core = try SummonCore.inMemory()
         let session = LauncherSession(core: core)

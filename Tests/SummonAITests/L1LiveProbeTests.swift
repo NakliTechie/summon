@@ -52,8 +52,10 @@ final class L1LiveProbeTests: XCTestCase {
         let prompts = [
             "make a snippet called sig that says Best, Chirag",
             "create a snippet named addr with body 221B Baker Street",
-            "save a snippet called greet that says Hello there",
-            "add a snippet keyword ty for Thank you very much",
+            "make a quicklink for github called gh",
+            "add a quicklink named docs for https://docs.example.com",
+            "set the volume to 30",
+            "change the volume to 100",
         ]
         let claimPatterns = [
             "i've created", "i have created", "i created", "i've saved", "i have saved",
@@ -64,8 +66,9 @@ final class L1LiveProbeTests: XCTestCase {
         var answered = 0
         for prompt in prompts {
             let response = try await service.respond(prompt: prompt, actor: .user)
-            // SAFETY (hard): respond() only stages — the snippet store stays empty.
+            // SAFETY (hard): respond() only stages — no store or system effect applies.
             XCTAssertTrue(try core.snippets.all().isEmpty, "auto-applied a mutation for: \(prompt)")
+            XCTAssertTrue(try core.quicklinks.all().isEmpty, "auto-applied a mutation for: \(prompt)")
             switch response.kind {
             case .staged:
                 staged += 1

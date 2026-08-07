@@ -9,6 +9,12 @@ public enum SystemEffects {
     public static func perform(url: String, executor: any ModuleExecuting) throws {
         if url.hasPrefix("summon://system/") {
             let action = String(url.dropFirst("summon://system/".count))
+            // Parameterized effect: set-volume/<0…100>. The only fixed local
+            // effect that carries an argument; everything else is arg-less.
+            if action.hasPrefix("set-volume/") {
+                try setVolume(String(action.dropFirst("set-volume/".count)))
+                return
+            }
             switch action {
             case "sleep":
                 try run("/usr/bin/pmset", ["sleepnow"])
@@ -27,6 +33,15 @@ public enum SystemEffects {
             return
         }
         try executor.open(pathOrURL: url)
+    }
+
+    private static func setVolume(_ raw: String) throws {
+        guard let level = Int(raw), (0...100).contains(level) else {
+            throw CoreError.store("set-volume requires an integer level 0–100")
+        }
+        // `set volume output volume` is a direct system AppleScript command — no
+        // Automation (TCC) prompt, unlike scripting another app.
+        try run("/usr/bin/osascript", ["-e", "set volume output volume \(level)"])
     }
 
     private static func run(_ exe: String, _ args: [String]) throws {
