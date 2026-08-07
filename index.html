@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Summon — the sovereign macOS launcher</title>
+<meta name="description" content="A sovereign, native macOS launcher. Local-first, on-device AI, no account, no server, no telemetry. Free and open source.">
+<style>
+  :root{--bg:#0E0F12;--glass:#14151A;--surface:#1C1E26;--raised:#24262F;--text:#E8E6DF;
+    --dim:#9A98A0;--faint:#6E6C76;--accent:#7C6FE8;--staged:#E5A54B;--ok:#5FB37A;
+    --danger:#E06C5F;--hairline:#33353F}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  /* hero */
+  .hero{padding:96px 0 40px;text-align:center;
+    background:radial-gradient(60% 80% at 50% 0%,rgba(124,111,232,.16),transparent 70%)}
+  .hero h1{font-size:64px;line-height:1;margin:0;font-weight:750;letter-spacing:-.03em;
+    background:linear-gradient(92deg,var(--text) 20%,var(--accent));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .hero .lede{margin:18px auto 0;max-width:34ch;font-size:20px;color:var(--dim)}
+  .install{margin:28px auto 8px;display:inline-flex;gap:10px;align-items:center;
+    background:var(--surface);border:1px solid var(--hairline);border-radius:12px;
+    padding:12px 16px;font-size:15px}
+  .install .pmt{color:var(--faint)}
+  .install b{color:var(--text);font-weight:500}
+  .sub{color:var(--faint);font-size:13px;margin-top:6px}
+  .cta{margin-top:26px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .cta a{border:1px solid var(--hairline);border-radius:10px;padding:10px 18px;color:var(--text)}
+  .cta a.pri{background:var(--accent);border-color:var(--accent);color:#0E0F12;font-weight:600}
+  .cta a:hover{text-decoration:none;border-color:var(--accent)}
+  .shot{margin:40px auto 0;max-width:720px}
+  .shot img{width:100%;height:auto;border:1px solid var(--hairline);border-radius:16px;
+    box-shadow:0 30px 80px rgba(0,0,0,.5)}
+  /* sections */
+  section{padding:56px 0;border-top:1px solid var(--hairline)}
+  h2{font-size:30px;letter-spacing:-.02em;margin:0 0 8px;font-weight:680}
+  .intro{color:var(--dim);max-width:66ch;margin:0 0 30px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+  .card{background:var(--surface);border:1px solid var(--hairline);border-radius:14px;padding:20px}
+  .card h3{margin:0 0 6px;font-size:17px}
+  .card p{margin:0;color:var(--dim);font-size:14.5px}
+  .card .tag{display:inline-block;margin-bottom:10px;font:600 11px ui-monospace,monospace;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+  .card .tag.amb{color:var(--staged)}
+  /* comparison */
+  .tablewrap{overflow-x:auto;border:1px solid var(--hairline);border-radius:14px}
+  table{border-collapse:collapse;width:100%;min-width:680px;font-size:14px}
+  th,td{padding:12px 14px;text-align:center;border-bottom:1px solid var(--hairline)}
+  th:first-child,td:first-child{text-align:left;color:var(--text)}
+  thead th{background:var(--surface);color:var(--dim);font-weight:600;position:sticky;top:0}
+  thead th.us{color:var(--text)}
+  tbody tr:last-child td{border-bottom:0}
+  td.us{background:rgba(124,111,232,.07)}
+  .yes{color:var(--ok);font-weight:700}
+  .no{color:var(--faint)}
+  .part{color:var(--staged)}
+  .price td{font-size:13px;color:var(--dim)}
+  .legend{margin-top:12px;color:var(--faint);font-size:12.5px}
+  footer{padding:44px 0 70px;color:var(--faint);font-size:13.5px;border-top:1px solid var(--hairline)}
+  footer a{color:var(--dim)}
+  @media(max-width:640px){.hero{padding:64px 0 30px}.hero h1{font-size:46px}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>Summon</h1>
+    <p class="lede">A sovereign, native macOS launcher. On-device AI, no account, no telemetry.</p>
+    <div class="install"><span class="pmt">$</span><b>brew install --cask naklitechie/tap/summon</b></div>
+    <div class="sub">Free &amp; open source (AGPL-3.0) · macOS Sonoma 14+ · on-device AI on Apple Intelligence hardware</div>
+    <div class="cta">
+      <a class="pri" href="guide/">📖 Visual guide</a>
+      <a href="https://github.com/NakliTechie/summon">GitHub</a>
+    </div>
+    <div class="shot"><img src="guide/screenshots/launcher-fuzzy.png" alt="Summon launcher"></div>
+  </div>
+</header>
+
+<section id="features"><div class="wrap">
+  <h2>Everything on your Mac</h2>
+  <p class="intro">A daily-driver launcher with the modern features — and an on-device AI that answers and proposes, but never acts without your word.</p>
+  <div class="grid">
+    <div class="card"><span class="tag">Launcher</span><h3>Fast, keyboard-first</h3><p>⌥Space to fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, and window layouts. Select a result, Tab, act on it.</p></div>
+    <div class="card"><span class="tag amb">Staged</span><h3>AI that never auto-runs</h3><p>Ask a question and get an on-device answer. Ask it to <i>do</i> something — "make a snippet", "set the volume to 30" — and it stages in amber for one-click Accept. It never claims it did what it only proposed.</p></div>
+    <div class="card"><span class="tag">Web search</span><h3>Answers, your way</h3><p>A keyless Wikipedia floor by default, or point it at your own SearXNG for full web search. Only your query leaves; the answer is composed on this Mac.</p></div>
+    <div class="card"><span class="tag">Clipboard</span><h3>Local history</h3><p>⌥⇧C for text, image, HTML, and RTF history — all on this Mac, with an ignore list for sensitive apps.</p></div>
+    <div class="card"><span class="tag">Windows</span><h3>Built-in tiling</h3><p>Arrange the focused window with ⌃⌥ and arrows — halves, quarters, thirds, maximize — no separate app.</p></div>
+    <div class="card"><span class="tag">Sovereign</span><h3>No account, ever</h3><p>No server of ours, no telemetry or crash reporting — not even opt-in. The AI sidecar compiles out entirely. Enforced as first-class test gates.</p></div>
+  </div>
+</div></section>
+
+<section id="compare"><div class="wrap">
+  <h2>How Summon compares</h2>
+  <p class="intro">The launcher table stakes, plus the wedge nobody else holds together: sovereign <i>and</i> on-device AI, with web search and window management built in — free.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Capability</th><th class="us">Summon</th><th>Raycast</th><th>Alfred</th><th>LaunchBar</th><th>Spotlight</th></tr></thead>
+    <tbody>
+      <tr><td>Keyboard launcher + fuzzy match</td><td class="us"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+      <tr><td>Clipboard history</td><td class="us"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="part">partial</span></td></tr>
+      <tr><td>Window management (built in)</td><td class="us"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
+      <tr><td>On-device AI answers</td><td class="us"><span class="yes">✓</span></td><td><span class="part">cloud</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="part">OS-level</span></td></tr>
+      <tr><td>AI actions, staged — never auto-run</td><td class="us"><span class="yes">✓</span></td><td><span class="part">auto</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
+      <tr><td>Web search in the launcher</td><td class="us"><span class="yes">✓</span></td><td><span class="part">cloud AI</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
+      <tr><td>No account · no telemetry</td><td class="us"><span class="yes">✓</span></td><td><span class="no">✗</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+      <tr class="price"><td>Price</td><td class="us">Free</td><td>Subscription</td><td>One-time</td><td>One-time</td><td>Free (OS)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="legend"><span class="yes">✓</span> built in · <span class="part">partial / cloud / paid</span> · <span class="no">✗</span> not available. Competitor data compiled Aug 2026; features and pricing change.</p>
+</div></section>
+
+<section id="get"><div class="wrap">
+  <h2>Get Summon</h2>
+  <p class="intro">Install with Homebrew. The 0.6.x build is ad-hoc signed, not yet Apple-notarized — the cask clears the download quarantine so it launches; if macOS still blocks it, open once with right-click → Open.</p>
+  <div class="install"><span class="pmt">$</span><b>brew install --cask naklitechie/tap/summon</b></div>
+  <div class="cta"><a class="pri" href="guide/">Browse the visual guide</a><a href="https://github.com/NakliTechie/summon">Source on GitHub</a></div>
+</div></section>
+
+<footer><div class="wrap">
+  Summon — sovereign native macOS launcher · <a href="https://github.com/NakliTechie/summon">github.com/NakliTechie/summon</a> · <a href="guide/">Guide</a> · AGPL-3.0
+</div></footer>
+
+</body></html>
