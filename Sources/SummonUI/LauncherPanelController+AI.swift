@@ -24,7 +24,12 @@ extension LauncherPanelController {
             do {
                 switch try await operation.value {
                 case let .answer(text, rung, egress):
-                    self.presentAIAnswer(text: text, rung: rung, egress: egress)
+                    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.footerError = "No answer for that"
+                        self.applyLayout(animated: true)
+                    } else {
+                        self.presentAIAnswer(text: text, rung: rung, egress: egress)
+                    }
                 case let .staged(_, rung, egress):
                     self.refreshStagedStrip()
                     let e = egress.isEmpty ? "nothing left this Mac" : egress

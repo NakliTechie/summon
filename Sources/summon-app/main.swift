@@ -490,6 +490,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             consentGranter: { [weak service] always in
                 if always { try? service?.grantWebSearchConsentAlways() }
+            },
+            consentIsSticky: { [weak service] in
+                service?.webSearchConsentGranted() ?? false
             }
         )
     }

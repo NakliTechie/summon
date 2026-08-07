@@ -550,8 +550,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                 do {
                     var list = try self.session.computeResults(for: text)
                     if list.isEmpty, let ai = self.aiIntegration {
-                        list = [ai.offerResult(for: text), ai.searchOffer(for: text)]
-                            .compactMap { $0 }
+                        list = ai.offers(for: text)
                     }
                     ResultIcon.preload(list)
                     DispatchQueue.main.async {

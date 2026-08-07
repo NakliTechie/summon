@@ -159,6 +159,23 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertTrue(actions.contains("web.search"), "expected the web-search offer; got \(actions)")
     }
 
+    func testSearchPromotesToPrimaryOnceConsentIsSticky() {
+        let handler: @Sendable (String) async throws -> LauncherAIResponse = { _ in
+            .answer(text: "x", rung: "L1", egressSummary: "")
+        }
+        let search: @Sendable (String, Bool) async throws -> LauncherWebSearchResponse = { _, _ in
+            .noResults
+        }
+        func firstAction(sticky: Bool) -> String? {
+            LauncherAIIntegration(handler: handler, searchHandler: search, consentIsSticky: { sticky })
+                .offers(for: "who wrote 1984").first?.payload["action"]?.stringValue
+        }
+        // Before sticky consent: local first (nothing egresses unasked).
+        XCTAssertEqual(firstAction(sticky: false), "ai.ask")
+        // After "Always": search is the primary offer — Enter searches directly.
+        XCTAssertEqual(firstAction(sticky: true), "web.search")
+    }
+
     private func integrationReturningStaged() -> LauncherAIIntegration {
         LauncherAIIntegration { _ in
             .staged(proposalID: "proposal-1", rung: "L0", egressSummary: "")

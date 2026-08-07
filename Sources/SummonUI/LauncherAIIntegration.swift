@@ -24,15 +24,18 @@ public struct LauncherAIIntegration: Sendable {
     private let handler: @Sendable (String) async throws -> LauncherAIResponse
     private let searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)?
     private let consentGranter: (@Sendable (Bool) -> Void)?
+    private let consentIsSticky: (@Sendable () -> Bool)?
 
     public init(
         handler: @escaping @Sendable (String) async throws -> LauncherAIResponse,
         searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)? = nil,
-        consentGranter: (@Sendable (Bool) -> Void)? = nil
+        consentGranter: (@Sendable (Bool) -> Void)? = nil,
+        consentIsSticky: (@Sendable () -> Bool)? = nil
     ) {
         self.handler = handler
         self.searchHandler = searchHandler
         self.consentGranter = consentGranter
+        self.consentIsSticky = consentIsSticky
     }
 
     public func respond(prompt: String) async throws -> LauncherAIResponse {
@@ -40,6 +43,19 @@ public struct LauncherAIIntegration: Sendable {
     }
 
     public var searchAvailable: Bool { searchHandler != nil }
+
+    /// Once the user has granted sticky ("Always") web-search consent, search
+    /// becomes the primary offer for a question — Enter searches directly (no
+    /// re-prompt). Before that, local stays first so nothing egresses unasked.
+    public var searchIsPrimary: Bool { consentIsSticky?() ?? false }
+
+    /// Both AI offers for a query, ordered so the primary one is first.
+    public func offers(for rawQuery: String) -> [SearchResult] {
+        let ask = offerResult(for: rawQuery)
+        let search = searchOffer(for: rawQuery)
+        let ordered = searchIsPrimary ? [search, ask] : [ask, search]
+        return ordered.compactMap { $0 }
+    }
 
     public func search(prompt: String, allowOnce: Bool) async throws -> LauncherWebSearchResponse {
         guard let searchHandler else { return .unavailable }
