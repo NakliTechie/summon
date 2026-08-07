@@ -21,6 +21,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private let emptyLabel: NSTextField
     let stagedReviewView: StagedReviewView
     let aiAnswerView: AIAnswerView
+    let orbSpinner: OrbSpinnerView
+    var showingSpinner = false
     let quickActionStrip: LauncherQuickActionStrip
     var quickActionsShown = false
     let stagedTextWriter: (String) throws -> Void
@@ -32,10 +34,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     let searchBandHeight: CGFloat = 48
     private let maxResultsHeight: CGFloat = 380
     private let footerHeight: CGFloat = 22
-    private let stagedBandHeight: CGFloat = 148
+    let stagedBandHeight: CGFloat = 148
     // Dynamic: the answer card grows to fit its text (up to the cap, then scrolls).
     var answerBandHeight: CGFloat = 148
     let maxAnswerBandHeight: CGFloat = 460
+    let spinnerBandHeight: CGFloat = 64
 
     var stagedID: String?
     var footerError: String?
@@ -159,6 +162,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         aiAnswerView = AIAnswerView(frame: .zero)
         aiAnswerView.isHidden = true
         rootView.addSubview(aiAnswerView)
+
+        orbSpinner = OrbSpinnerView(frame: .zero)
+        orbSpinner.isHidden = true
+        rootView.addSubview(orbSpinner)
 
         quickActionStrip = LauncherQuickActionStrip(frame: .zero)
         quickActionStrip.isHidden = true
@@ -319,6 +326,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchField.stringValue = ""
         session.applyResults("", [])
         aiAnswerView.clear()
+        showingSpinner = false
+        orbSpinner.stop()
         quickActionsShown = false
         panel.orderOut(nil)
         updateSearchFocusState()
@@ -369,7 +378,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     private var showResultsChrome: Bool {
         hasQuery || hasBrowsableResults || !stagedReviewView.isHidden
-            || !aiAnswerView.isHidden || footerError != nil
+            || !aiAnswerView.isHidden || showingSpinner || footerError != nil
     }
 
     private func targetHeight() -> CGFloat {
@@ -380,8 +389,11 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         if !aiAnswerView.isHidden {
             h += answerBandHeight
         }
-        // The answer band replaces the results list; suppress the list while it shows.
-        if hasQuery || hasBrowsableResults, aiAnswerView.isHidden {
+        if showingSpinner {
+            h += spinnerBandHeight
+        }
+        // The answer band / spinner replace the results list; suppress it then.
+        if hasQuery || hasBrowsableResults, aiAnswerView.isHidden, !showingSpinner {
             let rows = CGFloat(
                 session.objectMode ? session.objectActions.count : session.results.count
             )
@@ -451,25 +463,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             self.searchDivider.frame = NSRect(x: 0, y: dividerY, width: self.panelWidth, height: 1)
             self.searchDivider.isHidden = !expanded
 
-            var contentTop = dividerY
-            if !self.stagedReviewView.isHidden {
-                contentTop -= self.stagedBandHeight
-                self.stagedReviewView.frame = NSRect(
-                    x: inset,
-                    y: contentTop,
-                    width: self.panelWidth - inset * 2,
-                    height: self.stagedBandHeight
-                )
-            }
-            if !self.aiAnswerView.isHidden {
-                contentTop -= self.answerBandHeight
-                self.aiAnswerView.frame = NSRect(
-                    x: inset,
-                    y: contentTop,
-                    width: self.panelWidth - inset * 2,
-                    height: self.answerBandHeight
-                )
-            }
+            var contentTop = self.layoutContentBands(top: dividerY, inset: inset)
 
             let footerOn = expanded
             self.footerLabel.isHidden = !footerOn
@@ -497,6 +491,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
                 && !self.session.objectMode
                 && self.hasQuery
                 && self.aiAnswerView.isHidden
+                && !self.showingSpinner
             self.emptyLabel.isHidden = !noHits
             if noHits {
                 self.emptyLabel.frame = NSRect(
@@ -533,6 +528,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     public func controlTextDidChange(_ obj: Notification) {
         let text = searchField.stringValue
         aiAnswerView.clear() // a new query dismisses any shown answer
+        showingSpinner = false
+        orbSpinner.stop()
         quickActionsShown = false // typing supersedes the quick-action strip
         searchGeneration &+= 1
         let generation = searchGeneration

@@ -3,6 +3,18 @@ import Foundation
 import SummonCore
 
 extension LauncherPanelController {
+    func startSpinner(_ mode: OrbSpinnerView.Mode) {
+        aiAnswerView.clear()
+        showingSpinner = true
+        orbSpinner.start(mode)
+        applyLayout(animated: true)
+    }
+
+    func stopSpinner() {
+        showingSpinner = false
+        orbSpinner.stop()
+    }
+
     /// Invoke the local AI for the confirmed "Ask local AI" offer. A plain-text
     /// answer is shown read-only (answer shape); a machine action is staged for
     /// Accept/Reject (staged shape). Nothing here auto-executes.
@@ -13,8 +25,8 @@ extension LauncherPanelController {
             return
         }
         let prompt = confirmation.result.payload["prompt"]?.stringValue ?? confirmation.query
-        footerError = "AI: thinking on-device…"
-        applyLayout(animated: false)
+        footerError = "Thinking on-device…"
+        startSpinner(.thinking)
 
         let operation = Task.detached(priority: .userInitiated) {
             try await aiIntegration.respond(prompt: prompt)
@@ -22,7 +34,9 @@ extension LauncherPanelController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                switch try await operation.value {
+                let response = try await operation.value
+                self.stopSpinner()
+                switch response {
                 case let .answer(text, rung, egress):
                     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         self.footerError = "No answer for that"
@@ -37,6 +51,7 @@ extension LauncherPanelController {
                     self.applyLayout(animated: true)
                 }
             } catch {
+                self.stopSpinner()
                 self.footerError = L10n.t(.degradedAI)
                 self.applyLayout(animated: true)
             }
@@ -88,7 +103,7 @@ extension LauncherPanelController {
         }
         let prompt = confirmation.result.payload["prompt"]?.stringValue ?? confirmation.query
         footerError = "Searching the web…"
-        applyLayout(animated: false)
+        startSpinner(.searching)
 
         let operation = Task.detached(priority: .userInitiated) {
             try await aiIntegration.search(prompt: prompt, allowOnce: allowOnce)
@@ -96,7 +111,9 @@ extension LauncherPanelController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                switch try await operation.value {
+                let response = try await operation.value
+                self.stopSpinner()
+                switch response {
                 case let .answer(text, sources, rung):
                     let body = sources.isEmpty
                         ? text
@@ -112,6 +129,7 @@ extension LauncherPanelController {
                     self.applyLayout(animated: true)
                 }
             } catch {
+                self.stopSpinner()
                 self.footerError = L10n.t(.degradedAI)
                 self.applyLayout(animated: true)
             }

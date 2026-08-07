@@ -47,6 +47,9 @@ final class AIAnswerView: NSView {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        // Overlay scrollers don't reserve width and fade out — no persistent bar
+        // (the card sizes to fit; scrolling only matters past the cap).
+        scrollView.scrollerStyle = .overlay
         scrollView.documentView = answerText
         addSubview(scrollView)
 
@@ -85,7 +88,8 @@ final class AIAnswerView: NSView {
             with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         ).height
-        return ceil(measured) + 12 /* text inset */ + 34 /* title row + padding */
+        // Generous buffer so short answers fully fit (no overflow → no scroller).
+        return ceil(measured) + 22 /* text insets */ + 36 /* title row + padding */
     }
 
     func clear() {
