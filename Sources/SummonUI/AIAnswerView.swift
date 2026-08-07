@@ -1,8 +1,9 @@
 import AppKit
 
 /// Answer shape (answer-vs-action split): a read-only AI answer with copy/insert.
-/// Deliberately NOT amber and has no Accept/Reject — a displayed answer executes
-/// nothing, so it must not wear the staged-action chrome (`StagedReviewView`).
+/// Neutral, not amber, and no Accept/Reject — a displayed answer executes
+/// nothing. The card grows to fit its text (up to a cap, then scrolls), and any
+/// URLs in the text (e.g. Sources) are clickable.
 final class AIAnswerView: NSView {
     let copyButton = NSButton(title: "Copy", target: nil, action: nil)
     let insertButton = NSButton(title: "Insert", target: nil, action: nil)
@@ -10,11 +11,11 @@ final class AIAnswerView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView(frame: .zero)
     private let answerText = NSTextView(frame: .zero)
+    private var attributed = NSAttributedString()
+    private static let bodyFont = NSFont.systemFont(ofSize: 12, weight: .regular)
 
-    var answer: String {
-        get { answerText.string }
-        set { answerText.string = newValue }
-    }
+    /// Plain text (attributes stripped) — for Copy/Insert.
+    var answer: String { answerText.string }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -22,24 +23,25 @@ final class AIAnswerView: NSView {
         wantsLayer = true
         layer?.cornerRadius = 8
         layer?.borderWidth = 1
-        // Neutral, not the staged amber — this is an answer, not an action.
         layer?.borderColor = Tokens.System.separator.withAlphaComponent(0.6).cgColor
 
         titleLabel.font = Tokens.TypeScale.caption
         titleLabel.textColor = Tokens.System.secondaryLabel
         addSubview(titleLabel)
 
-        answerText.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         answerText.isEditable = false
         answerText.isSelectable = true
-        answerText.isRichText = false
         answerText.drawsBackground = false
-        answerText.textColor = Tokens.System.label
         answerText.textContainerInset = NSSize(width: 6, height: 5)
         answerText.isVerticallyResizable = true
         answerText.isHorizontallyResizable = false
         answerText.textContainer?.widthTracksTextView = true
         answerText.setAccessibilityLabel("AI answer")
+        answerText.linkTextAttributes = [
+            .foregroundColor: Tokens.System.accent,
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .cursor: NSCursor.pointingHand,
+        ]
 
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
@@ -63,25 +65,53 @@ final class AIAnswerView: NSView {
     override func layout() {
         super.layout()
         let width = bounds.width
-        titleLabel.frame = NSRect(x: 8, y: 116, width: width - 130, height: 24)
-        insertButton.frame = NSRect(x: width - 118, y: 116, width: 56, height: 22)
-        copyButton.frame = NSRect(x: width - 58, y: 116, width: 52, height: 22)
-        scrollView.frame = NSRect(x: 8, y: 8, width: width - 16, height: 104)
+        let titleY = bounds.height - 26
+        titleLabel.frame = NSRect(x: 8, y: titleY, width: width - 130, height: 20)
+        insertButton.frame = NSRect(x: width - 118, y: titleY - 3, width: 56, height: 22)
+        copyButton.frame = NSRect(x: width - 58, y: titleY - 3, width: 52, height: 22)
+        scrollView.frame = NSRect(x: 8, y: 8, width: width - 16, height: max(20, titleY - 12))
     }
 
     func display(title: String, answer: String) {
         titleLabel.stringValue = title
-        self.answer = answer
+        setAnswer(answer)
         isHidden = false
+    }
+
+    /// Height the card needs to show the whole answer at `width` (before clamping).
+    func fittingHeight(forWidth width: CGFloat) -> CGFloat {
+        let textWidth = max(40, width - 16 - 12) // band inset + text container inset
+        let measured = attributed.boundingRect(
+            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).height
+        return ceil(measured) + 12 /* text inset */ + 34 /* title row + padding */
     }
 
     func clear() {
         titleLabel.stringValue = ""
-        answer = ""
+        setAnswer("")
         isHidden = true
     }
 
     func containsFirstResponder(_ responder: NSResponder?) -> Bool {
         responder === answerText
+    }
+
+    private func setAnswer(_ text: String) {
+        let base: [NSAttributedString.Key: Any] = [
+            .font: Self.bodyFont,
+            .foregroundColor: Tokens.System.label,
+        ]
+        let string = NSMutableAttributedString(string: text, attributes: base)
+        if !text.isEmpty,
+           let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) {
+            let full = NSRange(location: 0, length: (text as NSString).length)
+            for match in detector.matches(in: text, options: [], range: full) {
+                if let url = match.url { string.addAttribute(.link, value: url, range: match.range) }
+            }
+        }
+        attributed = string
+        answerText.textStorage?.setAttributedString(string)
     }
 }

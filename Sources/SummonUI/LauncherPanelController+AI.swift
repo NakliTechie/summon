@@ -48,6 +48,9 @@ extension LauncherPanelController {
         let egressNote = egress.isEmpty ? "nothing left this Mac" : egress
         session.applyResults(searchField.stringValue, [])
         aiAnswerView.display(title: "Answer · \(rung) · \(egressNote)", answer: text)
+        // Grow the card to fit the answer (capped; scrolls beyond the cap).
+        let fitted = aiAnswerView.fittingHeight(forWidth: panelWidth - 32)
+        answerBandHeight = min(maxAnswerBandHeight, max(72, fitted))
         footerError = nil
         applyLayout(animated: true)
     }

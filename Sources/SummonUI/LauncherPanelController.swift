@@ -33,7 +33,9 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     private let maxResultsHeight: CGFloat = 380
     private let footerHeight: CGFloat = 22
     private let stagedBandHeight: CGFloat = 148
-    private let answerBandHeight: CGFloat = 148
+    // Dynamic: the answer card grows to fit its text (up to the cap, then scrolls).
+    var answerBandHeight: CGFloat = 148
+    let maxAnswerBandHeight: CGFloat = 460
 
     var stagedID: String?
     var footerError: String?
