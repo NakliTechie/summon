@@ -116,6 +116,15 @@ if summonAIEnabled {
             path: "Tests/SummonAITests"
         )
     )
+    // Links both UI and AI to drive the real launcher through the real model
+    // (gated on SUMMON_RUN_L1_LIVE; skipped otherwise).
+    targets.append(
+        .testTarget(
+            name: "SummonLiveProbeTests",
+            dependencies: ["SummonUI", "SummonAI", "SummonCore"],
+            path: "Tests/SummonLiveProbeTests"
+        )
+    )
 }
 
 let package = Package(
