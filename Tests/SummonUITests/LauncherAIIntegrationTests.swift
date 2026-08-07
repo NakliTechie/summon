@@ -140,6 +140,25 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertTrue(panel.aiAnswerView.answer.contains("Sources:"))
     }
 
+    func testQuestionQueryOffersBothLocalAndWebSearch() throws {
+        let integration = LauncherAIIntegration(
+            handler: { _ in .answer(text: "x", rung: "L1", egressSummary: "") },
+            searchHandler: { _, _ in .noResults }
+        )
+        let panel = LauncherPanelController(core: try SummonCore.inMemory(), aiIntegration: integration)
+        panel.show(markFirstRunSeen: false)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        defer { panel.hide() }
+
+        panel.searchField.stringValue = "who wrote 1984?"
+        panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+
+        let actions = panel.session.results.compactMap { $0.payload["action"]?.stringValue }
+        XCTAssertTrue(actions.contains("ai.ask"), "expected the Ask-local-AI offer; got \(actions)")
+        XCTAssertTrue(actions.contains("web.search"), "expected the web-search offer; got \(actions)")
+    }
+
     private func integrationReturningStaged() -> LauncherAIIntegration {
         LauncherAIIntegration { _ in
             .staged(proposalID: "proposal-1", rung: "L0", egressSummary: "")
