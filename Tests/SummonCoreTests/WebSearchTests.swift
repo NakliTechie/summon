@@ -37,6 +37,24 @@ final class WebSearchTests: XCTestCase {
         }
     }
 
+    func testSearXNGDiscoveryReadsLoopbackURLOnly() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("searxng-\(UUID().uuidString).url")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // Whatever free port up.sh chose, the app reads it back.
+        try "http://127.0.0.1:8391/\n".write(to: tmp, atomically: true, encoding: .utf8)
+        XCTAssertEqual(SearXNGDiscovery.discoveredBaseURL(file: tmp), "http://127.0.0.1:8391/")
+
+        // Non-loopback is rejected (SSRF guard).
+        try "http://evil.example.com/\n".write(to: tmp, atomically: true, encoding: .utf8)
+        XCTAssertNil(SearXNGDiscovery.discoveredBaseURL(file: tmp))
+
+        // Missing file → nil (no SearXNG running).
+        try FileManager.default.removeItem(at: tmp)
+        XCTAssertNil(SearXNGDiscovery.discoveredBaseURL(file: tmp))
+    }
+
     func testSearchQueryStripsConversationalPrefixes() {
         XCTAssertEqual(WebEnrich.searchQuery(from: "quick, what is quantum computing"),
                        "what is quantum computing")
