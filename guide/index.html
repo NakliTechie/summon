@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Summon — Guide</title>
+<style>:root{
+    /* app tokens (source of truth → Tokens.swift) */
+    --bg-glass:#14151A; --surface:#1C1E26; --raised:#24262F;
+    --text:#E8E6DF; --dim:#9A98A0; --accent:#7C6FE8; --staged:#E5A54B;
+    --ok:#5FB37A; --danger:#E06C5F; --hairline:#33353F;
+    /* document chrome (reference only, not app) */
+    --doc-bg:#0E0F12; --doc-ink:#C9C7CE; --doc-faint:#6E6C76;
+  }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-glass);color:var(--text);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+header{padding:56px 0 28px;border-bottom:1px solid var(--hairline)}
+header h1{margin:0;font-size:40px;font-weight:700;letter-spacing:-.02em;
+  background:linear-gradient(92deg,var(--text),var(--accent));
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+header .tag{margin:10px 0 0;color:var(--dim);font-size:16px;max-width:60ch}
+header .install{margin-top:20px;display:inline-block;background:var(--surface);
+  border:1px solid var(--hairline);border-radius:10px;padding:10px 14px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px;color:var(--text)}
+header .note{margin-top:10px;color:var(--dim);font-size:12.5px}
+.searchbar{position:sticky;top:0;z-index:5;background:var(--bg-glass);
+  padding:16px 0;border-bottom:1px solid var(--hairline)}
+#q{width:100%;background:var(--surface);border:1px solid var(--hairline);border-radius:10px;
+  color:var(--text);padding:12px 14px;font-size:15px;outline:none}
+#q:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+.searchbar .hint{color:var(--doc-faint);font-size:12px;margin-top:6px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;padding:18px 0 4px}
+.toc a{background:var(--surface);border:1px solid var(--hairline);border-radius:999px;
+  padding:6px 12px;font-size:12.5px;color:var(--dim)}
+.toc a:hover{color:var(--text);border-color:var(--accent);text-decoration:none}
+.group{padding:30px 0;border-bottom:1px solid var(--hairline)}
+.group h2{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.01em}
+.group .intro{margin:0 0 20px;color:var(--dim);max-width:72ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px}
+.card{margin:0;background:var(--surface);border:1px solid var(--hairline);border-radius:14px;
+  overflow:hidden;box-shadow:0 1px 0 rgba(255,255,255,.02),0 10px 30px rgba(0,0,0,.35)}
+.card img{display:block;width:100%;height:auto;background:var(--raised);
+  border-bottom:1px solid var(--hairline)}
+.card figcaption{padding:14px 16px 16px}
+.card h3{margin:0 0 6px;font-size:15px;font-weight:640}
+.card p{margin:0;color:var(--dim);font-size:13px;line-height:1.5}
+.hidden{display:none!important}
+.nomatch{color:var(--dim);padding:40px 0;text-align:center}
+footer{padding:34px 0 60px;color:var(--doc-faint);font-size:12.5px}
+footer code{font-family:ui-monospace,Menlo,monospace;color:var(--dim)}
+</style></head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Summon</h1>
+  <p class="tag">A field guide to the sovereign macOS launcher — every screen, captioned. Local-first, on-device AI, no account or telemetry.</p>
+  <code class="install">brew install --cask naklitechie/tap/summon</code>
+  <p class="note">Drawn from the product's UX reference. Type <b>/</b> to search, <b>Esc</b> to clear.</p>
+</header>
+<div class="searchbar">
+  <input id="q" type="search" placeholder="Search features — try “clipboard”, “staged”, “volume”…" autocomplete="off" spellcheck="false">
+  <div class="hint">Filters live across every screen below.</div>
+</div>
+<nav class="toc"><a href="#launcher">Launcher</a><a href="#ai">On-device AI</a><a href="#clipboard">Clipboard</a><a href="#firstrun">First run &amp; states</a><a href="#extend">Extend &amp; automate</a><a href="#design">Design</a></nav>
+<main><section id="launcher" class="group"><h2>Launcher</h2><p class="intro">The compact ⌥Space bar and its results — the front door.</p><div class="grid"><figure class="card" data-search="launcher &amp; results ⌥space opens the bar — type to fuzzy-match apps, files, calculator, unit conversion, snippets, emoji and more. ↑↓ to navigate, ↩ to run, ⌘k for actions. launcher-fuzzy"><img loading="lazy" src="screenshots/launcher-fuzzy.png" alt="Launcher &amp; results"><figcaption><h3>Launcher &amp; results</h3><p>⌥Space opens the bar — type to fuzzy-match apps, files, calculator, unit conversion, snippets, emoji and more. ↑↓ to navigate, ↩ to run, ⌘K for actions.</p></figcaption></figure><figure class="card" data-search="alt-tab switcher a launcher-native window switcher — running apps, filtered as you type, focused with a keystroke. alttab"><img loading="lazy" src="screenshots/alttab.png" alt="Alt-tab switcher"><figcaption><h3>Alt-tab switcher</h3><p>A launcher-native window switcher — running apps, filtered as you type, focused with a keystroke.</p></figcaption></figure></div></section><section id="ai" class="group"><h2>On-device AI</h2><p class="intro">Answers on your Mac; actions staged for one-click Accept, never auto-run. A question can be answered on-device or by searching the web — a keyless Wikipedia floor, or your own SearXNG — and only your query ever leaves.</p><div class="grid"><figure class="card" data-search="answer vs. action — staged ask the on-device ai to do something (&#x27;make a snippet&#x27;, &#x27;set the volume to 30&#x27;) and it stages in amber for you to accept or reject. summon never auto-runs an ai action, and never claims it did one it only proposed. launcher-staged"><img loading="lazy" src="screenshots/launcher-staged.png" alt="Answer vs. action — staged"><figcaption><h3>Answer vs. action — staged</h3><p>Ask the on-device AI to do something (&#x27;make a snippet&#x27;, &#x27;set the volume to 30&#x27;) and it stages in amber for you to Accept or Reject. Summon never auto-runs an AI action, and never claims it did one it only proposed.</p></figcaption></figure><figure class="card" data-search="the ai ladder summon detects the best available on-device model — apple foundation models first — and states the rung honestly. it is detected, never configured. ai-ladder"><img loading="lazy" src="screenshots/ai-ladder.png" alt="The AI ladder"><figcaption><h3>The AI ladder</h3><p>Summon detects the best available on-device model — Apple Foundation Models first — and states the rung honestly. It is detected, never configured.</p></figcaption></figure><figure class="card" data-search="quick fix — rewrite in place hand selected text to the on-device model; the rewrite is staged for review before it replaces anything. quickfix"><img loading="lazy" src="screenshots/quickfix.png" alt="Quick Fix — rewrite in place"><figcaption><h3>Quick Fix — rewrite in place</h3><p>Hand selected text to the on-device model; the rewrite is staged for review before it replaces anything.</p></figcaption></figure><figure class="card" data-search="degraded, still working with no ai model available, search still works; the strip says so plainly, and ai returns the moment a rung is detected. launcher-degraded"><img loading="lazy" src="screenshots/launcher-degraded.png" alt="Degraded, still working"><figcaption><h3>Degraded, still working</h3><p>With no AI model available, search still works; the strip says so plainly, and AI returns the moment a rung is detected.</p></figcaption></figure></div></section><section id="clipboard" class="group"><h2>Clipboard</h2><p class="intro">Local clipboard history, private by default.</p><div class="grid"><figure class="card" data-search="clipboard history ⌥⇧c opens local clipboard history — text, images, html and rtf, all on this mac, with an ignore list for sensitive apps. clipboard"><img loading="lazy" src="screenshots/clipboard.png" alt="Clipboard history"><figcaption><h3>Clipboard history</h3><p>⌥⇧C opens local clipboard history — text, images, HTML and RTF, all on this Mac, with an ignore list for sensitive apps.</p></figcaption></figure></div></section><section id="firstrun" class="group"><h2>First run &amp; states</h2><p class="intro">What a new user sees, and how Summon stays honest when there is nothing — or something is wrong.</p><div class="grid"><figure class="card" data-search="first run — the empty state a brand-new, zero-data summon: the bar is ready before you&#x27;ve added anything, so nothing feels broken on day one. launcher-empty"><img loading="lazy" src="screenshots/launcher-empty.png" alt="First run — the empty state"><figcaption><h3>First run — the empty state</h3><p>A brand-new, zero-data Summon: the bar is ready before you&#x27;ve added anything, so nothing feels broken on day one.</p></figcaption></figure><figure class="card" data-search="empty · error · degraded the honest state gallery — how summon looks when there is nothing to show, something failed, or the ai is unavailable. states-gallery"><img loading="lazy" src="screenshots/states-gallery.png" alt="Empty · error · degraded"><figcaption><h3>Empty · error · degraded</h3><p>The honest state gallery — how Summon looks when there is nothing to show, something failed, or the AI is unavailable.</p></figcaption></figure></div></section><section id="extend" class="group"><h2>Extend &amp; automate</h2><p class="intro">The agent face, and the (deferred) extension surface.</p><div class="grid"><figure class="card" data-search="the agent face — cli + socket the same core behind a second door: a local cli and a default-off unix socket. every mutating action is journaled with actor= and staged for review, never auto-applied. agent-face"><img loading="lazy" src="screenshots/agent-face.png" alt="The agent face — CLI + socket"><figcaption><h3>The agent face — CLI + socket</h3><p>The same core behind a second door: a local CLI and a default-off UNIX socket. Every mutating action is journaled with actor= and staged for review, never auto-applied.</p></figcaption></figure><figure class="card" data-search="extension permissions every extension capability is an explicit, reviewable grant — no ambient access. (extensions are a development surface, not shipped in v0.6.) ext-permissions"><img loading="lazy" src="screenshots/ext-permissions.png" alt="Extension permissions"><figcaption><h3>Extension permissions</h3><p>Every extension capability is an explicit, reviewable grant — no ambient access. (Extensions are a development surface, not shipped in v0.6.)</p></figcaption></figure></div></section><section id="design" class="group"><h2>Design</h2><p class="intro">The tokens the product — and this guide — are built from.</p><div class="grid"><figure class="card" data-search="design language the dark-glass palette, accent, and type scale the whole app is built from — the same tokens theme this guide. design-tokens"><img loading="lazy" src="screenshots/design-tokens.png" alt="Design language"><figcaption><h3>Design language</h3><p>The dark-glass palette, accent, and type scale the whole app is built from — the same tokens theme this guide.</p></figcaption></figure></div></section><p id="nomatch" class="nomatch" hidden>No matching screens.</p></main>
+<footer>
+  Generated from <code>docs/summon-ux-reference-006.html</code> · edit
+  <code>guide/build_index.py</code> + <code>guide/capture.py</code> and run
+  <code>guide/regenerate.sh</code> — never hand-edit this file. ·
+  <a href="https://github.com/NakliTechie/summon">github.com/NakliTechie/summon</a>
+</footer>
+</div>
+<script>
+const q=document.getElementById('q');
+const cards=[...document.querySelectorAll('.card')];
+const groups=[...document.querySelectorAll('.group')];
+const none=document.getElementById('nomatch');
+function apply(){
+  const t=q.value.trim().toLowerCase();
+  let shown=0;
+  cards.forEach(c=>{const hit=!t||c.dataset.search.includes(t);
+    c.classList.toggle('hidden',!hit); if(hit)shown++;});
+  groups.forEach(g=>{const any=[...g.querySelectorAll('.card')].some(c=>!c.classList.contains('hidden'));
+    g.classList.toggle('hidden',!any);});
+  none.hidden=shown>0;
+}
+q.addEventListener('input',apply);
+document.addEventListener('keydown',e=>{
+  if(e.key==='/'&&document.activeElement!==q){e.preventDefault();q.focus();}
+  else if(e.key==='Escape'&&document.activeElement===q){q.value='';apply();q.blur();}
+});
+</script>
+</body></html>

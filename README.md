@@ -1,90 +1,48 @@
 # Summon
 
-A sovereign, native macOS launcher. Local-first. Free and open source (AGPL-3.0). No account, no server of ours, no telemetry. AI is a removable sidecar on an on-device ladder.
+A sovereign, native macOS launcher. Local-first, free and open source (AGPL-3.0). No account, no server of ours, no telemetry. On-device AI as a removable sidecar.
 
-**Status:** pre-release daily-driver builds (v0.6.x). Signed/notarized Homebrew cask is not shipped yet.
+**[📖 Visual guide](https://naklitechie.github.io/summon/guide/)** — every screen, captioned and searchable.
 
-## Highlights
-
-- **Launcher** — ⌥Space opens a compact search bar (Spotlight-style: thin until you type, then results expand).
-- **Search ladder** — apps and files via the system metadata index, optional full-text (FTS, consent-gated), room for semantic recall later.
-- **Object → action** — select a result, Tab / ⌘K, choose an action.
-- **Clipboard history** — resident text, image, HTML, and RTF capture while Summon runs; dedicated browser on **⌥⇧C**.
-- **Snippets, quicklinks, calc, emoji**, window layouts, and more modules on the same core.
-- **Extensions** — deferred from R1. The registry/JSC harness remains a development target; shipping executables expose no installer, grants, results, or runner.
-- **AI** — staged only (never auto-executes); capability-gated L1 Apple Foundation Models plus an experimental, consented, user-managed L0 MLX adapter; compile-out removability gate.
-- **Agent face** — CLI + optional UNIX socket (default **off**), every call journaled with `actor=`.
-
-## Use (local build)
-
-```bash
-cd /path/to/summon
-make app
-pkill -x summon-app 2>/dev/null
-rm -rf /Applications/Summon.app
-cp -R dist/Summon.app /Applications/
-open /Applications/Summon.app
-```
-
-| Action | How |
-|---|---|
-| Open launcher | **⌥Space** (or menu bar 🔍 → Show Launcher) |
-| Clipboard history | **⌥⇧C** (or menu → Clipboard History) |
-| Arrange focused window | **⌃⌥** + arrows, U/I/J/K, Return/C, or D/F/G |
-| View every window shortcut | Menu bar → Window Shortcuts |
-| Manage ignored clipboard apps | Clipboard → Ignored Apps…, or menu bar → Manage Ignored Applications… |
-| Clear unpinned clipboard history | Clipboard → Clear…, or **⌘⇧⌫** inside Clipboard |
-| Quit | Menu bar → Quit |
-
-First launch offers an explicit **Keep Ready at Login** choice. The recommended choice is on because clipboard history needs the app process running in the background. Preferences and the menu bar can change it later.
-
-## Current verification boundaries
-
-- [~] Image and rich clipboard storage has automated coverage. Residual verifier: copy screenshots, HTML, and RTF between real Mac applications; inspect target-app paste, rapid-copy retention, rendered failures, and VoiceOver.
-- [~] Window layout targets the focused window on its display, uses the primary-display AX origin, and registers a stable 13-action shortcut map. Cross-Space moves are omitted because macOS has no public API for them. Residual verifier: exercise stacked displays, active Spaces, AX failures, and every shortcut on a real Mac.
-- [~] App Intents, EventKit Calendar, menu AX, hyperkey, Full Disk Access probing, and Screen Recording probing are deferred from R1. Their explicit fixture/configuration seams produce no production results or optimistic permission state. Residual verifier before reopening: live enumerators, invokers, bindings, and permission-denied walkthroughs against installed applications.
-- [~] Raycast-compatible extensions are deferred from R1. `SummonShim` retains registry, grants, JSC runtime, and synthetic fixtures as development seams, while `summon-app` and `summon-cli` do not depend on or link them. Residual verifier before reopening the surface: run 3 unmodified store packages through production install, grant, render, invoke, restart, removal, denial, escape, and resource-limit journeys.
-- [~] AI embeds immutable official revisions and full inference-artifact manifests; valid/tampered fixtures cover verification and quarantine. The native launcher can stage missed typed intent and shows unavailable states. L0 is an experimental user-managed process adapter, not the packaged brain; hash ranking and L2/L3 detection remain internal experiments. Residual verifier: explicitly consent to the 5.2 GB L0 download, exercise live generation on the M4 host, then replace the bridge with an embedded authenticated runtime before calling L0 packaged.
-
-**Install via Homebrew** (when the first notarized release exists):
+## Install
 
 ```bash
 brew install --cask naklitechie/tap/summon
 ```
 
-## Develop
+Requires macOS Sonoma (14)+; on-device AI needs Apple Intelligence hardware (macOS 26+). The 0.6.x build isn't notarized yet, so if macOS blocks it, open it once with right-click → Open. First launch offers a **Keep Ready at Login** choice — on by default, because clipboard history needs the app running in the background.
 
-```bash
-make build          # SPM debug
-make test
-make verify         # merge gate: tests, CLI, lint, removability, extension omission, walkthrough, network, version, hard latency
-make app            # ad-hoc Summon.app under dist/
-```
+## Highlights
 
-SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (development-only) · `SummonAI` (optional via `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`.
+- **Launcher** — ⌥Space opens a compact bar; fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, and window layouts. Select a result, Tab / ⌘K, act on it.
+- **Clipboard history** — ⌥⇧C; local text, image, HTML, and RTF capture, with an ignore list for sensitive apps.
+- **On-device AI** — ask a question and get an answer from Apple Foundation Models, on your Mac. AI *actions* ("make a snippet", "set the volume to 30") stage in amber for one-click Accept — they never auto-run.
+- **Web search, your way** — a keyless Wikipedia floor by default; point it at a bundled, opt-in SearXNG for full web search. Only your query leaves, and the first search always asks permission.
+- **Agent face** — a local CLI and a default-off UNIX socket; every call journaled with `actor=`.
 
-CLI (from SPM build):
+## Shortcuts
 
-```bash
-BIN="$(swift build --show-bin-path)/summon-cli"
-"$BIN" search "2+2"
-"$BIN" clipboard list
-"$BIN" settings get agent.socket.enabled
-```
-
-## Spec & ops
-
-| Doc | Role |
+| Action | Keys |
 |---|---|
-| [`docs/summon-vision-roadmap-006.md`](docs/summon-vision-roadmap-006.md) | Vision, invariants, modules, AI ladder |
-| [`docs/summon-agent-handoff-006.md`](docs/summon-agent-handoff-006.md) | Build, gate, security, hard rules |
-| [`docs/summon-ux-reference-006.html`](docs/summon-ux-reference-006.html) | Drawn UX reference |
-| [`NAKLITECHIE-PROJECT-STATE.md`](NAKLITECHIE-PROJECT-STATE.md) | Current position / residuals |
-| [`AGENTS.md`](AGENTS.md) | Notes for coding agents |
+| Launcher | ⌥Space |
+| Clipboard history | ⌥⇧C |
+| Result actions | Tab or ⌘K |
+| Arrange focused window | ⌃⌥ + arrows / U I J K / Return C / D F G |
 
 ## Sovereignty
 
-No account. No server of ours. No telemetry, analytics, or crash reporting — not even opt-in. AI data leaves the machine only on **explicit** user action, to **the user’s** provider. The test suite tracks sovereignty and AI removability as first-class gates.
+No account. No server of ours. No telemetry, analytics, or crash reporting — not even opt-in. Data leaves the machine only on explicit user action, to the user's chosen provider. Sovereignty and AI removability are enforced as first-class test gates.
+
+## Develop
+
+```bash
+make build     # SPM debug build
+make test
+make verify    # full merge gate: tests, lint, CLI, sovereignty, removability, latency
+make app       # ad-hoc Summon.app under dist/
+```
+
+SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (dev-only) · `SummonAI` (optional, `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`. Design and spec docs live in [`docs/`](docs/).
 
 ## License
 
