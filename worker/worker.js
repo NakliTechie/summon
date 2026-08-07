@@ -13,7 +13,7 @@ export default {
     const url = new URL(request.url);
     const target = ORIGIN + url.pathname + url.search;
     const upstream = await fetch(target, {
-      cf: { cacheTtl: 300, cacheEverything: true },
+      cf: { cacheTtl: 60, cacheEverything: true },
       headers: { "user-agent": "summon-site-worker" },
     });
     const headers = new Headers(upstream.headers);
