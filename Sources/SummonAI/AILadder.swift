@@ -401,6 +401,20 @@ public final class SummonAIService: @unchecked Sendable {
 
     // MARK: - Web search (harness-driven: consent → egress-gated fetch → RAG)
 
+    /// The user's explicit default-action preference for a question:
+    /// true = web-search-first, false = local-answer-first, nil = auto (defer to
+    /// sticky consent). Backs `LauncherAIIntegration.searchIsPrimary`.
+    public func searchDefaultIsPrimary() -> Bool? {
+        guard let core, let value = (try? core.settings.get("search.defaultAction")) ?? nil else {
+            return nil
+        }
+        switch value.stringValue {
+        case "search": return true
+        case "local": return false
+        default: return nil
+        }
+    }
+
     public func webSearchConsentGranted() -> Bool {
         guard let core,
               let value = (try? core.settings.get("web.search.consentAlways")) ?? nil

@@ -496,6 +496,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             consentIsSticky: { [weak service] in
                 service?.webSearchConsentGranted() ?? false
+            },
+            searchDefaultIsPrimary: { [weak service] in
+                service?.searchDefaultIsPrimary() ?? nil
             }
         )
     }

@@ -12,7 +12,8 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
 
     private let loginToggle = NSButton(checkboxWithTitle: "Keep Summon ready at login", target: nil, action: nil)
     private let ftsToggle = NSButton(checkboxWithTitle: "Index local content for full-text search", target: nil, action: nil)
-    private let webToggle = NSButton(checkboxWithTitle: "Use my SearXNG service", target: nil, action: nil)
+    private let webToggle = NSButton(checkboxWithTitle: "Search the web", target: nil, action: nil)
+    private let defaultActionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let webURLField = NSTextField(string: "")
     private let agentToggle = NSButton(checkboxWithTitle: "Enable the local agent socket", target: nil, action: nil)
     private let appearancePopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -74,6 +75,8 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         ftsToggle.action = #selector(changeFTS)
         webToggle.target = self
         webToggle.action = #selector(changeWeb)
+        defaultActionPopup.target = self
+        defaultActionPopup.action = #selector(changeDefaultAction)
         webURLField.delegate = self
         webURLField.target = self
         webURLField.action = #selector(changeWebURL)
@@ -87,6 +90,9 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         loginToggle.state = LoginItemService.isEnabled ? .on : .off
         ftsToggle.state = core.search.ftsEnabled ? .on : .off
         webToggle.state = core.webConfig.enabled ? .on : .off
+        defaultActionPopup.selectItem(
+            withTitle: Self.defaultActionTitle(for: settingString("search.defaultAction") ?? "auto")
+        )
         webURLField.stringValue = core.webConfig.baseURL
         agentToggle.state = settingBool("agent.socket.enabled") ? .on : .off
         let appearance = settingString("theme.appearance") ?? "system"
@@ -116,9 +122,17 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
                 + "Enabling it asks for explicit consent."
         )
         let webDetails = label(
-            "Web search sends explicit queries only to the SearXNG URL below. "
-                + "It stays off until enabled."
+            "Web search is on by default. A question can be answered on-device or by "
+                + "searching the web; your query goes only to the provider below (the "
+                + "keyless Wikipedia floor, or your SearXNG if set), the answer is composed "
+                + "on this Mac, and the first web search always asks permission."
         )
+        defaultActionPopup.addItems(
+            withTitles: ["Automatic", "Local answer first", "Web search first"]
+        )
+        let defaultRow = NSStackView(views: [label("Default for a question"), defaultActionPopup])
+        defaultRow.orientation = .horizontal
+        defaultRow.spacing = 12
         let urlRow = NSStackView(views: [label("SearXNG URL"), webURLField])
         urlRow.orientation = .horizontal
         urlRow.spacing = 12
@@ -126,7 +140,10 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         webURLField.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
         return tab(
             section: .search,
-            views: [heading("Search and indexing"), ftsDetails, ftsToggle, separator(), webDetails, webToggle, urlRow]
+            views: [
+                heading("Search and indexing"), ftsDetails, ftsToggle, separator(),
+                webDetails, webToggle, defaultRow, urlRow,
+            ]
         )
     }
 
@@ -249,6 +266,36 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     @objc private func changeWeb() {
         core.webConfig.enabled = webToggle.state == .on
         persistWeb()
+    }
+
+    @objc private func changeDefaultAction() {
+        let value = Self.defaultActionValue(for: defaultActionPopup.titleOfSelectedItem ?? "Automatic")
+        do {
+            _ = try core.dispatch(
+                action: .settingsSet(key: "search.defaultAction", value: .string(value)),
+                actor: .user
+            )
+        } catch {
+            refresh()
+            showError(error.localizedDescription)
+        }
+    }
+
+    /// Preference popup title ↔ stored value (auto | local | search).
+    private static func defaultActionTitle(for value: String) -> String {
+        switch value {
+        case "local": return "Local answer first"
+        case "search": return "Web search first"
+        default: return "Automatic"
+        }
+    }
+
+    private static func defaultActionValue(for title: String) -> String {
+        switch title {
+        case "Local answer first": return "local"
+        case "Web search first": return "search"
+        default: return "auto"
+        }
     }
 
     @objc private func changeWebURL() {

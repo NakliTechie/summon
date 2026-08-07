@@ -130,6 +130,7 @@ final class AILadderTests: XCTestCase {
 
     func testSearchAndAnswerDisabledWhenWebOff() async throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
+        core.webConfig.enabled = false // web search is on by default; turn it off explicitly
         let service = SummonAIService(ladder: .testing(fake: FakeModelRung()), core: core)
         let outcome = try await service.searchAndAnswer(
             query: "x", provider: FakeAuthorizedWebSearchProvider()

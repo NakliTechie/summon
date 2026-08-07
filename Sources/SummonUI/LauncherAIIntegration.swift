@@ -25,17 +25,22 @@ public struct LauncherAIIntegration: Sendable {
     private let searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)?
     private let consentGranter: (@Sendable (Bool) -> Void)?
     private let consentIsSticky: (@Sendable () -> Bool)?
+    /// The user's explicit default-action preference: true = search-first,
+    /// false = local-first, nil = auto (defer to sticky consent).
+    private let searchDefaultIsPrimary: (@Sendable () -> Bool?)?
 
     public init(
         handler: @escaping @Sendable (String) async throws -> LauncherAIResponse,
         searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)? = nil,
         consentGranter: (@Sendable (Bool) -> Void)? = nil,
-        consentIsSticky: (@Sendable () -> Bool)? = nil
+        consentIsSticky: (@Sendable () -> Bool)? = nil,
+        searchDefaultIsPrimary: (@Sendable () -> Bool?)? = nil
     ) {
         self.handler = handler
         self.searchHandler = searchHandler
         self.consentGranter = consentGranter
         self.consentIsSticky = consentIsSticky
+        self.searchDefaultIsPrimary = searchDefaultIsPrimary
     }
 
     public func respond(prompt: String) async throws -> LauncherAIResponse {
@@ -44,10 +49,14 @@ public struct LauncherAIIntegration: Sendable {
 
     public var searchAvailable: Bool { searchHandler != nil }
 
-    /// Once the user has granted sticky ("Always") web-search consent, search
-    /// becomes the primary offer for a question — Enter searches directly (no
-    /// re-prompt). Before that, local stays first so nothing egresses unasked.
-    public var searchIsPrimary: Bool { consentIsSticky?() ?? false }
+    /// Which offer leads for a question. An explicit Preferences choice wins
+    /// (search-first or local-first); with no choice (auto), search becomes
+    /// primary once sticky ("Always") consent is granted — before that, local
+    /// stays first so nothing egresses unasked.
+    public var searchIsPrimary: Bool {
+        if let explicit = searchDefaultIsPrimary?() { return explicit }
+        return consentIsSticky?() ?? false
+    }
 
     /// Both AI offers for a query, ordered so the primary one is first.
     public func offers(for rawQuery: String) -> [SearchResult] {

@@ -148,7 +148,10 @@ public final class SummonCore: @unchecked Sendable {
             ftsEnabled: ftsOn,
             favorites: favoriteStore
         )
-        // Load web config from settings if present
+        // Web search is available by default (no enable step); a persisted choice —
+        // including the user turning it off — wins. Egress still requires the
+        // one-time `.userWeb` consent, so default-on is availability, not egress.
+        webConfig.enabled = true
         if case .bool(let en) = try? settings.get("web.search.enabled") {
             webConfig.enabled = en
         }

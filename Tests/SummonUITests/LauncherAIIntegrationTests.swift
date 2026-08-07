@@ -176,6 +176,28 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertEqual(firstAction(sticky: true), "web.search")
     }
 
+    func testExplicitDefaultActionPreferenceOverridesAutoPromotion() {
+        let handler: @Sendable (String) async throws -> LauncherAIResponse = { _ in
+            .answer(text: "x", rung: "L1", egressSummary: "")
+        }
+        let search: @Sendable (String, Bool) async throws -> LauncherWebSearchResponse = { _, _ in
+            .noResults
+        }
+        func firstAction(preference: Bool?, sticky: Bool) -> String? {
+            LauncherAIIntegration(
+                handler: handler, searchHandler: search,
+                consentIsSticky: { sticky }, searchDefaultIsPrimary: { preference }
+            ).offers(for: "who wrote 1984").first?.payload["action"]?.stringValue
+        }
+        // "Web search first" wins even before sticky consent.
+        XCTAssertEqual(firstAction(preference: true, sticky: false), "web.search")
+        // "Local answer first" wins even after sticky consent.
+        XCTAssertEqual(firstAction(preference: false, sticky: true), "ai.ask")
+        // "Automatic" (nil) defers to sticky consent — the prior behavior.
+        XCTAssertEqual(firstAction(preference: nil, sticky: false), "ai.ask")
+        XCTAssertEqual(firstAction(preference: nil, sticky: true), "web.search")
+    }
+
     private func integrationReturningStaged() -> LauncherAIIntegration {
         LauncherAIIntegration { _ in
             .staged(proposalID: "proposal-1", rung: "L0", egressSummary: "")
