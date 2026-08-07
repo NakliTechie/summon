@@ -319,6 +319,15 @@ final class SearchServiceTests: XCTestCase {
         XCTAssertGreaterThan(FreeTextKindRank.band(for: .emoji), FreeTextKindRank.band(for: .file))
     }
 
+    /// A half-typed or malformed filter must degrade to a free-text search, never
+    /// throw and abort the launcher mid-keystroke (deterministic-battery finding).
+    func testMalformedFilterDegradesToFreeTextNeverThrows() throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        for query in ["modified:>", "modified:<abc", "kind:", "modified:", "size:<>"] {
+            XCTAssertNoThrow(try core.search.search(query), "search threw on \"\(query)\"")
+        }
+    }
+
     func testSystemCommandSearch() throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let results = try core.search.search("lock kind:command")

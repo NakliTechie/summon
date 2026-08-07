@@ -7,7 +7,7 @@ BUILD_FLAGS :=
 # Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
 export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e lint removability extension-omission app cask-local distribution-local l1-probe walkthrough latency-soft latency-hard network-sovereignty version-consistency help
+.PHONY: build test verify release clean cli-e2e lint removability extension-omission app cask-local distribution-local l1-probe battery walkthrough latency-soft latency-hard network-sovereignty version-consistency help
 
 help:
 	@echo "Targets: build test verify app cask-local l1-probe walkthrough release clean …"
@@ -33,6 +33,12 @@ l1-probe: build
 	echo "l1-probe: ai complete (staged)"; \
 	"$$BIN" ai complete "Reply with exactly one word: pong"; \
 	echo "l1-probe: live availability and completion exercised"
+
+# Deterministic-surface battery: 1000+ generated queries through the headless
+# launcher surface, asserting no-throw / correct-kind / no-sensitive-bleed at scale.
+# Gated out of `verify` (heavy); run on demand.
+battery:
+	SUMMON_RUN_BATTERY=1 $(SWIFT) test $(BUILD_FLAGS) --filter DeterministicSurfaceBatteryTests
 
 # Ad-hoc Summon.app under dist/ (no Developer ID).
 app:

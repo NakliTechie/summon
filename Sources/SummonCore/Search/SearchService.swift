@@ -57,7 +57,10 @@ public struct SearchService: Sendable {
         includeSensitiveStores: Bool
     ) throws -> [SearchResult] {
         let expanded = RootAlias.expandQuery(raw)
-        let query = try FilterGrammar.parse(expanded)
+        // A malformed filter token (e.g. a half-typed `modified:>`) must degrade
+        // to a plain free-text search, never abort the launcher mid-keystroke.
+        let query = (try? FilterGrammar.parse(expanded))
+            ?? FilterQuery(freeText: expanded, filters: [])
         let free = query.freeText.isEmpty ? expanded : query.freeText
         var results: [SearchResult] = []
         results.append(contentsOf: inlineTools(free: free, limit: limit))
