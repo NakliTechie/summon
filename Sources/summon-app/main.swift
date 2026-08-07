@@ -499,7 +499,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             searchDefaultIsPrimary: { [weak service] in
                 service?.searchDefaultIsPrimary() ?? nil
-            }
+            },
+            // An action-shaped query must stage, never web-search. Reuse the same
+            // mutating-intent classifier the FM toolbox uses to attach action tools.
+            isActionQuery: { !SystemReaders.mutatingIntents(for: $0).isEmpty }
         )
     }
     #endif

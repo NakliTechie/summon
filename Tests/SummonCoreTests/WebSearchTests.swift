@@ -25,6 +25,20 @@ final class WebSearchTests: XCTestCase {
         XCTAssertTrue(p.contains("https://a.test"))
     }
 
+    func testEnrichPromptForbidsClaimingActionsPerformedOrStaged() {
+        // Field-report regression: a web-search answer claimed "…has been staged for
+        // your review" for "set the volume to 30%". The synthesis prompt must forbid
+        // claiming it did or staged anything.
+        let prompt = WebEnrich.enrichPrompt(
+            question: "set the volume to 30%",
+            hits: [WebHit(title: "Volume help", url: "https://a.test", snippet: "how to")]
+        )
+        let lower = prompt.lowercased()
+        XCTAssertTrue(lower.contains("cannot perform"), "prompt must disclaim performing actions")
+        XCTAssertTrue(lower.contains("never claim"), "prompt must forbid false claims")
+        XCTAssertTrue(lower.contains("staged"), "prompt must specifically forbid claiming staged")
+    }
+
     func testDisabledThrows() async {
         let client = SearXNGClient(config: .default)
         do {

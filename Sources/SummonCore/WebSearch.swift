@@ -274,6 +274,10 @@ public enum WebEnrich {
     public static func enrichPrompt(question: String, hits: [WebHit]) -> String {
         var lines = [
             "Answer the question using only the sources below. Cite titles. Be concise.",
+            "You are ONLY answering a question from web results. You cannot perform, "
+                + "stage, set, change, create, open, or do anything on this Mac, and you "
+                + "must NEVER claim you did or that anything was staged. If the sources "
+                + "do not answer the question, say so plainly.",
             "Question: \(question)",
             "Sources:",
         ]

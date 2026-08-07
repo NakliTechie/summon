@@ -198,6 +198,37 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertEqual(firstAction(preference: nil, sticky: true), "web.search")
     }
 
+    /// Field-report regression: "set the volume to 30%" was web-searched (and the
+    /// web answer falsely claimed it staged). An action-shaped query must ALWAYS
+    /// lead with the staging path, even when web search is primary by both sticky
+    /// consent and explicit preference. Only questions may lead with search.
+    func testActionQueryAlwaysLeadsWithStagingNeverSearch() {
+        let handler: @Sendable (String) async throws -> LauncherAIResponse = { _ in
+            .answer(text: "x", rung: "L1", egressSummary: "")
+        }
+        let search: @Sendable (String, Bool) async throws -> LauncherWebSearchResponse = { _, _ in
+            .noResults
+        }
+        // Stand-in for SystemReaders.mutatingIntents (SummonAI, not linked in UI tests).
+        let isAction: @Sendable (String) -> Bool = {
+            let q = $0.lowercased()
+            return q.contains("set the volume") || q.contains("make a snippet")
+        }
+        func firstAction(_ query: String) -> String? {
+            LauncherAIIntegration(
+                handler: handler, searchHandler: search,
+                consentIsSticky: { true },             // search primary by consent…
+                searchDefaultIsPrimary: { true },      // …and by explicit preference
+                isActionQuery: isAction
+            ).offers(for: query).first?.payload["action"]?.stringValue
+        }
+        // Actions stage, no matter how primary search is.
+        XCTAssertEqual(firstAction("set the volume to 30%"), "ai.ask")
+        XCTAssertEqual(firstAction("make a snippet called sig"), "ai.ask")
+        // Questions still lead with search when search is primary.
+        XCTAssertEqual(firstAction("who wrote 1984"), "web.search")
+    }
+
     private func integrationReturningStaged() -> LauncherAIIntegration {
         LauncherAIIntegration { _ in
             .staged(proposalID: "proposal-1", rung: "L0", egressSummary: "")

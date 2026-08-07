@@ -27,6 +27,13 @@ final class MutatingToolsTests: XCTestCase {
         )
     }
 
+    func testReportedVolumeQueryClassifiesAsAnAction() {
+        // The exact field-report query that was wrongly web-searched. It must
+        // classify as a mutating action so the launcher routes it to staging.
+        XCTAssertEqual(SystemReaders.mutatingIntents(for: "set the volume to 30%"), [.setVolume])
+        XCTAssertEqual(SystemReaders.mutatingIntents(for: "set the volume to 30"), [.setVolume])
+    }
+
     func testMutatingIntentStrippedForInformationQuestions() {
         // Question-form guardrail: informational queries never stage an action.
         XCTAssertTrue(SystemReaders.mutatingIntents(for: "what is a snippet").isEmpty)

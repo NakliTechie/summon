@@ -28,19 +28,24 @@ public struct LauncherAIIntegration: Sendable {
     /// The user's explicit default-action preference: true = search-first,
     /// false = local-first, nil = auto (defer to sticky consent).
     private let searchDefaultIsPrimary: (@Sendable () -> Bool?)?
+    /// True when the query is an action command ("set the volume to 30", "make a
+    /// snippet") — such a query must stage, never web search, whatever the default.
+    private let isActionQuery: (@Sendable (String) -> Bool)?
 
     public init(
         handler: @escaping @Sendable (String) async throws -> LauncherAIResponse,
         searchHandler: (@Sendable (String, Bool) async throws -> LauncherWebSearchResponse)? = nil,
         consentGranter: (@Sendable (Bool) -> Void)? = nil,
         consentIsSticky: (@Sendable () -> Bool)? = nil,
-        searchDefaultIsPrimary: (@Sendable () -> Bool?)? = nil
+        searchDefaultIsPrimary: (@Sendable () -> Bool?)? = nil,
+        isActionQuery: (@Sendable (String) -> Bool)? = nil
     ) {
         self.handler = handler
         self.searchHandler = searchHandler
         self.consentGranter = consentGranter
         self.consentIsSticky = consentIsSticky
         self.searchDefaultIsPrimary = searchDefaultIsPrimary
+        self.isActionQuery = isActionQuery
     }
 
     public func respond(prompt: String) async throws -> LauncherAIResponse {
@@ -58,11 +63,14 @@ public struct LauncherAIIntegration: Sendable {
         return consentIsSticky?() ?? false
     }
 
-    /// Both AI offers for a query, ordered so the primary one is first.
+    /// Both AI offers for a query, ordered so the primary (Enter) one is first.
+    /// An action-shaped query always leads with "Ask local AI" so it routes to the
+    /// staging path — a command like "set the volume to 30" must never be web-searched.
     public func offers(for rawQuery: String) -> [SearchResult] {
         let ask = offerResult(for: rawQuery)
         let search = searchOffer(for: rawQuery)
-        let ordered = searchIsPrimary ? [search, ask] : [ask, search]
+        let leadWithSearch = searchIsPrimary && !(isActionQuery?(rawQuery) ?? false)
+        let ordered = leadWithSearch ? [search, ask] : [ask, search]
         return ordered.compactMap { $0 }
     }
 
