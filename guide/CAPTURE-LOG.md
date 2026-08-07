@@ -15,5 +15,5 @@
 - design-tokens: ok (summon-ux-reference-006.html#tokens, mode=-, html_len=2067)
 - agent-face: ok (summon-ux-reference-006.html#agent, mode=-, html_len=1428)
 - web-search: ok (supplement.html#websearch, mode=-, html_len=1574)
-- staged-volume: ok (supplement.html#volume, mode=-, html_len=1412)
+- staged-volume: ok (supplement.html#volume, mode=-, html_len=1856)
 - search-preferences: ok (supplement.html#prefs, mode=-, html_len=1281)

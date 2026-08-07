@@ -84,10 +84,11 @@ CAPTIONS = {
         "query leaves, and the first search asks permission.",
     ),
     "staged-volume": (
-        "Staged action — never auto-run",
-        "Ask the AI to do something ('set the volume to 30', 'make a snippet') and it "
-        "stages the exact typed action in amber. It never executes, and never claims "
-        "it did what it only proposed — you Accept or Reject.",
+        "Actions — safe runs, destructive confirms",
+        "Ask Summon to do something and it runs the safe, reversible ones instantly "
+        "('Volume set to 30%'), while destructive ones (empty trash, delete) stage for "
+        "one-click Accept. The harness acts and reports truthfully — the AI never "
+        "claims an action it didn't run.",
     ),
     "search-preferences": (
         "Search preferences",

@@ -24,7 +24,22 @@ public enum SummonActionParser {
         if intents.contains(.createQuicklink), let (name, url) = quicklinkFields(query) {
             return .quicklinkUpsert(id: UUID().uuidString, name: name, url: url, keyword: nil)
         }
+        if intents.contains(.emptyTrash) { return systemEffect("empty-trash", title: "Empty Trash") }
+        if intents.contains(.sleepMac) { return systemEffect("sleep", title: "Sleep") }
+        if intents.contains(.lockScreen) { return systemEffect("lock", title: "Lock Screen") }
         return nil
+    }
+
+    /// A fixed system effect (empty-trash / sleep / lock) as a `command.run` module
+    /// action. These are destructive/disruptive, so the harness stages them.
+    private static func systemEffect(_ name: String, title: String) -> CoreAction {
+        let url = "summon://system/\(name)"
+        return .moduleRun(
+            name: "command.run",
+            targetID: "command:\(name)",
+            path: url,
+            payload: ["url": .string(url), "title": .string(title)]
+        )
     }
 
     // MARK: - Field extraction

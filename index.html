@@ -59,6 +59,12 @@
   .mbtn{font:12px ui-monospace,monospace;padding:6px 12px;border-radius:7px;border:1px solid var(--hairline);color:var(--text);background:var(--surface)}
   .mbtn.mpri{background:var(--staged);border-color:var(--staged);color:#F7F3E9;font-weight:600}
   .mbtn.mgh{background:none;color:var(--dim);border-color:transparent}
+  .mdone{margin:6px;border:1px solid var(--hairline);border-radius:11px;background:#EFF6EE}
+  .mdh{display:flex;align-items:center;gap:8px;padding:9px 14px;color:var(--ok);
+    font:600 10.5px ui-monospace,monospace;letter-spacing:.07em;text-transform:uppercase}
+  .mdh .mok{width:16px;height:16px;border-radius:50%;background:var(--ok);color:#EFF6EE;
+    text-align:center;line-height:16px;font-size:11px}
+  .mdbody{padding:0 14px 12px;font-size:14px;color:var(--text)}
   .mans{margin:6px;border:1px solid var(--hairline);border-radius:11px;background:var(--bg)}
   .mah{padding:9px 14px;color:var(--accent);font:600 10.5px ui-monospace,monospace;letter-spacing:.07em;text-transform:uppercase}
   .mabody{padding:0 14px 8px;font-size:13.5px;color:var(--text);line-height:1.5}
@@ -124,7 +130,7 @@
   <p class="intro">A daily-driver launcher with the modern features — and an on-device AI that answers and proposes, but never acts without your word.</p>
   <div class="grid">
     <div class="card"><span class="tag">Launcher</span><h3>Fast, keyboard-first</h3><p>⌥Space to fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, and window layouts. Select a result, Tab, act on it.</p></div>
-    <div class="card"><span class="tag amb">Staged</span><h3>AI that never auto-runs</h3><p>Ask a question and get an on-device answer. Ask it to <i>do</i> something — "make a snippet", "set the volume to 30" — and it stages in amber for one-click Accept. It never claims it did what it only proposed.</p></div>
+    <div class="card"><span class="tag amb">Actions</span><h3>Do safe, confirm destructive</h3><p>Ask it to <i>do</i> something: the safe, reversible ones run instantly — "set the volume to 30" → done. Destructive ones — empty trash, delete — stage in amber for one-click Accept. It never claims an action it didn't run.</p></div>
     <div class="card"><span class="tag">Web search</span><h3>Answers, your way</h3><p>A keyless Wikipedia floor by default, or point it at your own SearXNG for full web search. Only your query leaves; the answer is composed on this Mac.</p></div>
     <div class="card"><span class="tag">Clipboard</span><h3>Local history</h3><p>⌥⇧C for text, image, HTML, and RTF history — all on this Mac, with an ignore list for sensitive apps.</p></div>
     <div class="card"><span class="tag">Windows</span><h3>Built-in tiling</h3><p>Arrange the focused window with ⌃⌥ and arrows — halves, quarters, thirds, maximize — no separate app.</p></div>
@@ -142,7 +148,7 @@
       <tr><td>Clipboard history</td><td class="us"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="part">partial</span></td></tr>
       <tr><td>Window management (built in)</td><td class="us"><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
       <tr><td>On-device AI answers</td><td class="us"><span class="yes">✓</span></td><td><span class="part">cloud</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="part">OS-level</span></td></tr>
-      <tr><td>AI actions, staged — never auto-run</td><td class="us"><span class="yes">✓</span></td><td><span class="part">auto</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
+      <tr><td>AI actions — safe run, destructive confirm</td><td class="us"><span class="yes">✓</span></td><td><span class="part">auto</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
       <tr><td>Web search in the launcher</td><td class="us"><span class="yes">✓</span></td><td><span class="part">cloud AI</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td><td><span class="no">✗</span></td></tr>
       <tr><td>No account · no telemetry</td><td class="us"><span class="yes">✓</span></td><td><span class="no">✗</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
       <tr class="price"><td>Price</td><td class="us">Free</td><td>Subscription</td><td>One-time</td><td>One-time</td><td>Free (OS)</td></tr>
@@ -171,9 +177,12 @@
       '<div class="mrow"><span class="mic">⌘</span>Arrange in Grid — Finder menu<span class="mk">Menu</span></div>' +
       '<div class="mrow"><span class="mic">≡</span>arrangement-notes.md<span class="mk">File</span></div>' },
     { q: "set the volume to 30", badge: "⌥Space", body:
-      '<div class="mprop"><div class="mph"><span class="mdot"></span>staged · set volume</div>' +
-      '<pre>set output volume → 30%\ncommand.run · summon://system/set-volume/30</pre>' +
-      '<div class="macts"><span class="mbtn mpri">Accept ↩</span><span class="mbtn">Edit ⌘E</span><span class="mbtn mgh">Reject esc</span></div></div>' },
+      '<div class="mdone"><div class="mdh"><span class="mok">✓</span>Done · nothing left this Mac</div>' +
+      '<div class="mdbody">Volume set to 30%.</div></div>' },
+    { q: "empty the trash", badge: "⌥Space", body:
+      '<div class="mprop"><div class="mph"><span class="mdot"></span>staged · empty trash</div>' +
+      '<pre>empty Trash — irreversible\ncommand.run · summon://system/empty-trash</pre>' +
+      '<div class="macts"><span class="mbtn mpri">Accept ↩</span><span class="mbtn mgh">Reject esc</span></div></div>' },
     { q: "capital of australia", badge: "⌥Space", body:
       '<div class="mrow msel"><span class="mic">🌐</span>Search the web &amp; answer<span class="mk">only your query leaves</span></div>' +
       '<div class="mans"><div class="mah">Answer · on-device · query sent to the web</div>' +

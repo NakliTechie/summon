@@ -58,6 +58,13 @@
   .btn.pri{background:var(--staged);border-color:var(--staged);color:#F3EFE6;font-weight:600}
   .btn.ghost{background:none;color:var(--dim)}
   .hint{padding:0 14px 10px;color:#8A6D2E;font-size:11px}
+  /* done result card (a safe action that ran) */
+  .done{margin:8px;border:1px solid var(--hairline);border-radius:10px;background:#F0F6EF}
+  .done .dh{display:flex;align-items:center;gap:8px;padding:8px 12px;color:var(--ok);
+    font:600 10.5px ui-monospace,monospace;letter-spacing:.07em;text-transform:uppercase}
+  .done .dh .ok{width:16px;height:16px;border-radius:50%;background:var(--ok);color:#F0F6EF;
+    text-align:center;font-size:11px;line-height:16px}
+  .done .dbody{padding:2px 14px 12px;color:var(--text);font-size:14px}
   /* preferences sheet */
   .sheet{width:460px;max-width:100%;background:var(--surface);border:1px solid var(--hairline);
     border-radius:14px;padding:22px}
@@ -79,7 +86,7 @@
 <div class="wrap">
 <nav id="nav">
   <button data-s="websearch" class="on">web search</button>
-  <button data-s="volume">staged action</button>
+  <button data-s="volume">actions</button>
   <button data-s="prefs">search preferences</button>
 </nav>
 <main>
@@ -107,24 +114,31 @@
   </section>
 
   <section id="volume">
-    <h2>Staged action — the AI never auto-runs</h2>
-    <div class="rule">Ask the AI to <i>do</i> something and it stages the exact typed action in <b>amber</b>. It never executes, and never claims it did what it only proposed — you Accept or Reject.</div>
-    <div class="stage">
-      <div class="panel">
-        <div class="qrow"><span class="glyph">⌕</span><input value="set the volume to 30" readonly></div>
-        <div class="prop">
-          <div class="ph"><span class="dot"></span>staged · set volume</div>
-          <pre>set output volume → 30%
-command.run · summon://system/set-volume/30</pre>
-          <div class="acts"><button class="btn pri">Accept ↩</button><button class="btn">Edit ⌘E</button><button class="btn ghost">Reject esc</button></div>
-          <div class="hint">Summon staged this — it has not run. It applies only when you Accept.</div>
+    <h2>Actions — do the safe thing, confirm the scary thing</h2>
+    <div class="rule">A safe, reversible action runs right away and Summon tells you plainly. A <b>destructive</b> one stages in amber for one-click Accept. The harness does it and reports truthfully — the AI never claims an action it didn't run.</div>
+    <div class="stage" style="gap:20px;flex-wrap:wrap">
+      <div class="panel" style="width:360px">
+        <div class="qrow"><span class="glyph">◆</span><input value="set the volume to 30" readonly></div>
+        <div class="done">
+          <div class="dh"><span class="ok">✓</span>Done · nothing left this Mac</div>
+          <div class="dbody">Volume set to 30%.</div>
         </div>
-        <div class="foot"><span>↩ accept</span><span>esc reject</span><span class="ver">nothing ran</span></div>
+        <div class="foot"><span>ran instantly</span><span class="ver">safe · reversible</span></div>
+      </div>
+      <div class="panel" style="width:360px">
+        <div class="qrow"><span class="glyph">◆</span><input value="empty the trash" readonly></div>
+        <div class="prop">
+          <div class="ph"><span class="dot"></span>staged · empty trash</div>
+          <pre>empty Trash — irreversible
+command.run · summon://system/empty-trash</pre>
+          <div class="acts"><button class="btn pri">Accept ↩</button><button class="btn ghost">Reject esc</button></div>
+        </div>
+        <div class="foot"><span>waiting for you</span><span class="ver">destructive · staged</span></div>
       </div>
     </div>
     <div class="notes">
-      <div class="note"><span class="pin amb">✓</span>The same rail carries "make a snippet", "create a quicklink", "set the volume" — every mutating tool proposes, the harness stages, you accept.</div>
-      <div class="note"><span class="pin amb">✓</span>Read-only questions ("what's my battery?") answer directly; only actions stage.</div>
+      <div class="note"><span class="pin">✓</span>Safe, reversible actions — set volume, create a snippet or quicklink — run immediately, then Summon says what it did.</div>
+      <div class="note"><span class="pin amb">!</span>Destructive, irreversible ones — empty trash, delete, sleep — stage for one-click Accept. That's where the gate earns its place.</div>
     </div>
   </section>
 

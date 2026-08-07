@@ -9,6 +9,11 @@ public enum MutatingToolIntent: String, Sendable, Hashable, CaseIterable {
     case createSnippet
     case createQuicklink
     case setVolume
+    // Destructive/disruptive system effects — recognized so they stage (amber Accept),
+    // never fall through to a web search.
+    case emptyTrash
+    case sleepMac
+    case lockScreen
 }
 
 extension SystemReaders {
@@ -36,6 +41,18 @@ extension SystemReaders {
         // "turn up the volume" with no number invites nothing.
         if q.contains("volume"), q.contains(where: \.isNumber) {
             result.insert(.setVolume)
+        }
+        // Destructive/disruptive system effects (their own verbs, no create verb needed).
+        let clearVerb = q.contains("empty") || q.contains("clear")
+        if clearVerb, q.contains("trash") || q.contains("bin") {
+            result.insert(.emptyTrash)
+        }
+        if q.contains("sleep"),
+           q.contains("mac") || q.contains("computer") || q.hasPrefix("sleep") || q.contains("go to sleep") {
+            result.insert(.sleepMac)
+        }
+        if q.contains("lock"), q.contains("screen") || q.contains("mac") || q.contains("computer") {
+            result.insert(.lockScreen)
         }
         return result
     }

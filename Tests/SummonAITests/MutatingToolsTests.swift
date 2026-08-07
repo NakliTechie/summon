@@ -101,6 +101,35 @@ final class MutatingToolsTests: XCTestCase {
         XCTAssertTrue(try core.snippets.all().isEmpty)
     }
 
+    func testTrashSynonymsClassifyAndParseAsEmptyTrash() {
+        // Field report: "empty the bin" / "clear the trash" were web-searched.
+        for query in ["empty the trash", "empty the bin", "clear the trash", "empty trash"] {
+            XCTAssertTrue(
+                SystemReaders.mutatingIntents(for: query).contains(.emptyTrash),
+                "not classified as an action: \(query)"
+            )
+            XCTAssertNotNil(SummonActionParser.parse(query), "no action parsed for: \(query)")
+        }
+    }
+
+    func testDestructiveSystemActionStagesNeverRuns() async throws {
+        let action = try XCTUnwrap(SummonActionParser.parse("empty the trash"))
+        guard case let .moduleRun(_, _, path, _) = action else {
+            return XCTFail("expected moduleRun")
+        }
+        XCTAssertEqual(path, "summon://system/empty-trash")
+        XCTAssertTrue(DestructiveGuard.isDestructive(action), "empty-trash must be destructive")
+
+        let ladder = AILadder.testing(fake: FakeModelRung())
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let service = SummonAIService(ladder: ladder, core: core)
+        let response = try await service.respond(prompt: "empty the trash", actor: .user)
+        guard case .staged = response.kind else {
+            return XCTFail("expected staged, got \(response.kind)")
+        }
+        XCTAssertEqual(try core.staged.list(state: "staged").count, 1)
+    }
+
     func testSetVolumeClassifiesAsSafeNotDestructive() {
         // The whole point of "do safe / stage destructive": volume runs, sleep stages.
         let setVolume = SummonActionParser.parse("set the volume to 30")!
