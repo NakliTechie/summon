@@ -279,6 +279,11 @@ public final class SummonAIService: @unchecked Sendable {
         if let action = SummonActionParser.parse(prompt) {
             return try performOrStage(action, prompt: prompt, actor: actor)
         }
+        // A clearly-unsupported action command gets a deterministic, honest decline —
+        // the model is not asked, so it can't offer to "help" with what Summon can't do.
+        if let reason = SummonActionParser.declineReason(prompt) {
+            return AIResponse(kind: .answer(text: reason), rung: .l1Apple, egressSummary: "")
+        }
         let completion = try await ladder.complete(prompt: prompt)
         if let core {
             _ = try core.dispatch(
@@ -382,7 +387,7 @@ public final class SummonAIService: @unchecked Sendable {
             if let path, path.contains("set-volume/"), let level = path.split(separator: "/").last {
                 return "Volume set to \(level)%."
             }
-            if case .string(let title) = payload["title"] { return "\(title) — done." }
+            if case .string(let title) = payload["title"] { return title }
             return "Done."
         case .snippetUpsert(_, let name, _, _):
             return "Snippet “\(name)” saved."

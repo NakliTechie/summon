@@ -37,11 +37,16 @@ public enum DestructiveGuard {
     }
 
     /// Reversible, low-stakes system effects that are safe to run without a gate
-    /// (e.g. set-volume). Everything else under summon://system/ (sleep, lock,
-    /// empty-trash) stays destructive.
+    /// (set-volume, sleep-display, dark-mode). Everything else under
+    /// summon://system/ (sleep, lock, empty-trash) stays destructive.
     public static func isSafeSystemEffect(_ path: String?) -> Bool {
         guard let path else { return false }
-        return path.hasPrefix("summon://system/set-volume/")
+        let safe = [
+            "summon://system/set-volume/",
+            "summon://system/sleep-display",
+            "summon://system/dark-mode",
+        ]
+        return safe.contains { path.hasPrefix($0) }
     }
 
     public static func isDestructive(_ action: CoreAction) -> Bool {

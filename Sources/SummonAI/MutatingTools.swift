@@ -14,6 +14,11 @@ public enum MutatingToolIntent: String, Sendable, Hashable, CaseIterable {
     case emptyTrash
     case sleepMac
     case lockScreen
+    // More reversible system effects (run instantly).
+    case sleepDisplay
+    case darkMode
+    case sayText
+    case takeScreenshot
 }
 
 extension SystemReaders {
@@ -53,6 +58,22 @@ extension SystemReaders {
         }
         if q.contains("lock"), q.contains("screen") || q.contains("mac") || q.contains("computer") {
             result.insert(.lockScreen)
+        }
+        // Reversible system effects — run instantly.
+        if q.contains("dark mode") || q.contains("light mode") {
+            result.insert(.darkMode)
+        }
+        let displayWord = q.contains("display") || q.contains("screen")
+        let offWord = q.contains("sleep") || q.contains("turn off") || q.hasSuffix(" off")
+        if displayWord, offWord, !q.contains("lock") {
+            result.insert(.sleepDisplay)
+        }
+        if q.hasPrefix("say ") {
+            result.insert(.sayText)
+        }
+        let captureScreen = q.contains("capture") && q.contains("screen")
+        if q.contains("screenshot") || captureScreen {
+            result.insert(.takeScreenshot)
         }
         return result
     }

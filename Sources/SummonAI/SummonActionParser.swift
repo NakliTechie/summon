@@ -27,6 +27,50 @@ public enum SummonActionParser {
         if intents.contains(.emptyTrash) { return systemEffect("empty-trash", title: "Empty Trash") }
         if intents.contains(.sleepMac) { return systemEffect("sleep", title: "Sleep") }
         if intents.contains(.lockScreen) { return systemEffect("lock", title: "Lock Screen") }
+        if intents.contains(.sleepDisplay) { return systemEffect("sleep-display", title: "Display asleep.") }
+        if intents.contains(.darkMode) { return systemEffect("dark-mode", title: "Appearance switched.") }
+        if intents.contains(.sayText) {
+            let text = query.dropFirst(4).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                return .moduleRun(
+                    name: "speech.speak", targetID: "speech", path: nil,
+                    payload: ["text": .string(text), "title": .string("Said it.")]
+                )
+            }
+        }
+        if intents.contains(.takeScreenshot) {
+            return .moduleRun(
+                name: "screenshot.full", targetID: "shot:full", path: nil,
+                payload: ["action": .string("screenshot.full"), "title": .string("Screenshot copied.")]
+            )
+        }
+        return nil
+    }
+
+    /// A clean, honest decline for a clearly-unsupported action command — so Summon
+    /// says it plainly rather than letting the small model improvise ("Sure, I'll
+    /// remind you…"). Returns nil for questions and anything not obviously an
+    /// unsupported action, so those still reach the answer/search path.
+    public static func declineReason(_ query: String) -> String? {
+        let q = query.lowercased()
+        guard !SystemReaders.isInformationQuestion(q) else { return nil }
+        let sendsMessage = q.contains("email") || q.contains("e-mail") || q.hasPrefix("text ")
+            || (q.contains("send") && (q.contains("message") || q.contains("text") || q.contains("imessage")))
+        if sendsMessage { return "Summon can't access Mail or Messages yet." }
+        let setsReminder = q.contains("remind me")
+            || (q.contains("reminder") && (q.contains("add") || q.contains("set") || q.contains("create")))
+        if setsReminder { return "Summon can't set reminders yet." }
+        let addsEvent = q.contains("calendar") || q.hasPrefix("schedule ")
+            || (q.contains("event") && (q.contains("add") || q.contains("create")))
+        if addsEvent { return "Summon can't add calendar events yet." }
+        let playsMedia = q.hasPrefix("play ")
+            || ((q.contains("pause") || q.contains("skip")) && (q.contains("song") || q.contains("music") || q.contains("track")))
+        if playsMedia { return "Summon can't control music yet." }
+        let fileWords = q.contains(".") || q.contains("file") || q.contains("folder")
+            || q.contains("draft") || q.contains("document")
+        let mutatesFile = (q.hasPrefix("move ") || q.contains("rename ") || q.hasPrefix("trash ")) && fileWords
+        if mutatesFile { return "Summon can't move, rename, or trash individual files yet." }
+        if q.hasPrefix("quit ") || q.contains("force quit") { return "Summon can't quit apps yet." }
         return nil
     }
 

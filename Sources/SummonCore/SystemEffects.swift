@@ -18,6 +18,12 @@ public enum SystemEffects {
             switch action {
             case "sleep":
                 try run("/usr/bin/pmset", ["sleepnow"])
+            case "sleep-display":
+                try run("/usr/bin/pmset", ["displaysleepnow"])
+            case "dark-mode":
+                try run("/usr/bin/osascript", ["-e",
+                    "tell application \"System Events\" to tell appearance preferences "
+                        + "to set dark mode to not dark mode"])
             case "lock":
                 let cg = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
                 if FileManager.default.isExecutableFile(atPath: cg) {

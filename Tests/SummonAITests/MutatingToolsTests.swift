@@ -130,6 +130,43 @@ final class MutatingToolsTests: XCTestCase {
         XCTAssertEqual(try core.staged.list(state: "staged").count, 1)
     }
 
+    func testExpandedSafeSystemActionsParseAsSafe() {
+        let dark = try? XCTUnwrap(SummonActionParser.parse("switch to dark mode"))
+        XCTAssertNotNil(dark)
+        XCTAssertFalse(DestructiveGuard.isDestructive(dark!))
+        let display = try? XCTUnwrap(SummonActionParser.parse("turn off the screen"))
+        XCTAssertNotNil(display)
+        XCTAssertFalse(DestructiveGuard.isDestructive(display!))
+        guard case let .moduleRun(name, _, _, payload)? = SummonActionParser.parse("say hello world") else {
+            return XCTFail("expected speech moduleRun")
+        }
+        XCTAssertEqual(name, "speech.speak")
+        XCTAssertEqual(payload["text"]?.stringValue, "hello world")
+    }
+
+    func testUnsupportedActionsDeclineDeterministically() {
+        XCTAssertNotNil(SummonActionParser.declineReason("email bob about lunch"))
+        XCTAssertNotNil(SummonActionParser.declineReason("remind me to pay rent tomorrow"))
+        XCTAssertNotNil(SummonActionParser.declineReason("add lunch with Jo to my calendar"))
+        XCTAssertNotNil(SummonActionParser.declineReason("play some Radiohead"))
+        XCTAssertNotNil(SummonActionParser.declineReason("move budget.xlsx to Documents"))
+        // Questions and non-actions are NOT declined — they still answer/search.
+        XCTAssertNil(SummonActionParser.declineReason("what's my next meeting"))
+        XCTAssertNil(SummonActionParser.declineReason("who wrote 1984"))
+    }
+
+    func testUnsupportedActionRespondsWithHonestDeclineNotModel() async throws {
+        let ladder = AILadder.testing(fake: FakeModelRung(cannedText: "MODEL-IMPROVISED"))
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        let service = SummonAIService(ladder: ladder, core: core)
+        let response = try await service.respond(prompt: "remind me to pay rent tomorrow", actor: .user)
+        guard case let .answer(text) = response.kind else {
+            return XCTFail("expected answer, got \(response.kind)")
+        }
+        XCTAssertTrue(text.contains("can't set reminders"))
+        XCTAssertFalse(text.contains("MODEL-IMPROVISED"), "must not reach the model")
+    }
+
     func testSetVolumeClassifiesAsSafeNotDestructive() {
         // The whole point of "do safe / stage destructive": volume runs, sleep stages.
         let setVolume = SummonActionParser.parse("set the volume to 30")!
