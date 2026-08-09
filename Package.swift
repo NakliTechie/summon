@@ -91,13 +91,23 @@ var targets: [Target] = [
 
 // SummonAI is core — always built.
 products.append(.library(name: "SummonAI", targets: ["SummonAI"]))
+// Embedded llama.cpp: the official prebuilt xcframework (pinned tag + checksum,
+// Metal included). Our own thin rung calls its C API — no third-party wrapper.
+targets.append(
+    .binaryTarget(
+        name: "llama",
+        url: "https://github.com/ggml-org/llama.cpp/releases/download/b10068/llama-b10068-xcframework.zip",
+        checksum: "5238397dd4ca305c9db537c3ae106948909ba2605e77d2d3463ac2d2ca08cc8a"
+    )
+)
     targets.append(
         .target(
             name: "SummonAI",
-            dependencies: ["SummonCore"],
+            dependencies: ["SummonCore", "llama"],
             path: "Sources/SummonAI",
             linkerSettings: [
                 .linkedFramework("FoundationModels"),
+                .linkedLibrary("c++"),
             ]
         )
     )
