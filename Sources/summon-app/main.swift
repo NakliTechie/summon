@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var accessibilityStatusItem: NSMenuItem?
     var primaryHotkeyLabel = "⌥Space"
     var primaryHotkeyError: String?
+    var webSearchSetup: WebSearchSetupController?
+    var onboarding: OnboardingWindowController?
     let loginChoicePromptedKey = "onboarding.loginChoicePrompted"
     #if SUMMON_AI
     var aiService: SummonAIService?
@@ -49,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for warning in core.startupWarnings {
                 fputs("Summon startup warning: \(warning)\n", stderr)
             }
+            webSearchSetup = WebSearchSetupController(core: core, scriptPath: bundledSearxngUpPath())
             let needsFirstRunLoginChoice = shouldOfferFirstRunLoginChoice()
 
             #if SUMMON_AI
@@ -120,7 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             startAgentSocketMonitoring()
             installStatusItem()
-            if needsFirstRunLoginChoice {
+            if shouldShowIntro() {
+                showOnboarding()
+            } else if needsFirstRunLoginChoice {
                 panel.show(markFirstRunSeen: false)
                 DispatchQueue.main.async { [weak self] in
                     self?.offerFirstRunLoginChoice()
@@ -368,6 +373,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func showLauncher() {
         clipboardHistory.hide()
         panel.show()
+    }
+
+    private func bundledSearxngUpPath() -> String {
+        Bundle.main.resourceURL?.appendingPathComponent("searxng/searxng-up.sh").path ?? ""
+    }
+
+    private func shouldShowIntro() -> Bool {
+        if ProcessInfo.processInfo.environment["SUMMON_FORCE_ONBOARDING"] == "1" { return true }
+        return ((try? core.settings.get(OnboardingScript.seenKey)) ?? nil)?.boolValue != true
+    }
+
+    private func onboardingStartIndex() -> Int {
+        Int(ProcessInfo.processInfo.environment["SUMMON_ONBOARDING_SLIDE"] ?? "") ?? 0
+    }
+
+    @MainActor
+    private func showOnboarding() {
+        let actions = OnboardingWindowController.Actions(
+            setLoginItem: { [weak self] enabled in self?.applyLoginItemChoice(enabled) },
+            requestAccessibility: { [weak self] in self?.requestAccessibilityPermission() },
+            enableWebSearch: { [weak self] onPhase in self?.webSearchSetup?.enableWebSearch(onPhase: onPhase) },
+            onFinish: { [weak self] in self?.completeOnboarding() }
+        )
+        let controller = OnboardingWindowController(actions: actions, startIndex: onboardingStartIndex())
+        onboarding = controller
+        controller.show()
+    }
+
+    private func completeOnboarding() {
+        _ = try? core.dispatch(
+            action: .settingsSet(key: OnboardingScript.seenKey, value: .bool(true)), actor: .system
+        )
+        _ = try? core.dispatch(
+            action: .settingsSet(key: loginChoicePromptedKey, value: .bool(true)), actor: .user
+        )
+        markFirstRunLauncherSeen()
+    }
+
+    private func requestAccessibilityPermission() {
+        let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
+        _ = AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary)
     }
 
     private func shouldOfferFirstRunLoginChoice() -> Bool {
