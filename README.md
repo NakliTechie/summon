@@ -16,8 +16,8 @@ Requires macOS Sonoma (14)+; on-device AI needs Apple Intelligence hardware (mac
 
 - **Launcher** — ⌥Space opens a compact bar; fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, and window layouts. Select a result, Tab / ⌘K, act on it.
 - **Clipboard history** — ⌥⇧C; local text, image, HTML, and RTF capture, with an ignore list for sensitive apps.
-- **On-device AI** — ask a question and get an answer from Apple Foundation Models, on your Mac. AI *actions* ("make a snippet", "set the volume to 30") stage in amber for one-click Accept — they never auto-run.
-- **Web search, your way** — a keyless Wikipedia floor by default; point it at a bundled, opt-in SearXNG for full web search. Only your query leaves, and the first search always asks permission.
+- **On-device AI** — ask a question and get an answer from Apple Foundation Models, on your Mac. Safe, reversible *actions* run instantly ("set the volume to 30", "make a snippet"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run.
+- **Web search, your way** — a keyless Wikipedia floor by default; for full web search, an opt-in SearXNG runs on **Apple's `container` runtime** — no Docker Desktop, no license (Docker is a fallback). Only your query leaves, and the first search always asks permission.
 - **Agent face** — a local CLI and a default-off UNIX socket; every call journaled with `actor=`.
 
 ## Shortcuts
