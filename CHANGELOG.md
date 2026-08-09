@@ -3,6 +3,19 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.2 — 2026-08-09
+
+### Changed
+- Action classifier is more robust: strips polite lead-ins ("please", "can you",
+  "hey summon", …), recognizes keyword volume levels (mute/silence/max/full) and
+  the two-word "screen shot", and honestly declines messaging beyond Mail/Messages
+  (WhatsApp/iMessage, dm/reply) instead of guessing.
+
+### Added
+- `RoutingBattery1000Tests` — a 1000+-probe routing battery (search vs safe-run vs
+  destructive-stage vs honest-decline). Run all batteries with `make battery`.
+- Product page: brand sigil and a one-click copy button on the install command.
+
 ## 0.6.1 — 2026-08-09
 
 ### Changed

@@ -38,7 +38,10 @@ l1-probe: build
 # launcher surface, asserting no-throw / correct-kind / no-sensitive-bleed at scale.
 # Gated out of `verify` (heavy); run on demand.
 battery:
-	SUMMON_RUN_BATTERY=1 $(SWIFT) test $(BUILD_FLAGS) --filter DeterministicSurfaceBatteryTests
+	SUMMON_RUN_BATTERY=1 $(SWIFT) test $(BUILD_FLAGS) \
+		--filter RoutingBattery1000Tests \
+		--filter DeterministicSurfaceBatteryTests \
+		--filter MacawParityBatteryTests
 
 # Ad-hoc Summon.app under dist/ (no Developer ID).
 app:

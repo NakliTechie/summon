@@ -1,6 +1,6 @@
 # Summon
 
-A sovereign, native macOS launcher. Local-first, free and open source (AGPL-3.0). No account, no server of ours, no telemetry. On-device AI as a removable sidecar.
+A sovereign, native macOS launcher. Local-first, free, open source (AGPL-3.0). No account, no server, no telemetry. On-device AI as a removable sidecar.
 
 **[📖 Visual guide](https://naklitechie.github.io/summon/guide/)** — every screen, captioned and searchable.
 
@@ -10,15 +10,19 @@ A sovereign, native macOS launcher. Local-first, free and open source (AGPL-3.0)
 brew install --cask naklitechie/tap/summon
 ```
 
-Requires macOS Sonoma (14)+; on-device AI needs Apple Intelligence hardware (macOS 26+). The 0.6.x build isn't notarized yet, so if macOS blocks it, open it once with right-click → Open. First launch offers a **Keep Ready at Login** choice — on by default, because clipboard history needs the app running in the background.
+macOS Sonoma 14+ (on-device AI needs Apple Intelligence / macOS 26+). The 0.6.x build is ad-hoc signed, not notarized — if macOS blocks it, right-click → Open once. First launch offers **Keep Ready at Login** (on by default; clipboard history needs the background app).
 
 ## Highlights
 
-- **Launcher** — ⌥Space opens a compact bar; fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, and window layouts. Select a result, Tab / ⌘K, act on it.
-- **Clipboard history** — ⌥⇧C; local text, image, HTML, and RTF capture, with an ignore list for sensitive apps.
-- **On-device AI** — ask a question and get an answer from Apple Foundation Models, on your Mac. Safe, reversible *actions* run instantly ("set the volume to 30", "make a snippet"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run.
-- **Web search, your way** — a keyless Wikipedia floor by default; for full web search, an opt-in SearXNG runs on **Apple's `container` runtime** — no Docker Desktop, no license (Docker is a fallback). Only your query leaves, and the first search always asks permission.
-- **Agent face** — a local CLI and a default-off UNIX socket; every call journaled with `actor=`.
+- **Launcher** — ⌥Space: fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, window layouts. Select → Tab / ⌘K → act.
+- **Clipboard history** — ⌥⇧C: local text, image, HTML, RTF, with an ignore list for sensitive apps.
+- **On-device AI** — answers from Apple Foundation Models, on your Mac. Safe actions run instantly ("set the volume to 30"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run.
+- **Web search** — keyless Wikipedia floor by default; opt-in SearXNG for full search. Only your query leaves; the first search asks permission.
+- **Agent face** — local CLI + default-off UNIX socket; every call journaled with `actor=`.
+
+## Built on Apple frameworks
+
+Apple-native throughout — no Electron, no web view: **AppKit/SwiftUI** for the UI, **Apple Foundation Models** for on-device AI, and **Apple's `container`** runtime for the opt-in web-search backend (no Docker Desktop, no license; Docker is a fallback).
 
 ## Shortcuts
 
@@ -31,18 +35,19 @@ Requires macOS Sonoma (14)+; on-device AI needs Apple Intelligence hardware (mac
 
 ## Sovereignty
 
-No account. No server of ours. No telemetry, analytics, or crash reporting — not even opt-in. Data leaves the machine only on explicit user action, to the user's chosen provider. Sovereignty and AI removability are enforced as first-class test gates.
+No account, no server, no telemetry — not even opt-in. Data leaves only on explicit action, to your chosen provider. Sovereignty and AI removability are enforced as first-class test gates.
 
 ## Develop
 
 ```bash
 make build     # SPM debug build
 make test
-make verify    # full merge gate: tests, lint, CLI, sovereignty, removability, latency
+make verify    # merge gate: tests, lint, CLI, sovereignty, removability, latency
+make battery   # gated batteries: 1000-probe routing + deterministic-surface + Macaw-parity
 make app       # ad-hoc Summon.app under dist/
 ```
 
-SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (dev-only) · `SummonAI` (optional, `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`. Design and spec docs live in [`docs/`](docs/).
+SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (dev-only) · `SummonAI` (optional, `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`. Specs in [`docs/`](docs/).
 
 ## License
 
