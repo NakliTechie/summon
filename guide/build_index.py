@@ -27,9 +27,9 @@ CAPTIONS = {
     ),
     "launcher-staged": (
         "Answer vs. action — staged",
-        "Ask the on-device AI to do something ('make a snippet', 'set the volume to "
-        "30') and it stages in amber for you to Accept or Reject. Summon never "
-        "auto-runs an AI action, and never claims it did one it only proposed.",
+        "A destructive action ('empty the trash') stages in amber for you to Accept "
+        "or Reject. Summon never auto-runs it, and never claims it did one it only "
+        "proposed — safe, reversible actions just run.",
     ),
     "ai-ladder": (
         "The AI ladder",
@@ -80,8 +80,9 @@ CAPTIONS = {
     "web-search": (
         "Web search & answer",
         "Ask a question and Summon can search the web — a keyless Wikipedia floor by "
-        "default, or your own SearXNG — then compose the answer on-device. Only your "
-        "query leaves, and the first search asks permission.",
+        "default, or your own SearXNG on Apple's container runtime (no Docker Desktop) "
+        "— then compose the answer on-device. Only your query leaves, and the first "
+        "search asks permission.",
     ),
     "staged-volume": (
         "Actions — safe runs, destructive confirms",
@@ -103,9 +104,10 @@ SECTIONS = [
     ("launcher", "Launcher", "The compact ⌥Space bar and its results — the front door.",
      ["launcher-fuzzy", "alttab"]),
     ("ai", "On-device AI",
-     "Answers on your Mac; actions staged for one-click Accept, never auto-run. A "
-     "question can be answered on-device or by searching the web — a keyless "
-     "Wikipedia floor, or your own SearXNG — and only your query ever leaves.",
+     "Answers come from Apple Foundation Models on your Mac; safe actions run "
+     "instantly, destructive ones stage for one-click Accept. A question can be "
+     "answered on-device or by searching the web — a keyless Wikipedia floor, or your "
+     "own SearXNG — and only your query ever leaves.",
      ["staged-volume", "launcher-staged", "web-search", "ai-ladder", "quickfix",
       "launcher-degraded"]),
     ("search", "Search & preferences",
