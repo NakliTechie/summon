@@ -55,9 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let needsFirstRunLoginChoice = shouldOfferFirstRunLoginChoice()
 
             #if SUMMON_AI
-            let service = SummonAIService(core: core)
-            // Prefer a running local model (Ollama / LM Studio) over Apple FM, silently.
-            service.ladder.ensureLocalModelRung(core: core)
+            let service = SummonAIService.production(core: core)
             aiService = service
             panel = LauncherPanelController(
                 core: core,

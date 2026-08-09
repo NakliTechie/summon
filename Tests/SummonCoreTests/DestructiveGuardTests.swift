@@ -306,7 +306,8 @@ final class DestructiveGuardTests: XCTestCase {
 
     func testStagedWebConfigDoesNotChangeRuntimeConfigUntilUserAccepts() throws {
         let core = try SummonCore.inMemory()
-        core.webConfig.enableWithLocalhostPreset()
+        core.webConfig.enable()
+        core.webConfig.baseURL = "http://127.0.0.1:8080"
         let staged = try core.persistWebConfig(actor: .agent)
         XCTAssertTrue(staged.isStaged)
         XCTAssertFalse(core.webConfig.enabled)
@@ -321,7 +322,7 @@ final class DestructiveGuardTests: XCTestCase {
         )
         XCTAssertTrue(accepted.isApplied)
         XCTAssertTrue(core.webConfig.enabled)
-        XCTAssertEqual(core.webConfig.baseURL, WebSearchConfig.localhostPreset)
+        XCTAssertEqual(core.webConfig.baseURL, "http://127.0.0.1:8080")
     }
 
     func testProposalDecisionsCarryUserJournalAttribution() throws {

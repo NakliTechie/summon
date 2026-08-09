@@ -2,13 +2,13 @@ import XCTest
 @testable import SummonCore
 
 final class WebSearchTests: XCTestCase {
-    func testEnablePresetsLocalhost() {
+    func testEnableLeavesBaseURLEmptyForWikipediaFloor() {
         var c = WebSearchConfig.default
         XCTAssertFalse(c.enabled)
         XCTAssertTrue(c.baseURL.isEmpty)
-        c.enableWithLocalhostPreset()
+        c.enable()
         XCTAssertTrue(c.enabled)
-        XCTAssertEqual(c.baseURL, WebSearchConfig.localhostPreset)
+        XCTAssertTrue(c.baseURL.isEmpty, "no phantom SearXNG preset — empty URL uses the Wikipedia floor")
     }
 
     func testFakeProvider() async throws {

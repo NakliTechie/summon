@@ -225,6 +225,15 @@ public final class SummonAIService: @unchecked Sendable {
         self.core = core
     }
 
+    /// Production service: installs the Tier-1 local-model rung (Ollama / LM Studio),
+    /// preferred over Apple FM. Use everywhere the shipping app/CLI builds AI; tests
+    /// construct `SummonAIService(core:)` directly to keep their own ladders.
+    public static func production(core: SummonCore) -> SummonAIService {
+        let service = SummonAIService(core: core)
+        service.ladder.ensureLocalModelRung(core: core)
+        return service
+    }
+
     public func completeAndStage(
         prompt: String,
         actor: ActorTag = .user
@@ -474,9 +483,16 @@ public final class SummonAIService: @unchecked Sendable {
         let authorization = try NetworkSovereignty.authorize(
             url: url, purpose: .userWeb, actor: actor, journalEntry: entry
         )
-        let hits = try await provider.search(
-            query: WebEnrich.searchQuery(from: query), limit: 5, authorization: authorization
-        )
+        let searchQuery = WebEnrich.searchQuery(from: query)
+        let hits: [WebHit]
+        do {
+            hits = try await provider.search(query: searchQuery, limit: 5, authorization: authorization)
+        } catch let primaryError {
+            // A configured SearXNG that is down or misconfigured must never dead-end
+            // web search — fall back to the keyless Wikipedia floor.
+            guard !(provider is WikipediaSearchClient) else { throw primaryError }
+            hits = try await wikipediaFallback(query: searchQuery, actor: actor)
+        }
         guard !hits.isEmpty else { return .noResults }
         // Synthesize an answer on-device when a model is available; otherwise return
         // the results themselves so web search still works without Apple Intelligence
@@ -491,6 +507,23 @@ public final class SummonAIService: @unchecked Sendable {
             rung: .l0Packaged,
             sources: hits
         )
+    }
+
+    /// Keyless Wikipedia-floor fallback for when the configured provider (SearXNG)
+    /// is unreachable — re-authorizes the wikipedia egress, then searches.
+    private func wikipediaFallback(query: String, actor: ActorTag) async throws -> [WebHit] {
+        guard let core else { return [] }
+        let host = "en.wikipedia.org"
+        guard let url = URL(string: "https://\(host)/") else { return [] }
+        let intent = try core.dispatch(
+            action: .egressRequested(purpose: EgressPurpose.userWeb.rawValue, host: host),
+            actor: actor
+        )
+        guard let entry = try core.journal.entry(id: intent.envelopeID) else { return [] }
+        let authorization = try NetworkSovereignty.authorize(
+            url: url, purpose: .userWeb, actor: actor, journalEntry: entry
+        )
+        return try await WikipediaSearchClient().search(query: query, limit: 5, authorization: authorization)
     }
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {

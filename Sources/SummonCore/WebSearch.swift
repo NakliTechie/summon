@@ -7,8 +7,6 @@ public struct WebSearchConfig: Sendable, Hashable, Codable, Equatable {
     public var baseURL: String
     /// When false (default), only loopback hosts are allowed.
     public var allowNonLoopback: Bool
-    public static let localhostPreset = "http://127.0.0.1:8080"
-
     public static let `default` = WebSearchConfig(enabled: false, baseURL: "", allowNonLoopback: false)
 
     public init(enabled: Bool = false, baseURL: String = "", allowNonLoopback: Bool = false) {
@@ -17,12 +15,11 @@ public struct WebSearchConfig: Sendable, Hashable, Codable, Equatable {
         self.allowNonLoopback = allowNonLoopback
     }
 
-    /// Apply Chirag 2026-08-04 default: after enabling, preset localhost if URL empty.
-    public mutating func enableWithLocalhostPreset() {
+    /// Enable web search. The SearXNG base URL stays empty until one is actually set
+    /// up (the installer records it); an empty URL uses the keyless Wikipedia floor,
+    /// so enabling never points at a SearXNG that isn't running.
+    public mutating func enable() {
         enabled = true
-        if baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            baseURL = Self.localhostPreset
-        }
     }
 
     public static func isLoopbackHost(_ host: String) -> Bool {

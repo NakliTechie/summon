@@ -338,7 +338,7 @@ struct SummonCLI {
             exit(2)
         }
         let core = try makeCore()
-        let service = SummonAIService(core: core)
+        let service = SummonAIService.production(core: core)
         switch sub {
         case "status":
             let rows = try awaitOrRun { await service.ladder.status() }
@@ -504,7 +504,7 @@ struct SummonCLI {
         let core = try makeCore()
         switch sub {
         case "enable":
-            core.webConfig.enableWithLocalhostPreset()
+            core.webConfig.enable()
             let result = try core.persistWebConfig(actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
             print("ok web enabled baseURL=\(core.webConfig.baseURL)")
@@ -555,7 +555,7 @@ struct SummonCLI {
             }
             print(WebEnrich.formatHitsOnly(hits))
             if enrich {
-                let service = SummonAIService(core: core)
+                let service = SummonAIService.production(core: core)
                 let prompt = WebEnrich.enrichPrompt(question: q, hits: hits)
                 let proposal = try awaitOrRun {
                     try await service.completeAndStage(prompt: prompt, actor: cliActor)
@@ -571,7 +571,7 @@ struct SummonCLI {
             guard core.webConfig.enabled else {
                 fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
             }
-            let service = SummonAIService(core: core)
+            let service = SummonAIService.production(core: core)
             let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
             let outcome = try awaitOrRun {
                 try await service.searchAndAnswer(
