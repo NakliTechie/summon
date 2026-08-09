@@ -5,6 +5,9 @@ public enum EgressPurpose: String, Sendable, Codable, CaseIterable {
     case appcast
     case userWeb = "user.web"
     case userModelFetch = "user.ai.modelFetch"
+    /// A user-run local model server (Ollama / LM Studio) on a loopback endpoint —
+    /// on-machine, never off-device, but journaled like any other egress.
+    case localModel = "user.ai.local"
 }
 
 public struct EgressAuthorization: Sendable, Equatable {
@@ -67,6 +70,13 @@ public enum NetworkSovereignty {
         case .userModelFetch:
             guard actor == .user, scheme == "https" else {
                 throw CoreError.store("model-fetch egress requires the interactive user actor over HTTPS")
+            }
+        case .localModel:
+            guard actor == .user else {
+                throw CoreError.store("local-model egress requires the interactive user actor")
+            }
+            guard scheme == "http", WebSearchConfig.isLoopbackHost(host) else {
+                throw CoreError.store("local-model egress requires a loopback HTTP endpoint")
             }
         }
 

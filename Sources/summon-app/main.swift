@@ -56,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             #if SUMMON_AI
             let service = SummonAIService(core: core)
+            // Prefer a running local model (Ollama / LM Studio) over Apple FM, silently.
+            service.ladder.ensureLocalModelRung(core: core)
             aiService = service
             panel = LauncherPanelController(
                 core: core,

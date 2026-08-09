@@ -35,6 +35,14 @@ public final class AILadder: @unchecked Sendable {
         return list
     }
 
+    /// Ensure a Tier-1 local-model rung (Ollama / LM Studio) is present, prepended
+    /// so a running local server is preferred over Apple FM. Needs `core` for the
+    /// loopback egress authorization. Idempotent.
+    public func ensureLocalModelRung(core: SummonCore) {
+        guard !rungs.contains(where: { $0.id == .l2LocalRuntime }) else { return }
+        rungs.insert(LocalModelRung(core: core), at: 0)
+    }
+
     public struct StatusRow: Sendable, Hashable, Equatable {
         public let id: ModelRungID
         public let displayName: String
@@ -63,7 +71,7 @@ public final class AILadder: @unchecked Sendable {
     }
 
     public func preferredRung() async -> (any ModelRung)? {
-        let preference: [ModelRungID] = [.l1Apple, .l0Packaged, .fake]
+        let preference: [ModelRungID] = [.l2LocalRuntime, .l1Apple, .l0Packaged, .fake]
         for id in preference {
             if let rung = rungs.first(where: { $0.id == id }) {
                 if (await rung.availability()).isAvailable { return rung }
