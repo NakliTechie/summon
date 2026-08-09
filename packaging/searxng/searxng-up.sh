@@ -58,10 +58,9 @@ if [ -f "$DISCOVERY" ]; then
 fi
 
 # ---- Pick a runtime ----
-# Apple's `container` is the default (arm64 + macOS 26+) — Apple-native, no
-# Docker Desktop, no license. Docker/colima is the fallback for Intel or older
-# macOS. Override with SUMMON_SEARXNG_RUNTIME=container|docker to force one
-# (e.g. reuse a Docker install you already run).
+# Reuse an installed Docker if it's already present; otherwise use Apple's
+# `container` (arm64 + macOS 26+) — Apple-native, no Docker Desktop, no license.
+# Override with SUMMON_SEARXNG_RUNTIME=container|docker to force one.
 osmaj="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"; osmaj="${osmaj:-0}"
 container_ok=false
 if command -v container >/dev/null 2>&1 && [ "$(uname -m)" = "arm64" ] && [ "$osmaj" -ge 26 ] 2>/dev/null; then
@@ -71,10 +70,10 @@ fi
 RUNTIME="${SUMMON_SEARXNG_RUNTIME:-}"
 if [ -n "$RUNTIME" ]; then
   command -v "$RUNTIME" >/dev/null 2>&1 || { echo "searxng: forced runtime '$RUNTIME' not found." >&2; exit 2; }
-elif [ "$container_ok" = true ]; then
-  RUNTIME="container"
 elif command -v docker >/dev/null 2>&1; then
   RUNTIME="docker"
+elif [ "$container_ok" = true ]; then
+  RUNTIME="container"
 else
   echo "SearXNG needs a container runtime, which isn't installed." >&2
   if [ "$(uname -m)" = "arm64" ] && [ "$osmaj" -ge 26 ] 2>/dev/null; then
