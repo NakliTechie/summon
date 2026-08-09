@@ -3,6 +3,14 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.4 — 2026-08-09
+
+### Fixed
+- Web search no longer dead-ends on Macs without Apple Intelligence: when no
+  on-device model is available to synthesize an answer, it returns the fetched
+  web results (links) instead of failing silently. With Apple Intelligence on,
+  answers are still synthesized on-device.
+
 ## 0.6.3 — 2026-08-09
 
 ### Added
