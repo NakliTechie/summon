@@ -64,6 +64,7 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 | When | Decision |
 |---|---|
+| 2026-08-09 | **AI is core, not a removable sidecar** — drop the sidecar/removability framing. Target **Apple Silicon (M)** only. Provider ladder: **Tier 0 = Apple Foundation Models** (default on M); **Tier 1 = local model** — reuse a running **Ollama/LM Studio** if the user serves one (localhost/network, OpenAI-compatible), else **our own embedded llama.cpp** (pinned + Metal, allow-listed). **No cloud/external provider.** Supersedes D7=MLX and the "on-device AI as a removable sidecar" posture. |
 | 2026-08-09 | Web-search enable = **one-consent installer** (`WebSearchInstaller`): reuse installed Docker, else `brew install container`, then pull SearXNG and turn it on — one background step, no two-step. **Amends** the "Summon never installs a runtime" self-rule → installs Apple `container` on explicit user opt-in only (a package-manager user's deliberate consent). Runtime pick = Docker-if-present-else-container. |
 | 2026-08-06 | Brand = sigil (cyan "S" + gem); supersedes v1 portal concept; app icon wired; menu-bar template produced, not wired |
 | 2026-08-06 | W1 → native creation (launcher-inline snippet/quicklink); CLI retained as fallback |
