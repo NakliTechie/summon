@@ -7,7 +7,8 @@ import SummonCore
 /// query can't be parsed into a concrete action, this returns nil and the query
 /// falls through to the answer/search path.
 public enum SummonActionParser {
-    public static func parse(_ query: String) -> CoreAction? {
+    public static func parse(_ rawQuery: String) -> CoreAction? {
+        let query = SystemReaders.withoutPoliteLead(rawQuery)
         let intents = SystemReaders.mutatingIntents(for: query)
         if intents.contains(.setVolume), let level = volumeLevel(query) {
             let url = "summon://system/set-volume/\(level)"
@@ -52,7 +53,7 @@ public enum SummonActionParser {
     /// remind you…"). Returns nil for questions and anything not obviously an
     /// unsupported action, so those still reach the answer/search path.
     public static func declineReason(_ query: String) -> String? {
-        let q = query.lowercased()
+        let q = SystemReaders.withoutPoliteLead(query).lowercased()
         guard !SystemReaders.isInformationQuestion(q) else { return nil }
         let sendsMessage = q.contains("email") || q.contains("e-mail") || q.hasPrefix("text ")
             || (q.contains("send") && (q.contains("message") || q.contains("text") || q.contains("imessage")))

@@ -29,7 +29,7 @@ extension SystemReaders {
     ///   target level) — this is where a future destructive intent would demand an
     ///   explicit destructive verb before it is ever offered.
     public static func mutatingIntents(for query: String) -> Set<MutatingToolIntent> {
-        let q = query.lowercased()
+        let q = withoutPoliteLead(query).lowercased()
         guard !isInformationQuestion(q) else { return [] }
         var result: Set<MutatingToolIntent> = []
         let createVerbs = [
@@ -42,9 +42,13 @@ extension SystemReaders {
         if q.contains("quicklink") || q.contains("quick link"), hasCreateVerb {
             result.insert(.createQuicklink)
         }
-        // A level is required (a digit in the query) so there is a concrete target —
-        // "turn up the volume" with no number invites nothing.
-        if q.contains("volume"), q.contains(where: \.isNumber) {
+        // A concrete target is required: a number, or a keyword level (mute / silence
+        // / max / full). "turn up the volume" with no target invites nothing.
+        let volumeWord = q.contains("volume") || q.contains("sound")
+        let volumeTarget = q.contains(where: \.isNumber)
+            || q.contains("mute") || q.contains("silence")
+            || q.contains("max") || q.contains("full")
+        if volumeWord, volumeTarget {
             result.insert(.setVolume)
         }
         // Destructive/disruptive system effects (their own verbs, no create verb needed).
@@ -76,6 +80,34 @@ extension SystemReaders {
             result.insert(.takeScreenshot)
         }
         return result
+    }
+
+    /// Strip a leading politeness lead-in ("please", "can you", "hey summon", …) so
+    /// a position-sensitive intent ("say …", "quit …", "move …") and the question-form
+    /// strip both see the real command. Case-insensitive; peels a few stacked lead-ins.
+    static func withoutPoliteLead(_ query: String) -> String {
+        var s = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let leads = [
+            "hey summon ", "hey, summon ", "ok summon ", "okay summon ",
+            "can you please ", "could you please ", "would you please ",
+            "can you ", "could you ", "would you ", "will you ",
+            "i want you to ", "i'd like you to ", "go ahead and ",
+            "please ", "pls ", "kindly ",
+        ]
+        var peeled = true
+        var iterations = 0
+        while peeled, iterations < 4 {
+            peeled = false
+            iterations += 1
+            let lower = s.lowercased()
+            for lead in leads where lower.hasPrefix(lead) {
+                s = String(s.dropFirst(lead.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                peeled = true
+                break
+            }
+        }
+        return s
     }
 
     /// A query that seeks information rather than commanding an action. Such queries
