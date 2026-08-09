@@ -17,17 +17,22 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     private let webURLField = NSTextField(string: "")
     private let agentToggle = NSButton(checkboxWithTitle: "Enable the local agent socket", target: nil, action: nil)
     private let appearancePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let webSetupButton = NSButton(title: "Set up full web search", target: nil, action: nil)
+    private let webSetupStatus = NSTextField(labelWithString: "")
+    private let onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)?
 
     public init(
         core: SummonCore,
         onOpenClipboard: @escaping () -> Void,
         onOpenIgnoreList: @escaping () -> Void,
-        onLoginItemChanged: @escaping () -> Void
+        onLoginItemChanged: @escaping () -> Void,
+        onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)? = nil
     ) {
         self.core = core
         self.onOpenClipboard = onOpenClipboard
         self.onOpenIgnoreList = onOpenIgnoreList
         self.onLoginItemChanged = onLoginItemChanged
+        self.onSetUpWebSearch = onSetUpWebSearch
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 440),
@@ -84,6 +89,8 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         agentToggle.action = #selector(changeAgentSocket)
         appearancePopup.target = self
         appearancePopup.action = #selector(changeAppearance)
+        webSetupButton.target = self
+        webSetupButton.action = #selector(setUpWebSearch)
     }
 
     private func refresh() {
@@ -138,11 +145,19 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         urlRow.spacing = 12
         webURLField.placeholderString = "http://127.0.0.1:8080"
         webURLField.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
+        webSetupStatus.font = .systemFont(ofSize: 11)
+        webSetupStatus.textColor = .secondaryLabelColor
+        let setupDetails = label(
+            "Full web search runs an opt-in SearXNG on Apple's container runtime "
+                + "(reusing Docker if present). One click sets it up in the background — "
+                + "the launcher stays usable throughout."
+        )
         return tab(
             section: .search,
             views: [
                 heading("Search and indexing"), ftsDetails, ftsToggle, separator(),
                 webDetails, webToggle, defaultRow, urlRow,
+                separator(), setupDetails, webSetupButton, webSetupStatus,
             ]
         )
     }
@@ -266,6 +281,22 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     @objc private func changeWeb() {
         core.webConfig.enabled = webToggle.state == .on
         persistWeb()
+    }
+
+    @objc private func setUpWebSearch() {
+        guard let onSetUpWebSearch else { return }
+        webSetupButton.isEnabled = false
+        webSetupStatus.stringValue = WebSearchInstaller.Phase.detecting.statusText
+        webSetupStatus.textColor = .secondaryLabelColor
+        onSetUpWebSearch { @MainActor [weak self] phase in
+            guard let self else { return }
+            self.webSetupStatus.stringValue = phase.statusText
+            self.webSetupStatus.textColor = phase.isError ? .systemRed : .secondaryLabelColor
+            if phase.isTerminal {
+                self.webSetupButton.isEnabled = true
+                if case .enabled = phase { self.refresh() }
+            }
+        }
     }
 
     @objc private func changeDefaultAction() {

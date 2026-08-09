@@ -388,12 +388,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Int(ProcessInfo.processInfo.environment["SUMMON_ONBOARDING_SLIDE"] ?? "") ?? 0
     }
 
+    /// Central web-search install runner: tees progress to the non-blocking
+    /// launcher footer chip and to the caller (onboarding / Preferences).
+    @MainActor
+    private func beginWebSearchInstall(onPhase: @escaping @MainActor (WebSearchInstaller.Phase) -> Void) {
+        webSearchSetup?.enableWebSearch { [weak self] phase in
+            self?.panel.showWebSearchStatus(phase.isRunning ? phase.statusText : nil)
+            onPhase(phase)
+        }
+    }
+
     @MainActor
     private func showOnboarding() {
         let actions = OnboardingWindowController.Actions(
             setLoginItem: { [weak self] enabled in self?.applyLoginItemChoice(enabled) },
             requestAccessibility: { [weak self] in self?.requestAccessibilityPermission() },
-            enableWebSearch: { [weak self] onPhase in self?.webSearchSetup?.enableWebSearch(onPhase: onPhase) },
+            enableWebSearch: { [weak self] onPhase in self?.beginWebSearchInstall(onPhase: onPhase) },
             onFinish: { [weak self] in self?.completeOnboarding() }
         )
         let controller = OnboardingWindowController(actions: actions, startIndex: onboardingStartIndex())
@@ -587,7 +597,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 core: core,
                 onOpenClipboard: { [weak self] in self?.showClipboard() },
                 onOpenIgnoreList: { [weak self] in self?.showClipboardIgnoreList() },
-                onLoginItemChanged: { [weak self] in self?.installStatusItem() }
+                onLoginItemChanged: { [weak self] in self?.installStatusItem() },
+                onSetUpWebSearch: { [weak self] onPhase in
+                    MainActor.assumeIsolated { self?.beginWebSearchInstall(onPhase: onPhase) }
+                }
             )
         }
         preferences?.show(section: section)

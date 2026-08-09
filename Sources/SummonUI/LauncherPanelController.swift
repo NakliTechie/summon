@@ -26,7 +26,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     let quickActionStrip: LauncherQuickActionStrip
     var quickActionsShown = false
     let stagedTextWriter: (String) throws -> Void
-    private let footerLabel: NSTextField
+    let footerLabel: NSTextField
 
     let panelWidth: CGFloat = 680
     /// Spotlight-like single-line bar.
@@ -42,7 +42,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     var stagedID: String?
     var footerError: String?
-    private var permissionHint: String?
+    var permissionHint: String?
+    var webSearchStatus: String?
     private var resignHideWork: DispatchWorkItem?
     private var suppressResignHide = false
     private var searchGeneration: UInt64 = 0
@@ -378,7 +379,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     private var hasBrowsableResults: Bool { !session.results.isEmpty || session.objectMode }
 
-    private var showResultsChrome: Bool {
+    var showResultsChrome: Bool {
         hasQuery || hasBrowsableResults || !stagedReviewView.isHidden
             || !aiAnswerView.isHidden || showingSpinner || footerError != nil
     }
@@ -719,32 +720,6 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         searchField.stringValue = query
         footerError = message
         applyLayout(animated: false)
-    }
-
-    private func refreshPermissionHint() {
-        let snap = PermissionStatus.snapshot()
-        permissionHint = snap.accessibilityTrusted ? nil : "Accessibility off"
-        updateFooter()
-    }
-
-    func updateFooter() {
-        guard showResultsChrome else {
-            footerLabel.stringValue = ""
-            return
-        }
-        var parts = ["↩ Open"]
-        if !aiAnswerView.isHidden {
-            parts = ["↩ Insert", "⌘C Copy", "Esc Dismiss"]
-        } else if session.objectMode {
-            parts = ["↩ Run", "Esc Back"]
-        }
-        if let err = footerError, !err.isEmpty {
-            parts.append(err)
-        } else if let hint = permissionHint {
-            parts.append(hint)
-        }
-        parts.append("v\(SummonVersion.string)")
-        footerLabel.stringValue = parts.joined(separator: "  ·  ")
     }
 
 }
