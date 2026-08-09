@@ -3,6 +3,22 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.5 — 2026-08-09
+
+### Added
+- Tier-1 local model: Summon silently detects and uses a running **Ollama / LM
+  Studio** server (loopback, OpenAI-compatible), preferred over Apple Foundation
+  Models — so "Ask local AI" and web-search answers work **without Apple
+  Intelligence**, entirely on-machine.
+
+### Fixed
+- Web search no longer dead-ends ("could not connect") when a configured SearXNG
+  is unreachable — it falls back to the keyless **Wikipedia floor**. Fresh
+  installs no longer preset a phantom SearXNG endpoint.
+
+### Changed
+- AI is core, not a removable sidecar; Apple Silicon only.
+
 ## 0.6.4 — 2026-08-09
 
 ### Fixed

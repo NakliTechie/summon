@@ -4,6 +4,10 @@
 
 import PackageDescription
 
+// Embedded llama.cpp is WIP (feasibility gate landed; rung not yet). Opt in with
+// SUMMON_LLAMA=1; off by default so releases aren't bloated by an unused framework.
+let llamaEnabled = Context.environment["SUMMON_LLAMA"] == "1"
+
 var products: [Product] = [
     .library(name: "SummonCore", targets: ["SummonCore"]),
     .library(name: "SummonUI", targets: ["SummonUI"]),
@@ -89,28 +93,31 @@ var targets: [Target] = [
     ),
 ]
 
-// SummonAI is core — always built.
+// SummonAI is core — always built. Embedded llama.cpp (official prebuilt
+// xcframework, pinned + Metal) is gated behind SUMMON_LLAMA so it's not shipped
+// until the rung lands; our own rung will call its C API — no third-party wrapper.
 products.append(.library(name: "SummonAI", targets: ["SummonAI"]))
-// Embedded llama.cpp: the official prebuilt xcframework (pinned tag + checksum,
-// Metal included). Our own thin rung calls its C API — no third-party wrapper.
-targets.append(
-    .binaryTarget(
-        name: "llama",
-        url: "https://github.com/ggml-org/llama.cpp/releases/download/b10068/llama-b10068-xcframework.zip",
-        checksum: "5238397dd4ca305c9db537c3ae106948909ba2605e77d2d3463ac2d2ca08cc8a"
-    )
-)
+var summonAIDeps: [Target.Dependency] = ["SummonCore"]
+var summonAILinker: [LinkerSetting] = [.linkedFramework("FoundationModels")]
+if llamaEnabled {
     targets.append(
-        .target(
-            name: "SummonAI",
-            dependencies: ["SummonCore", "llama"],
-            path: "Sources/SummonAI",
-            linkerSettings: [
-                .linkedFramework("FoundationModels"),
-                .linkedLibrary("c++"),
-            ]
+        .binaryTarget(
+            name: "llama",
+            url: "https://github.com/ggml-org/llama.cpp/releases/download/b10068/llama-b10068-xcframework.zip",
+            checksum: "5238397dd4ca305c9db537c3ae106948909ba2605e77d2d3463ac2d2ca08cc8a"
         )
     )
+    summonAIDeps.append("llama")
+    summonAILinker.append(.linkedLibrary("c++"))
+}
+targets.append(
+    .target(
+        name: "SummonAI",
+        dependencies: summonAIDeps,
+        path: "Sources/SummonAI",
+        linkerSettings: summonAILinker
+    )
+)
     targets.append(
         .testTarget(
             name: "SummonAITests",
