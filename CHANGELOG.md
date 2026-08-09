@@ -3,6 +3,17 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.3 — 2026-08-09
+
+### Added
+- First-run onboarding: four skippable native intro screens (⌥Space · ask
+  anything · do things safely · get set up), with the "keep ready at login"
+  choice folded into the last screen.
+- One-consent full web search: a single opt-in — the onboarding checkbox or a
+  Preferences "Set up full web search" button — sets up SearXNG in the background
+  (reusing Docker if present, else installing Apple's `container` runtime) and
+  turns it on. Non-blocking progress shows in the launcher footer.
+
 ## 0.6.2 — 2026-08-09
 
 ### Changed
