@@ -20,7 +20,7 @@ The spec bundle lives in [`/docs`](docs/) and is authoritative. Read all three:
 
 ## Layout
 
-SPM targets: `SummonCore` (action bus, stores, index — zero AppKit, headless-testable) · `SummonUI` (AppKit/SwiftUI) · `SummonShim` (JS runtime + reconciler) · `SummonAI` (ladder + sidecars — **compiled out via build flag for the removability gate**) · `summon-cli`.
+SPM targets: `SummonCore` (action bus, stores, index — zero AppKit, headless-testable) · `SummonUI` (AppKit/SwiftUI) · `SummonShim` (JS runtime + reconciler) · `SummonAI` (**core, always built** — the model ladder: local model (Ollama/LM Studio, else embedded llama.cpp) and Apple Foundation Models) · `summon-cli`. Apple Silicon only.
 
 Build: `xcodebuild` via `Makefile` wrappers — `make build`, `make test`, `make verify` (full gate), `make release`.
 

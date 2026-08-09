@@ -1,10 +1,8 @@
 // swift-tools-version: 5.9
 // Summon — SPM workspace. Targets mirror handoff §1.
-// SummonAI is compiled out for the removability gate via SUMMON_AI_ENABLED=0.
+// AI is core (not a removable sidecar): SummonAI is always built.
 
 import PackageDescription
-
-let summonAIEnabled = Context.environment["SUMMON_AI_ENABLED"] != "0"
 
 var products: [Product] = [
     .library(name: "SummonCore", targets: ["SummonCore"]),
@@ -19,12 +17,10 @@ var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
 var cliSettings: [SwiftSetting] = []
 var appSettings: [SwiftSetting] = []
 
-if summonAIEnabled {
-    cliDeps.append("SummonAI")
-    appDeps.append("SummonAI")
-    cliSettings.append(.define("SUMMON_AI"))
-    appSettings.append(.define("SUMMON_AI"))
-}
+cliDeps.append("SummonAI")
+appDeps.append("SummonAI")
+cliSettings.append(.define("SUMMON_AI"))
+appSettings.append(.define("SUMMON_AI"))
 
 var targets: [Target] = [
     .target(
@@ -93,8 +89,8 @@ var targets: [Target] = [
     ),
 ]
 
-if summonAIEnabled {
-    products.append(.library(name: "SummonAI", targets: ["SummonAI"]))
+// SummonAI is core — always built.
+products.append(.library(name: "SummonAI", targets: ["SummonAI"]))
     targets.append(
         .target(
             name: "SummonAI",
@@ -125,7 +121,6 @@ if summonAIEnabled {
             path: "Tests/SummonLiveProbeTests"
         )
     )
-}
 
 let package = Package(
     name: "Summon",
