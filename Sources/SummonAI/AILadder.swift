@@ -470,10 +470,19 @@ public final class SummonAIService: @unchecked Sendable {
             query: WebEnrich.searchQuery(from: query), limit: 5, authorization: authorization
         )
         guard !hits.isEmpty else { return .noResults }
-        let completion = try await ladder.complete(
+        // Synthesize an answer on-device when a model is available; otherwise return
+        // the results themselves so web search still works without Apple Intelligence
+        // (the on-device model is optional — the fetch already succeeded).
+        if let completion = try? await ladder.complete(
             prompt: WebEnrich.enrichPrompt(question: query, hits: hits)
+        ) {
+            return .answer(text: completion.text, rung: completion.rung, sources: hits)
+        }
+        return .answer(
+            text: "On-device answer synthesis is unavailable on this Mac — showing the top web results:",
+            rung: .l0Packaged,
+            sources: hits
         )
-        return .answer(text: completion.text, rung: completion.rung, sources: hits)
     }
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {

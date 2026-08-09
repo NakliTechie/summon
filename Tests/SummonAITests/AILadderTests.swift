@@ -112,6 +112,29 @@ final class AILadderTests: XCTestCase {
         XCTAssertTrue(egress)
     }
 
+    func testSearchAndAnswerReturnsResultsWhenNoModelAvailable() async throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        core.webConfig.enabled = true
+        // No rungs → ladder.complete throws, mimicking a Mac without Apple Intelligence.
+        let service = SummonAIService(ladder: AILadder(rungs: []), core: core)
+        try service.grantWebSearchConsentAlways()
+        let provider = FakeAuthorizedWebSearchProvider(
+            host: "example.com",
+            hits: [
+                WebHit(title: "Mac Studio", url: "https://example.com/ms", snippet: "release timing"),
+                WebHit(title: "Rumor roundup", url: "https://example.com/r", snippet: "expected soon"),
+            ]
+        )
+
+        let outcome = try await service.searchAndAnswer(query: "when will the mac studio ship", provider: provider)
+
+        guard case let .answer(text, _, sources) = outcome else {
+            return XCTFail("expected an answer with results, got \(outcome)")
+        }
+        XCTAssertEqual(sources.count, 2, "fetched web results are returned even without a model")
+        XCTAssertFalse(text.isEmpty)
+    }
+
     func testSearchAndAnswerNeedsConsentThenAllowOnceBypasses() async throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         core.webConfig.enabled = true
