@@ -76,7 +76,7 @@ extension SystemReaders {
             result.insert(.sayText)
         }
         let captureScreen = q.contains("capture") && q.contains("screen")
-        if q.contains("screenshot") || captureScreen {
+        if q.contains("screenshot") || q.contains("screen shot") || captureScreen {
             result.insert(.takeScreenshot)
         }
         return result

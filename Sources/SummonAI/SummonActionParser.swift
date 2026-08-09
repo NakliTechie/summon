@@ -55,8 +55,12 @@ public enum SummonActionParser {
     public static func declineReason(_ query: String) -> String? {
         let q = SystemReaders.withoutPoliteLead(query).lowercased()
         guard !SystemReaders.isInformationQuestion(q) else { return nil }
-        let sendsMessage = q.contains("email") || q.contains("e-mail") || q.hasPrefix("text ")
-            || (q.contains("send") && (q.contains("message") || q.contains("text") || q.contains("imessage")))
+        let messagingApp = q.contains("whatsapp") || q.contains("imessage")
+        let sendsMessage = q.contains("email") || q.contains("e-mail")
+            || q.hasPrefix("text ") || q.hasPrefix("dm ")
+            || (q.contains("send") && (q.contains("message") || q.contains("text") || q.contains("dm")))
+            || (q.contains("reply") && (q.contains("message") || q.contains("email") || q.contains("mail")))
+            || messagingApp
         if sendsMessage { return "Summon can't access Mail or Messages yet." }
         let setsReminder = q.contains("remind me")
             || (q.contains("reminder") && (q.contains("add") || q.contains("set") || q.contains("create")))
