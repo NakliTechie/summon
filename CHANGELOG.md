@@ -3,6 +3,13 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.6 — 2026-08-09
+
+### Fixed
+- Focus returns to the app you were using when the launcher or clipboard-history
+  window dismisses — so a copied emoji or clipboard item is ready to paste without
+  clicking back into your app.
+
 ## 0.6.5 — 2026-08-09
 
 ### Added

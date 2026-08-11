@@ -13,8 +13,8 @@
 # Local dry-run: `make cask-local` injects a file:// url + the local zip's sha256.
 
 cask "summon" do
-  version "0.6.5"
-  sha256 "5a342e76430b318c3b0baba6b9ee37f34e27f0f1593191fdf74a703780d94c10"
+  version "0.6.6"
+  sha256 "3b1070539806e6e5024f59daad442bfbfc96114ab6a2a6f990a7ad6092124903"
 
   url "https://github.com/NakliTechie/summon/releases/download/v#{version}/Summon-#{version}.zip"
   name "Summon"
