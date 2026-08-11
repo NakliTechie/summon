@@ -187,11 +187,14 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
+    private let focusRestorer = FrontmostAppRestorer()
+
     public func show() {
         searchField.stringValue = ""
         selectedIndex = 0
         reloadItems()
         positionOnActiveScreen()
+        focusRestorer.capture()
         NSApp.activate(ignoringOtherApps: true)
         suppressResignHide = true
         panel.makeKeyAndOrderFront(nil)
@@ -210,6 +213,7 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
         searchField.stringValue = ""
         selectedIndex = 0
         panel.orderOut(nil)
+        focusRestorer.restore()
     }
 
     public func toggle() {

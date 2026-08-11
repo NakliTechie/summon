@@ -44,6 +44,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     var footerError: String?
     var permissionHint: String?
     var webSearchStatus: String?
+    private let focusRestorer = FrontmostAppRestorer()
     private var resignHideWork: DispatchWorkItem?
     private var suppressResignHide = false
     private var searchGeneration: UInt64 = 0
@@ -299,6 +300,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
         suppressResignHide = true
         resignHideWork?.cancel()
+        focusRestorer.capture()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async { [weak self] in
@@ -333,6 +335,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         orbSpinner.stop()
         quickActionsShown = false
         panel.orderOut(nil)
+        focusRestorer.restore()
         updateSearchFocusState()
     }
 
