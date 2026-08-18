@@ -3,6 +3,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Every check below shells out to rg. Without this guard a missing rg
+# makes each `rg ... || true` yield an empty result, which the checks
+# then report as an undeclared network primitive — a false finding that
+# hides the real problem.
+if ! command -v rg >/dev/null 2>&1; then
+    echo "network-sovereignty: ripgrep (rg) is required but not installed" >&2
+    exit 2
+fi
+
 network_files="$({
     rg -l --glob '*.swift' \
         'URLSession|URLRequest|NWConnection|CFStream|Stream\.getStreamsToHost|dataTask|downloadTask|uploadTask' \
