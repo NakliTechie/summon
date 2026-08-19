@@ -1,6 +1,23 @@
 import AppKit
 
 extension LauncherPanelController {
+    /// Run a modal dialog without the panel's resign-key auto-hide firing. A modal
+    /// (NSAlert) steals key focus, so `windowDidResignKey` queues a 0.08s `hide()`;
+    /// that block drains inside the modal run loop and tears the panel down mid-
+    /// dialog — the web-search consent and destructive-confirm results then render
+    /// into an already-hidden panel ("search did nothing"). Suppress across the modal.
+    @discardableResult
+    func withResignHideSuppressed<T>(_ body: () -> T) -> T {
+        let previous = suppressResignHide
+        suppressResignHide = true
+        resignHideWork?.cancel()
+        defer {
+            suppressResignHide = previous
+            resignHideWork?.cancel()
+        }
+        return body()
+    }
+
     public func controlTextDidBeginEditing(_ obj: Notification) {
         updateSearchFocusState()
     }

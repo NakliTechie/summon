@@ -63,6 +63,11 @@ public struct LauncherAIIntegration: Sendable {
 
     public var searchAvailable: Bool { searchHandler != nil }
 
+    /// True once the user has granted sticky ("Always Allow") web consent. The
+    /// local-first answer flow uses this to decide whether it may quietly consult
+    /// the web in parallel — never egressing before that one-time opt-in.
+    public var webConsentIsSticky: Bool { consentIsSticky?() ?? false }
+
     /// Which offer leads for a question. An explicit Preferences choice wins
     /// (search-first or local-first); with no choice (auto), search becomes
     /// primary once sticky ("Always") consent is granted — before that, local
@@ -108,10 +113,15 @@ public struct LauncherAIIntegration: Sendable {
 
     public func offerResult(for rawQuery: String) -> SearchResult? {
         guard let prompt = Self.prompt(from: rawQuery) else { return nil }
+        // Once web consent is sticky, a question answers on-device first and then
+        // quietly refines against the web — say so, so Enter's behavior is legible.
+        let subtitle = webConsentIsSticky
+            ? "On-device now · refines against the web · actions staged"
+            : "Answers on-device · actions are staged for review"
         return SearchResult(
             id: "ai:ask:\(prompt)",
             title: "Ask local AI",
-            subtitle: "Answers on-device · actions are staged for review",
+            subtitle: subtitle,
             kind: .command,
             score: 0.25,
             payload: [

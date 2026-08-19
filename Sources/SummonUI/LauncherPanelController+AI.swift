@@ -4,6 +4,7 @@ import SummonCore
 
 extension LauncherPanelController {
     func startSpinner(_ mode: OrbSpinnerView.Mode) {
+        answerGeneration &+= 1
         aiAnswerView.clear()
         showingSpinner = true
         orbSpinner.start(mode)
@@ -43,6 +44,9 @@ extension LauncherPanelController {
                         self.applyLayout(animated: true)
                     } else {
                         self.presentAIAnswer(text: text, rung: rung, egress: egress)
+                        // Local answer is on screen fast; if the user has already
+                        // opted into web egress, quietly refine it against the web.
+                        self.augmentAnswerWithWeb(prompt: prompt, localText: text, localRung: rung)
                     }
                 case let .staged(_, rung, egress):
                     self.refreshStagedStrip()
@@ -58,6 +62,43 @@ extension LauncherPanelController {
                 self.footerError = L10n.t(.degradedAI)
                 self.applyLayout(animated: true)
             }
+        }
+    }
+
+    /// After the fast on-device answer lands, refine it against the web in
+    /// parallel — but only when the user has already granted sticky ("Always
+    /// Allow") web consent, so nothing egresses without that one-time opt-in.
+    /// A newer/current web-grounded answer replaces the local text and adds its
+    /// sources; anything short of a real web answer leaves the local answer alone.
+    func augmentAnswerWithWeb(prompt: String, localText: String, localRung: String) {
+        guard let ai = aiIntegration, ai.searchAvailable, ai.webConsentIsSticky else { return }
+        let generation = answerGeneration
+        showWebSearchStatus("Checking the web…")
+        applyLayout(animated: true)
+
+        let operation = Task.detached(priority: .userInitiated) {
+            try await ai.search(prompt: prompt, allowOnce: false)
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let response = try? await operation.value
+            // The user moved on (dismissed, or asked something else) — drop it.
+            guard self.answerGeneration == generation else { return }
+            self.showWebSearchStatus(nil)
+            guard case let .answer(webText, sources, rung)? = response,
+                  !webText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                // No usable web answer: keep the local one exactly as shown.
+                self.applyLayout(animated: true)
+                return
+            }
+            let body = sources.isEmpty
+                ? webText
+                : webText + "\n\nSources:\n" + sources.map { "· \($0)" }.joined(separator: "\n")
+            self.presentAIAnswer(
+                text: body,
+                rung: "\(localRung) → \(rung) · web-grounded",
+                egress: "query sent to the web"
+            )
         }
     }
 
