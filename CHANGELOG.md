@@ -3,6 +3,15 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.8 — 2026-08-19
+
+### Added
+- Local-first answers that refine against the web. A question is answered
+  on-device instantly; once you've granted "Always Allow" web consent, Summon
+  then quietly runs a web search in parallel and upgrades the card to a current,
+  web-grounded answer with sources — no waiting on the network to see something,
+  and no egress before that one-time opt-in.
+
 ## 0.6.7 — 2026-08-19
 
 ### Fixed
