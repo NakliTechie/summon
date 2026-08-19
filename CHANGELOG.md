@@ -3,6 +3,14 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.6.7 — 2026-08-19
+
+### Fixed
+- Web search no longer "does nothing" on first use: the consent dialog took key
+  focus, which tripped the launcher's dismiss-on-blur and ordered the panel out
+  mid-dialog — so the spinner and answer rendered into an already-hidden window.
+  The launcher now stays put across the consent and destructive-confirm dialogs.
+
 ## 0.6.6 — 2026-08-09
 
 ### Fixed
