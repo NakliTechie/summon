@@ -148,7 +148,7 @@ extension LauncherPanelController {
         alert.addButton(withTitle: "Always Allow")
         alert.addButton(withTitle: "Allow Once")
         alert.addButton(withTitle: "Don't Allow")
-        switch alert.runModal() {
+        switch withResignHideSuppressed({ alert.runModal() }) {
         case .alertFirstButtonReturn:
             aiIntegration?.grantSearchConsent(always: true)
             runWebSearch(confirmation, allowOnce: true)

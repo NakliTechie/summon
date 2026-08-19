@@ -46,7 +46,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     var webSearchStatus: String?
     private let focusRestorer = FrontmostAppRestorer()
     private var resignHideWork: DispatchWorkItem?
-    private var suppressResignHide = false
+    /// Internal (not private) so a regression test can assert `withResignHideSuppressed`
+    /// sets and restores it across a modal — the fix for consent/destructive alerts
+    /// hiding the panel out from under themselves.
+    var suppressResignHide = false
     private var searchGeneration: UInt64 = 0
     /// Fires the model prewarm once per typing session (reset when the field clears).
     private var didPrewarm = false
@@ -341,6 +344,23 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
 
     public func toggle() {
         if panel.isVisible { hide() } else { show() }
+    }
+
+    /// Run a modal dialog without the panel's resign-key auto-hide firing. A modal
+    /// (NSAlert) steals key focus, so `windowDidResignKey` queues a 0.08s `hide()`;
+    /// that block drains inside the modal run loop and tears the panel down mid-
+    /// dialog — the web-search consent and destructive-confirm results then render
+    /// into an already-hidden panel ("search did nothing"). Suppress across the modal.
+    @discardableResult
+    func withResignHideSuppressed<T>(_ body: () -> T) -> T {
+        let previous = suppressResignHide
+        suppressResignHide = true
+        resignHideWork?.cancel()
+        defer {
+            suppressResignHide = previous
+            resignHideWork?.cancel()
+        }
+        return body()
     }
 
     @objc private func windowDidResignKey(_ note: Notification) {
@@ -715,7 +735,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         alert.informativeText = "This action cannot be undone from Summon."
         alert.addButton(withTitle: "Continue")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
+        return withResignHideSuppressed { alert.runModal() == .alertFirstButtonReturn }
     }
 
     private func showConfirmationFailure(_ message: String, query: String) {
