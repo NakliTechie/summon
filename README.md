@@ -16,7 +16,7 @@ macOS Sonoma 14+ (on-device AI needs Apple Intelligence / macOS 26+). The 0.6.x 
 
 - **Launcher** — ⌥Space: fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, window layouts. Select → Tab / ⌘K → act.
 - **Clipboard history** — ⌥⇧C: local text, image, HTML, RTF, with an ignore list for sensitive apps.
-- **On-device AI** — answers from Apple Foundation Models, on your Mac. Safe actions run instantly ("set the volume to 30"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run.
+- **On-device AI** — answers from Apple Foundation Models, on your Mac. Safe actions run instantly ("set the volume to 30"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run — [how the harness guarantees that](docs/harness.md).
 - **Web search** — keyless Wikipedia floor by default; opt-in SearXNG for full search. Only your query leaves; the first search asks permission.
 - **Agent face** — local CLI + default-off UNIX socket; every call journaled with `actor=`.
 
