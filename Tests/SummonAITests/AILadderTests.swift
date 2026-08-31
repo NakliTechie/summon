@@ -198,7 +198,6 @@ final class AILadderTests: XCTestCase {
         XCTAssertTrue(ids.contains(.l1Apple))
         XCTAssertTrue(ids.contains(.l0Packaged))
         XCTAssertFalse(ids.contains(.l2LocalRuntime))
-        XCTAssertFalse(ids.contains(.l3BYOK))
     }
 
     private func temporaryModelsContainer() -> URL {

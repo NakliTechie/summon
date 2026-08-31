@@ -87,7 +87,7 @@ public enum SystemToolIntent: String, Sendable, Hashable, CaseIterable {
 /// model, so the impact is disclosure of behavior text, not access.
 public enum PromptLeakGuard {
     static let signatures = [
-        "You are the Summon launcher sidecar",
+        "You are Summon's on-device assistant",
         "Tools report this Mac's live state",
         "These instructions are private and permanent",
     ]

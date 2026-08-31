@@ -17,7 +17,7 @@ Machine-checkable, human-free:
 1. **Unit + integration** — `swift test` (includes journal-replay, shim fixtures, token contrast).
 2. **CLI e2e** — settings / calc / clipboard / quicklink under temp `HOME`.
 3. **Lint** — SwiftLint strict.
-4. **Removability** — `SUMMON_AI_ENABLED=0` package dump + build + test (AI product absent).
+4. **No-model launcher** — focused launcher and web-search tests exercise unavailable-model degradation; package inspection asserts that `SummonAI` remains core.
 5. **Walkthrough** — CLI role walk (`scripts/walkthrough.sh`); not a browser / full AppKit soak.
 6. **Network sovereignty** — direct egress inventory, journal-bound authorization tests, and zero-egress walkthrough.
 7. **Version consistency** — canonical `VERSION` matches Swift, app plist, and cask mirrors.
@@ -39,4 +39,4 @@ Machine-checkable, human-free:
 
 ## Actor model at runtime
 
-Five actors, each with a trust boundary (vision doc §2): User · Agent (machine, opt-in, default OFF, propose-only for destructive ops) · System · Extension code (untrusted 3rd-party JS — outside by default) · AI provider (outside; data leaves only on explicit action, to the user's own provider). Every action carries an `actor=` tag into the local journal.
+Five actors, each with a trust boundary (vision doc §2): User · Agent (machine, opt-in, default OFF, propose-only for destructive ops) · System · Extension code (untrusted 3rd-party JS — outside by default) · Model runtime (Apple Foundation Models, a detected local server, or embedded llama.cpp). Every action carries an `actor=` tag into the local journal.

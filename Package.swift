@@ -16,15 +16,8 @@ var products: [Product] = [
     .executable(name: "summon-app", targets: ["summon-app"]),
 ]
 
-var cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
-var appDeps: [Target.Dependency] = ["SummonCore", "SummonUI"]
-var cliSettings: [SwiftSetting] = []
-var appSettings: [SwiftSetting] = []
-
-cliDeps.append("SummonAI")
-appDeps.append("SummonAI")
-cliSettings.append(.define("SUMMON_AI"))
-appSettings.append(.define("SUMMON_AI"))
+let cliDeps: [Target.Dependency] = ["SummonCore", "SummonUI", "SummonAI"]
+let appDeps: [Target.Dependency] = ["SummonCore", "SummonUI", "SummonAI"]
 
 var targets: [Target] = [
     .target(
@@ -59,7 +52,6 @@ var targets: [Target] = [
         name: "summon-cli",
         dependencies: cliDeps,
         path: "Sources/summon-cli",
-        swiftSettings: cliSettings,
         linkerSettings: [
             .linkedFramework("AppKit"),
             .linkedFramework("Carbon"),
@@ -69,7 +61,6 @@ var targets: [Target] = [
         name: "summon-app",
         dependencies: appDeps,
         path: "Sources/summon-app",
-        swiftSettings: appSettings,
         linkerSettings: [
             .linkedFramework("AppKit"),
             .linkedFramework("Carbon"),

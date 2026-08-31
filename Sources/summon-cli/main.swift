@@ -1,9 +1,7 @@
 import Foundation
 import SummonCore
 import SummonUI
-#if SUMMON_AI
 import SummonAI
-#endif
 
 struct SummonCLI {
     /// Default `.user` for interactive CLI; set via `--actor agent` for automation.
@@ -332,7 +330,6 @@ struct SummonCLI {
     }
 
     static func aiCommand(_ args: [String]) throws {
-        #if SUMMON_AI
         guard let sub = args.first else {
             fputs("usage: summon ai status|complete <prompt>\n", stderr)
             exit(2)
@@ -442,13 +439,8 @@ struct SummonCLI {
             fputs("error: unknown ai subcommand '\(sub)'\n", stderr)
             exit(2)
         }
-        #else
-        fputs("error: AI target compiled out (SUMMON_AI_ENABLED=0)\n", stderr)
-        exit(1)
-        #endif
     }
 
-    #if SUMMON_AI
     private static func fetchL0Model(core: SummonCore) throws {
         try requireUserOperation(.modelFetch)
         let store = try FileL0WeightStore()
@@ -494,10 +486,8 @@ struct SummonCLI {
             exit(1)
         }
     }
-    #endif
 
     static func webCommand(_ args: [String]) throws {
-        #if SUMMON_AI
         guard let sub = args.first else {
             fputs("usage: summon web enable|disable|search <q> [--enrich]|answer <q>\n", stderr); exit(2)
         }
@@ -594,9 +584,6 @@ struct SummonCLI {
         default:
             fputs("error: unknown web subcommand\n", stderr); exit(2)
         }
-        #else
-        fputs("error: AI/web compiled out\n", stderr); exit(1)
-        #endif
     }
 
     static func windowCommand(_ args: [String]) throws {

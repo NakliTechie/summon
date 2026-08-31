@@ -1,6 +1,6 @@
 # Summon
 
-A sovereign, native macOS launcher. Local-first, free, open source (AGPL-3.0). No account, no server, no telemetry. On-device AI as a removable sidecar.
+A sovereign, native macOS launcher. Local-first, free, open source (AGPL-3.0). No account, no server, no telemetry. On-device AI is core; the launcher degrades cleanly when no model is available.
 
 **[📖 Visual guide](https://naklitechie.github.io/summon/guide/)** — every screen, captioned and searchable.
 
@@ -17,7 +17,7 @@ macOS Sonoma 14+ (on-device AI needs Apple Intelligence / macOS 26+). The 0.6.x 
 - **Launcher** — ⌥Space: fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, window layouts. Select → Tab / ⌘K → act.
 - **Clipboard history** — ⌥⇧C: local text, image, HTML, RTF, with an ignore list for sensitive apps.
 - **On-device AI** — answers from Apple Foundation Models, on your Mac. Safe actions run instantly ("set the volume to 30"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run — [how the harness guarantees that](docs/harness.md).
-- **Web search** — keyless Wikipedia floor by default; opt-in SearXNG for full search. Only your query leaves; the first search asks permission.
+- **Web search** — keyless Wikipedia floor by default; opt-in SearXNG for full search. The first search asks permission; SearXNG may forward the query to its configured upstream engines.
 - **Agent face** — local CLI + default-off UNIX socket; every call journaled with `actor=`.
 
 ## Built on Apple frameworks
@@ -35,19 +35,19 @@ Apple-native throughout — no Electron, no web view: **AppKit/SwiftUI** for the
 
 ## Sovereignty
 
-No account, no server, no telemetry — not even opt-in. Data leaves only on explicit action, to your chosen provider. Sovereignty and AI removability are enforced as first-class test gates.
+No account, no server of ours, no telemetry — not even opt-in. Network access follows an explicit action and a journal-bound authorization. Local model requests stay on the Mac; web queries reach the selected search backend and its configured upstream engines. Sovereignty and no-model launcher degradation are first-class test gates.
 
 ## Develop
 
 ```bash
 make build     # SPM debug build
 make test
-make verify    # merge gate: tests, lint, CLI, sovereignty, removability, latency
+make verify    # merge gate: tests, lint, CLI, sovereignty, no-model launcher, latency
 make battery   # gated batteries: 1000-probe routing + deterministic-surface + Macaw-parity
 make app       # ad-hoc Summon.app under dist/
 ```
 
-SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (dev-only) · `SummonAI` (optional, `SUMMON_AI_ENABLED`) · `summon-cli` · `summon-app`. Specs in [`docs/`](docs/).
+SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (dev-only) · `SummonAI` (always built; embedded llama.cpp gated by `SUMMON_LLAMA`) · `summon-cli` · `summon-app`. Specs in [`docs/`](docs/).
 
 ## License
 

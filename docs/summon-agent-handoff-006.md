@@ -18,8 +18,7 @@ embedded Node) and D4 (Sparkle) resolve with evidence at checkpoint C0.
 - Layout: Swift Package Manager workspace. Targets: `SummonCore` (action bus,
   stores, index — zero AppKit imports, headless-testable), `SummonUI`
   (AppKit/SwiftUI), `SummonShim` (JS runtime + reconciler), `SummonAI`
-  (ladder + sidecars — **compiled out via build flag for the removability
-  gate**), `summon-cli`.
+  (core, always-built ladder + task-attached capabilities), `summon-cli`.
 - Build: `xcodebuild` via `Makefile` wrappers: `make build`, `make test`,
   `make verify` (the full gate suite), `make release` (archive, sign,
   notarize, staple, zip, appcast entry).
@@ -34,7 +33,8 @@ embedded Node) and D4 (Sparkle) resolve with evidence at checkpoint C0.
 
 macOS 14.0+. Apple Foundation Models rung requires newer OS + Apple
 Intelligence hardware — **detect at runtime**, never a build split and never a
-settings toggle. Below the floor for L1, the ladder starts at L2. Universal
+settings toggle. Below the Apple Foundation Models floor, the ladder uses a
+detected local server or the embedded llama path. Universal
 binary (arm64 + x86_64); latency budget asserted on arm64 only.
 
 ## 3. Design tokens + icons
@@ -58,20 +58,20 @@ UX reference:
   UX reference — never a blank pane).
 - Errors state what happened and the next action, in interface voice. Never a
   raw NSError, never an apology.
-- **Degraded-AI is a designed state, not an error**: AI rung unavailable → the
-  sidecar affordance dims with a one-line status ("On-device model
+- **Degraded-AI is a designed state, not an error**: model unavailable → the
+  AI affordance dims with a one-line status ("On-device model
   unavailable — search still works"), the deterministic floor keeps working,
   nothing modal appears. This state is in the UX reference; build it exactly.
 - Model/weight downloads: explicit consent sheet with size before any fetch.
-  L0 weights: fetched from the HF `naklitechie` mirror, **verified against the
+  Embedded-model weights: fetched from the HF `naklitechie` mirror, **verified against the
   pinned hash before load — mismatch fails loud, never falls back silently**;
   stored under `.../Summon/Models/`, rebuildable, excluded from exports
-  (derived data). Declining L0 is a first-class path: ladder rides L1+.
-  **Residency policy:** weights lazy-load (mmap) on first sidecar invocation
+  (derived data). Declining the embedded model is a first-class path.
+  **Residency policy:** weights lazy-load (mmap) on first AI invocation
   and unload after an idle TTL — automatic, never a setting; the launcher's
   own footprint stays lean when AI is idle. **Intel honesty:**
-  where CPU-only inference misses the sidecar latency floor, detection ranks
-  that machine L2/L3-first with L0 available-but-not-default — per the
+  where CPU-only inference misses the AI latency floor, detection keeps the
+  embedded model available without making it the default — per the
   Edge-First honesty rule, decided silently per machine. The engine is
   embedded in-process (no daemon); Summon never installs, requires, or
   launches Ollama or any external runtime on the user's behalf — L2 rides
@@ -86,8 +86,7 @@ UX reference:
 **Allowed:** SQLite (GRDB or raw) under
 `~/Library/Application Support/Summon/` for clipboard history, snippets,
 quicklinks, action journal, index metadata; `UserDefaults` for lightweight
-prefs; macOS Keychain for every secret (BYOK keys, nothing else qualifies as a
-secret store); per-extension namespaced storage under
+prefs; macOS Keychain for every secret; per-extension namespaced storage under
 `.../Summon/Extensions/<id>/` only.
 
 **Forbidden:** secrets in files or UserDefaults · any write outside the app
@@ -132,8 +131,8 @@ in a token unit test). `/walkthrough` runs once with VoiceOver enabled.
    state byte-equal (spine invariant 7/8).
 3. **Latency**: scripted invoke-to-visible < 50 ms, keystroke-to-results
    < 16 ms on the CI arm64 runner, p95 over 100 runs.
-4. **Removability**: full suite minus `SummonAI` (build flag) — everything
-   green with the AI target absent.
+4. **No-model launcher**: focused launcher and search tests exercise unavailable
+   model behavior; package inspection asserts that `SummonAI` remains core.
 5. **Sovereignty/network**: instrumented run of the full walkthrough script
    asserts the only egress is the appcast fetch (and user-invoked AI calls in
    AI-enabled runs, each matched to a journal record of what left).
@@ -158,7 +157,7 @@ doc are **labels on checkpoints only**.
 | 2 | Shim spike (JSC + reconciler, 3 extensions) | **C0**: shim fixture harness green — or budget/no-progress exit → shim parked with tried-trail, chunks renumber, nothing else moves |
 | 3 | Launcher core modules (M1 list), search S1 (Spotlight index + filter grammar) + object→action grammar | **C1**: gate suite §8.1–5 + filter-grammar fixture parse tests |
 | 4 | Power modules (M2 list), App Intents surface, search S2 (FTS5 index, consent sheet, invisible/unindexed coverage) | **C2**: per-module fixtures + annotator round-trip + App Intents enumeration fixture + S2 index/rebuild round-trip on a fixture corpus |
-| 5 | **Opens with D7/D8 probe** (llama.cpp-Metal vs MLX-Swift on the pinned E2B quant: latency, memory, multimodal paths — evidence written to state file, decision journaled) · AI ladder L0–L3 + sidecars (M3 list), search S3 (embeddings over S2) | **C3**: removability (S1/S2 fully green with `SummonAI` compiled out) + both ladder-detection matrices + egress assertions + **golden sidecar fixtures against the hash-pinned L0 quant** (NL→command and screenshot-ask outputs graded by deterministic checks — parseable action, schema-valid — not string equality) |
+| 5 | Embedded llama.cpp implementation + core AI capabilities (M3 list), search S3 (embeddings over S2) | **C3**: no-model launcher checks + Apple/local/embedded detection matrices + egress assertions + golden capability fixtures against the hash-pinned embedded quant |
 | 6 | Shim productionized, package import, sync, i18n passes (M4 list) | **C4**: 10-extension harness + sandbox suite + backup round-trip |
 | 7 | `/walkthrough` all roles (human, agent-via-socket, extension), `/guide` generation, release dry-run | **C5**: walkthrough log clean + `make release` produces an installable artifact |
 
@@ -224,8 +223,8 @@ the shape.
   commits without staging (`staged` amber state) and explicit accept.
 - No ambient/background AI calls; invocation is always an explicit action.
 - No chat window (v1 locked; revisit is a Chirag-only decision).
-- No engine picker / provider dropdown as primary UX — ladder is detected;
-  the only visible controls are the elevation offer and BYOK entry.
+- No engine picker / provider dropdown as primary UX — the local-only ladder
+  is detected; the only visible control is an embedded-model elevation offer.
 - No CloudKit, no relay, no hosted sync.
 - Never install, require, or auto-launch an external inference runtime
   (Ollama, LM Studio, or any daemon) on the user's behalf — detect and ride
@@ -244,7 +243,7 @@ the shape.
 
 User-facing only: what it does, brew install line, permissions it will ask for
 and why, the sovereignty statement (no account / no server / no telemetry, and
-what "local" means per rung — the Sidecar honesty rule, stated plainly),
+what "local" means for each runtime — the egress-honesty rule, stated plainly),
 Extension migration note, agent-face quickstart, screenshot. No architecture
 essays, no model names, no line counts.
 

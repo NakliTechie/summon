@@ -111,7 +111,7 @@
     border:1px solid var(--hairline);border-radius:10px;margin-bottom:10px;background:var(--surface)}
   .lamp{width:9px;height:9px;border-radius:50%;flex:none}
   .lamp.ok{background:var(--ok)} .lamp.off{background:#B0AA9C} .lamp.key{background:var(--accent)}
-  .rung .rl{font:600 11px ui-monospace,monospace;color:var(--dim);width:26px}
+  .rung .rl{font:600 11px ui-monospace,monospace;color:var(--dim);width:48px}
   .rung .rn{color:var(--text);font-size:13.5px}
   .rung .rs{margin-left:auto;font-size:11.5px;color:var(--dim)}
   .rung .lift{margin-left:auto}
@@ -178,7 +178,7 @@
 <!-- LAUNCHER -->
 <section id="launcher" class="on">
   <h2>Launcher bar + results</h2>
-  <p class="rule">One surface, four states. The sidecar attaches <em>inside the bar</em> — typed intent that misses the fuzzy index offers an AI proposal as a <b>staged</b> card. Toggle the states; the proposal card is editable and never auto-runs.</p>
+  <p class="rule">One surface, four states. AI attaches <em>inside the bar</em> — typed intent that misses the fuzzy index offers an AI proposal as a <b>staged</b> card. Toggle the states; the proposal card is editable and never auto-runs.</p>
   <div class="toggles" id="ltg">
     <button class="tg on" data-m="fuzzy">fuzzy results</button>
     <button class="tg" data-m="staged">nl → command (staged)</button>
@@ -241,7 +241,7 @@
 <!-- CLIPBOARD -->
 <section id="clipboard">
   <h2>Clipboard history</h2>
-  <p class="rule">Unlimited, local SQLite. Keyword search is the floor; semantic search is the sidecar riding on local embeddings — same box, better recall, zero setup.</p>
+  <p class="rule">Unlimited, local SQLite. Keyword search is the floor; semantic search rides local embeddings — same box, better recall, zero setup.</p>
   <div class="stage"><div class="panel">
     <div class="qrow"><span class="glyph">⧉</span><input value="that invoice number" aria-label="Search clipboard"></div>
     <div class="list">
@@ -261,23 +261,22 @@
 <!-- LADDER -->
 <section id="ladder">
   <h2>The ladders — detected, never configured</h2>
-  <p class="rule">This is the <em>entire</em> AI + search settings surface. No provider dropdown, no engine picker. Lamps show what the machine already offers; the only actions are the elevation offers (Ollama setup, S2 index build with disk cost stated) and BYOK entry.</p>
+  <p class="rule">This is the <em>entire</em> AI + search settings surface. No provider dropdown, no engine picker. Lamps show what the machine already offers; the only actions are the embedded-model download and S2 index build, with costs stated.</p>
   <div class="stage"><div style="width:520px;max-width:100%">
-    <div class="rung"><span class="lamp off"></span><span class="rl">L0</span><span class="rn">Summon's brain — Gemma E2B</span><button class="btn lift" style="border-color:var(--staged);color:var(--staged);background:none">Download — 2.6 GB</button></div>
-    <div class="rung"><span class="lamp ok"></span><span class="rl">L1</span><span class="rn">On-device (Apple)</span><span class="rs">active now · nothing leaves this Mac</span></div>
-    <div class="rung"><span class="lamp ok"></span><span class="rl">L2</span><span class="rn">Ollama · localhost</span><span class="rs">detected · qwen3:8b</span></div>
-    <div class="rung"><span class="lamp key"></span><span class="rl">L3</span><span class="rn">Your own key</span><button class="btn lift">Add key → Keychain</button></div>
-    <div class="deg" style="margin:14px 0 18px"><span class="d"></span>Keys live in your macOS Keychain and go only to your provider. Summon has no server.</div>
+    <div class="rung"><span class="lamp ok"></span><span class="rl">Apple</span><span class="rn">Foundation Models</span><span class="rs">available · on-device</span></div>
+    <div class="rung"><span class="lamp ok"></span><span class="rl">Local</span><span class="rn">Ollama · localhost</span><span class="rs">detected · user-managed</span></div>
+    <div class="rung"><span class="lamp off"></span><span class="rl">Embed</span><span class="rn">Summon's embedded model</span><button class="btn lift" style="border-color:var(--staged);color:var(--staged);background:none">Download — size shown here</button></div>
+    <div class="deg" style="margin:14px 0 18px"><span class="d"></span>Model prompts stay on this Mac. Summon has no model server.</div>
     <div class="eyebrow" style="margin-bottom:8px">Search ladder — same pattern</div>
     <div class="rung"><span class="lamp ok"></span><span class="rl">S1</span><span class="rn">Spotlight index</span><span class="rs">active · filter grammar on top</span></div>
     <div class="rung"><span class="lamp off"></span><span class="rl">S2</span><span class="rn">Full-text index</span><button class="btn lift">Build index — ~1.2 GB</button></div>
     <div class="rung"><span class="lamp off"></span><span class="rl">S3</span><span class="rn">Semantic recall</span><span class="rs">rides S2 · on-device</span></div>
   </div></div>
   <div class="notes">
-    <div class="note"><span class="pin amb">1</span>L0 download button borrows the staged amber — a cost awaiting the user's word. Consent sheet states size + hash; declining is first-class, the ladder simply rides L1+. Once installed, the same model powers text, screenshot-ask, and dictation.</div>
-    <div class="note"><span class="pin">2</span>Below the L1 hardware floor, that rung simply doesn't render — detection, not a disabled toggle.</div>
-    <div class="note"><span class="pin">2</span>Elevation offer (guided Ollama setup) appears only when L2 is absent and L1 quality misses a task's floor. Offered, never forced.</div>
-    <div class="note"><span class="pin amb">3</span>Every sidecar call journals rung + payload summary; the per-call “what left” line is user-visible, honoring the key-never-leaves ≠ data-never-leaves rule.</div>
+    <div class="note"><span class="pin amb">1</span>The embedded-model download uses staged amber — a cost awaiting the user's word. The consent sheet states size + hash; declining is first-class.</div>
+    <div class="note"><span class="pin">2</span>Unavailable runtimes do not render as disabled choices — detection owns the list.</div>
+    <div class="note"><span class="pin">2</span>Summon detects an already-running local server; it never installs or launches an external inference runtime.</div>
+    <div class="note"><span class="pin amb">3</span>Every AI call journals runtime + payload summary; the per-call “what crossed a network boundary” line is user-visible.</div>
   </div>
 </section>
 

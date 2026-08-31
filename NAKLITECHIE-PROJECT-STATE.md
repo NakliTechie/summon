@@ -2,6 +2,16 @@
 
 ## Status
 
+**2026-08-31** — AI-core truth and Apple-outreach cleanup on `main`:
+
+- Removed the phantom `SUMMON_AI_ENABLED` contract and dead executable compile branches; `SummonAI` is an unconditional app/CLI dependency.
+- Added `make no-model-launcher` to exercise degraded launcher copy, fetched-link fallback, and the always-core package graph.
+- Reconciled README, agent instructions, the three-file spec bundle, source comments, and current ladder state with the 2026-08-09 AI-core/local-only decision.
+- Removed the unused cloud/BYOK rung case; retained the serialized `L0`/`L1`/`L2` names and current priority until a separate decision settles migration and order.
+- Corrected public web-search language: explicit opt-in may install Apple `container` through Homebrew; loopback SearXNG may forward queries to configured upstream engines.
+- `make verify`: 439 tests, 10 skipped live-gated tests, 0 failures; SwiftLint 178 files, 0 violations; no-model, extension omission, walkthrough, network sovereignty, version consistency, and hard latency stages passed.
+- Prepared channel-specific `apple/container` and Foundation Models posts outside the repository; publication follows the pushed cleanup.
+
 **2026-08-06** — Post daily-driver session on `main` (@ `4b236e4`):
 
 - Brand: sigil mark shipped (flowing cyan "S" + gem on teal-black squircle); SVG masters + macOS iconset/`.icns` + menu-bar template + size set in `assets/brand/sigil`; app icon wired into `build-app.sh` + `Info.plist`; new build installed and running (`⌥⇧C` + sigil icon; installed binary SHA matches the build)
@@ -34,9 +44,9 @@
 - Store mutation journaling, import/export, FTS consent, replay recovery, and app/CLI contention use atomic and bounded paths
 - The empty launcher exposes five routable starters plus persisted recents and favorites
 - Preferences route to five task groups; fixture App Intents, Calendar, and menu-item search remain hidden from production
-- Experimental local L0 uses immutable official revisions, full artifact digests, exact-model consent, quarantine, and bounded user-managed MLX/Hugging Face processes
+- The experimental packaged-model seam uses immutable official revisions, full artifact digests, exact-model consent, quarantine, and bounded user-managed MLX/Hugging Face processes
 - The native launcher offers explicit AI staging on missed natural-language queries, retains edit/accept/reject review, and exposes ladder availability through AI Status
-- `make verify` requires full and AI-off suites, CLI e2e, lint, extension omission, walkthrough, network sovereignty, version consistency, and hard latency
+- `make verify` requires the full suite, no-model launcher checks, CLI e2e, lint, extension omission, walkthrough, network sovereignty, version consistency, and hard latency
 - Brand concept v1 uses the sigil-violet portal-and-spark direction; application asset integration remains open
 
 **Not** notarized / public cask yet. **Phase H** (Dev ID) remains last.
@@ -106,4 +116,4 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 ## Ladder
 
-L1 Apple FM — **verified available now** on the M4 gate host (macOS 26.5.2, 3B/2-bit, framework GA); wiring is Chunk C. → experimental user-managed L0 MLX (unavailable if binary, consent, authenticated weights, or storage is missing). Packaged L0 (llama.cpp+Metal, D7), L2, and L3 remain roadmap-only.
+Apple Foundation Models is available on the M4 gate host. A running Ollama or LM Studio server is the current local-server path. The embedded llama.cpp path remains unbuilt. Cloud model providers remain outside the product. Public rung names and Apple-first versus detected-server-first priority remain open.

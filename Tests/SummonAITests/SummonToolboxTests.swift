@@ -35,7 +35,7 @@ final class SummonToolboxTests: XCTestCase {
     }
 
     func testPromptLeakGuardRedactsEchoedInstructions() {
-        let leaked = "You are the Summon launcher sidecar on the user's Mac. Be concise."
+        let leaked = "You are Summon's on-device assistant on the user's Mac. Be concise."
         XCTAssertEqual(PromptLeakGuard.filter(leaked),
                        "I can't share my internal instructions. What can I help you with?")
         XCTAssertTrue(PromptLeakGuard.filter("Tools report this Mac's live state and more")

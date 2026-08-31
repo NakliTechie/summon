@@ -4,10 +4,8 @@
 SHELL := /bin/bash
 SWIFT := swift
 BUILD_FLAGS :=
-# Removability: SUMMON_AI_ENABLED=0 make build  (omits SummonAI product)
-export SUMMON_AI_ENABLED ?= 1
 
-.PHONY: build test verify release clean cli-e2e lint extension-omission app cask-local distribution-local l1-probe battery walkthrough latency-soft latency-hard network-sovereignty version-consistency help
+.PHONY: build test verify release clean cli-e2e lint no-model-launcher extension-omission app cask-local distribution-local l1-probe battery walkthrough latency-soft latency-hard network-sovereignty version-consistency help
 
 help:
 	@echo "Targets: build test verify app cask-local l1-probe walkthrough release clean …"
@@ -68,6 +66,16 @@ lint:
 		exit 1; \
 	fi
 
+# AI is core and always linked. These focused tests assert that launcher and
+# search surfaces degrade without an available model instead of dead-ending.
+no-model-launcher:
+	$(SWIFT) test $(BUILD_FLAGS) --filter LauncherAIIntegrationTests.testUnavailableAIUsesDesignedDegradedCopy
+	$(SWIFT) test $(BUILD_FLAGS) --filter WebSearchFlowBatteryTests.testHitsWithoutModelReturnResults
+	@PACKAGE_JSON=$$(mktemp /tmp/summon-package.XXXXXX); \
+		$(SWIFT) package dump-package >"$$PACKAGE_JSON"; \
+		python3 -c "import json,sys; d=json.load(open(sys.argv[1])); t={x['name']:x for x in d['targets']}; assert 'SummonAI' in str(t['summon-cli']['dependencies']); assert 'SummonAI' in str(t['summon-app']['dependencies'])" "$$PACKAGE_JSON"; \
+		echo "no-model-launcher: degraded launcher and fetched-link fallback exercised; SummonAI remains core"
+
 # R1 product decision: the development shim remains testable but is absent from shipping executables.
 extension-omission: build
 	@set -euo pipefail; \
@@ -83,8 +91,8 @@ extension-omission: build
 	echo "extension-omission: shipping executables omit SummonShim and JavaScriptCore"
 
 # Merge gate: hard latency, network sovereignty, and version consistency run beside the product suites.
-verify: test cli-e2e lint extension-omission walkthrough network-sovereignty version-consistency latency-hard
-	@echo "verify: unit+integration + journal-replay + cli-e2e + shim + lint + extension-omission + walkthrough + network-sovereignty + version-consistency + latency-hard"
+verify: test cli-e2e lint no-model-launcher extension-omission walkthrough network-sovereignty version-consistency latency-hard
+	@echo "verify: unit+integration + journal-replay + cli-e2e + shim + lint + no-model-launcher + extension-omission + walkthrough + network-sovereignty + version-consistency + latency-hard"
 
 # Soft p95 sample (Batch F) — always exit 0; prints budget comparison.
 latency-soft: build

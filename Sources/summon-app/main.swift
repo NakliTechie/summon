@@ -3,9 +3,7 @@ import Carbon
 import Foundation
 import SummonCore
 import SummonUI
-#if SUMMON_AI
 import SummonAI
-#endif
 
 /// Menu-bar host: ⌥Space launcher, ⌥⇧C clipboard history, resident pasteboard capture, login item.
 @main
@@ -41,9 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var webSearchSetup: WebSearchSetupController?
     var onboarding: OnboardingWindowController?
     let loginChoicePromptedKey = "onboarding.loginChoicePrompted"
-    #if SUMMON_AI
     var aiService: SummonAIService?
-    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -54,7 +50,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             webSearchSetup = WebSearchSetupController(core: core, scriptPath: bundledSearxngUpPath())
             let needsFirstRunLoginChoice = shouldOfferFirstRunLoginChoice()
 
-            #if SUMMON_AI
             let service = SummonAIService.production(core: core)
             aiService = service
             panel = LauncherPanelController(
@@ -62,12 +57,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 aiIntegration: makeAIIntegration(service: service),
                 onNavigate: { [weak self] destination in self?.open(destination: destination) }
             )
-            #else
-            panel = LauncherPanelController(
-                core: core,
-                onNavigate: { [weak self] destination in self?.open(destination: destination) }
-            )
-            #endif
             clipboardHistory = ClipboardHistoryController(core: core)
             core.setExecutor(
                 ProcessModuleExecutor(
@@ -213,13 +202,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             action: #selector(showPreferencesMenu),
             keyEquivalent: ","
         ))
-        #if SUMMON_AI
         menu.addItem(NSMenuItem(
             title: "AI Status…",
             action: #selector(showAIStatus),
             keyEquivalent: ""
         ))
-        #endif
         menu.addItem(NSMenuItem.separator())
         let login = NSMenuItem(
             title: LoginItemService.isEnabled ? "Launch at Login ✓" : "Launch at Login",
@@ -502,7 +489,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.beginSheetModal(for: panel.panel)
     }
 
-    #if SUMMON_AI
     private func makeAIIntegration(service: SummonAIService) -> LauncherAIIntegration {
         LauncherAIIntegration(
             handler: { [weak service] prompt in
@@ -565,7 +551,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             prewarm: { [weak service] in Task { await service?.prewarm() } }
         )
     }
-    #endif
 
     private func open(destination: AppDestination) {
         panel.hide()
@@ -626,7 +611,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showPreferences(section: .general)
     }
 
-    #if SUMMON_AI
     @objc func showAIStatus() {
         guard let aiService else { return }
         Task { @MainActor in
@@ -642,7 +626,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             alert.runModal()
         }
     }
-    #endif
 
     @objc func toggleLoginItem() {
         let next = !LoginItemService.isEnabled

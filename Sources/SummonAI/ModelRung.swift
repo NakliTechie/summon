@@ -6,7 +6,6 @@ public enum ModelRungID: String, Sendable, Hashable, Codable, CaseIterable {
     case l0Packaged = "L0"
     case l1Apple = "L1"
     case l2LocalRuntime = "L2"
-    case l3BYOK = "L3"
     case fake = "fake"
 }
 
@@ -23,7 +22,7 @@ public enum RungAvailability: Sendable, Hashable, Equatable {
 public struct ModelCompletion: Sendable, Hashable, Equatable {
     public let text: String
     public let rung: ModelRungID
-    /// What left the machine (Sidecar honesty). Empty ⇒ fully on-device.
+    /// What left the machine (egress honesty). Empty ⇒ fully on-device.
     public let egressSummary: String
 
     public init(text: String, rung: ModelRungID, egressSummary: String = "") {

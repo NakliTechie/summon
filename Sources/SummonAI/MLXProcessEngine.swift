@@ -20,7 +20,7 @@ public struct MLXProcessL0Engine: L0InferenceEngine, Sendable {
     public init(
         generateBinary: String,
         maxTokens: Int = 256,
-        systemPrompt: String = "You are Summon's on-device sidecar. Be concise. Stage, never claim execution.",
+        systemPrompt: String = "You are Summon's on-device assistant. Be concise. Stage, never claim execution.",
         timeout: TimeInterval = 120
     ) {
         self.generateBinary = generateBinary
