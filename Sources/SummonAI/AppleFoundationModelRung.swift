@@ -29,6 +29,25 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
         #endif
     }
 
+    /// Best-effort warm of the *shared system model*, not of the session that
+    /// will generate. Apple staff, Developer Forums thread 844222 (2026-09-01):
+    /// prewarming is guaranteed only for the `LanguageModelSession` instance it
+    /// is called on, and even that is best-effort — the OS may ignore the call
+    /// while other apps hold the model, and may unload the model between
+    /// requests. A later session "might" benefit, "dependent on the state of
+    /// the system and generally you cannot know".
+    ///
+    /// The session built here is deliberately discarded: `complete` constructs
+    /// its own session with the query's matched tools, and Summon keeps one
+    /// session per query on purpose (per-query independence + the deterministic
+    /// tool gate in `SummonToolbox`). Apple's "keep one session" guidance
+    /// answers a latency question for a conversational app; a retained session
+    /// accumulates a transcript with no reset API, which a one-shot launcher
+    /// must not carry across unrelated queries. So this call claims nothing
+    /// about the generation session's latency — it is an unguaranteed warm of a
+    /// shared resource, kept because the downside is one discarded allocation.
+    /// Whether it earns its place is measured at the native acceptance pass
+    /// (two arms: no prewarm vs prewarm).
     public func prewarm() {
         #if canImport(FoundationModels)
         guard case .available = SystemLanguageModel.default.availability else { return }
