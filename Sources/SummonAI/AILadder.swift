@@ -87,7 +87,8 @@ public final class AILadder: @unchecked Sendable {
         return try await rung.complete(prompt: prompt)
     }
 
-    /// Best-effort preload of the preferred rung's model (e.g. on first keystroke).
+    /// Best-effort, unguaranteed preload of the preferred rung's model (e.g. on
+    /// first keystroke). No latency guarantee for the generating session.
     public func prewarm() async {
         if let rung = await preferredRung() { rung.prewarm() }
     }
