@@ -153,6 +153,31 @@ final class WebSearchInstallerTests: XCTestCase {
         )
     }
 
+    /// harden C5 (2026-09-10): a runtime command that hangs must be bounded by the
+    /// runner's timeout so a launch-time reconcile can never hang the lifecycle task.
+    func testSubprocessRunnerTimeoutTerminatesAHungChild() async {
+        let runner = SubprocessRunner(timeout: 1)
+        let start = Date()
+        let outcome = await runner.run("/bin/sleep", ["20"], env: ["PATH": "/usr/bin:/bin"])
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 5, "runner must return shortly after the 1 s timeout, took \(elapsed)s")
+        XCTAssertEqual(outcome.exitCode, -1)
+        XCTAssertTrue(outcome.output.contains("timed out after 1s"), outcome.output)
+    }
+
+    func testSubprocessRunnerDrainsLargeOutputWithoutDeadlock() async {
+        // > 64 KiB (the pipe buffer) written before exit; a reader that starts only
+        // after termination would deadlock here.
+        let runner = SubprocessRunner(timeout: 10)
+        let outcome = await runner.run(
+            "/bin/sh", ["-c", "head -c 300000 /dev/zero | tr '\\0' 'x'; echo; echo done"],
+            env: ["PATH": "/usr/bin:/bin"]
+        )
+        XCTAssertEqual(outcome.exitCode, 0)
+        XCTAssertGreaterThan(outcome.output.count, 300_000)
+        XCTAssertTrue(outcome.output.hasSuffix("done\n"))
+    }
+
     func testSettingFailureIsTerminalFailure() async {
         struct EnableError: Error {}
         let installer = makeInstaller(
