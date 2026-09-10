@@ -42,7 +42,7 @@ final class LauncherLiveProbeTests: XCTestCase {
                 switch try await service.searchAndAnswer(
                     query: prompt, provider: WikipediaSearchClient(), allowOnce: true, actor: .user
                 ) {
-                case let .answer(text, rung, sources):
+                case let .answer(text, rung, sources, _):
                     return .answer(text: text, sources: sources.map { "\($0.title) — \($0.url)" },
                                    rung: rung.rawValue)
                 case let .needsConsent(host): return .needsConsent(host: host)
@@ -106,7 +106,7 @@ final class LauncherLiveProbeTests: XCTestCase {
                 switch try await service.searchAndAnswer(
                     query: prompt, provider: WikipediaSearchClient(), allowOnce: true, actor: .user
                 ) {
-                case let .answer(text, rung, sources):
+                case let .answer(text, rung, sources, _):
                     return .answer(text: text, sources: sources.map { "\($0.title) — \($0.url)" },
                                    rung: rung.rawValue)
                 case let .needsConsent(host): return .needsConsent(host: host)

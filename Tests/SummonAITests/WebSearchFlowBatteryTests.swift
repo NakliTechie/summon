@@ -61,7 +61,7 @@ final class WebSearchFlowBatteryTests: XCTestCase {
         let service = try makeService(model: FakeModelRung(cannedText: "SYNTHESIZED"), webEnabled: true)
         try service.grantWebSearchConsentAlways()
         let outcome = try await service.searchAndAnswer(query: "q", provider: provider(hits: 2))
-        guard case let .answer(text, _, sources) = outcome else { return XCTFail("expected answer, got \(outcome)") }
+        guard case let .answer(text, _, sources, _) = outcome else { return XCTFail("expected answer, got \(outcome)") }
         XCTAssertTrue(text.contains("SYNTHESIZED"))
         XCTAssertEqual(sources.count, 2)
     }
@@ -71,7 +71,7 @@ final class WebSearchFlowBatteryTests: XCTestCase {
         let service = try makeService(model: nil, webEnabled: true)
         try service.grantWebSearchConsentAlways()
         let outcome = try await service.searchAndAnswer(query: "q", provider: provider(hits: 3))
-        guard case let .answer(text, _, sources) = outcome else {
+        guard case let .answer(text, _, sources, _) = outcome else {
             return XCTFail("no model must still return the fetched results, got \(outcome)")
         }
         XCTAssertEqual(sources.count, 3, "the fetched results are returned")

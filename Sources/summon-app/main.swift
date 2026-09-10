@@ -531,9 +531,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 switch try await service.searchAndAnswer(
                     query: prompt, provider: provider, allowOnce: allowOnce, actor: .user
                 ) {
-                case let .answer(text, rung, sources):
+                case let .answer(text, rung, sources, note):
+                    // A fallback answer carries the failed provider in `note`; show it
+                    // with the answer rather than presenting the floor as the provider.
                     return .answer(
-                        text: text,
+                        text: note.map { "\(text)\n\nNote: \($0)" } ?? text,
                         sources: sources.map { "\($0.title) — \($0.url)" },
                         rung: rung.rawValue
                     )

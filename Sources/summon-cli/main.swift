@@ -592,8 +592,9 @@ struct SummonCLI {
                 fputs("needs consent for \(host)\n", stderr); exit(3)
             case .noResults:
                 print("(no results)"); exit(1)
-            case let .answer(text, rung, sources):
+            case let .answer(text, rung, sources, note):
                 print("rung \(rung.rawValue)")
+                if let note { print("note: \(note)") }
                 print("---"); print(text); print("---")
                 print("sources:")
                 for source in sources { print("- \(source.title) \(source.url)") }

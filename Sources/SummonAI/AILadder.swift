@@ -205,7 +205,10 @@ public struct AIResponse: Sendable, Equatable {
 
 /// Result of a harness-driven web search + on-device synthesis.
 public enum WebSearchOutcome: Sendable, Equatable {
-    case answer(text: String, rung: ModelRungID, sources: [WebHit])
+    /// `note` is non-nil when the configured provider failed and the answer came
+    /// from the keyless fallback — the surface never presents a fallback as if the
+    /// configured provider had answered.
+    case answer(text: String, rung: ModelRungID, sources: [WebHit], note: String?)
     case needsConsent(host: String)
     case disabled
     case noResults
@@ -215,6 +218,9 @@ public final class SummonAIService: @unchecked Sendable {
     public let ladder: AILadder
     public let staging: AIStagingStore
     public let core: SummonCore?
+    /// Keyless floor used when the configured provider fails. Injectable so tests
+    /// never reach the network; production keeps the Wikipedia client.
+    public var fallbackProvider: any AuthorizedWebSearchProvider = WikipediaSearchClient()
 
     public init(
         ladder: AILadder = AILadder(),
@@ -486,13 +492,17 @@ public final class SummonAIService: @unchecked Sendable {
         )
         let searchQuery = WebEnrich.searchQuery(from: query)
         let hits: [WebHit]
+        var note: String?
         do {
             hits = try await provider.search(query: searchQuery, limit: 5, authorization: authorization)
         } catch let primaryError {
             // A configured SearXNG that is down or misconfigured must never dead-end
-            // web search — fall back to the keyless Wikipedia floor.
-            guard !(provider is WikipediaSearchClient) else { throw primaryError }
-            hits = try await wikipediaFallback(query: searchQuery, actor: actor)
+            // web search — fall back to the keyless floor, and say so: the caller
+            // must be able to tell a fallback answer from the configured provider's.
+            guard host != fallbackProvider.host.lowercased() else { throw primaryError }
+            hits = try await fallbackSearch(query: searchQuery, actor: actor)
+            note = "configured web search provider \(provider.host) failed "
+                + "(\(primaryError.localizedDescription)); answered from \(fallbackProvider.host) instead"
         }
         guard !hits.isEmpty else { return .noResults }
         // Synthesize an answer on-device when a model is available; otherwise return
@@ -501,21 +511,22 @@ public final class SummonAIService: @unchecked Sendable {
         if let completion = try? await ladder.complete(
             prompt: WebEnrich.enrichPrompt(question: query, hits: hits)
         ) {
-            return .answer(text: completion.text, rung: completion.rung, sources: hits)
+            return .answer(text: completion.text, rung: completion.rung, sources: hits, note: note)
         }
         return .answer(
             text: "On-device answer synthesis is unavailable on this Mac — showing the top web results:",
             rung: .l0Packaged,
-            sources: hits
+            sources: hits,
+            note: note
         )
     }
 
-    /// Keyless Wikipedia-floor fallback for when the configured provider (SearXNG)
-    /// is unreachable — re-authorizes the wikipedia egress, then searches.
-    private func wikipediaFallback(query: String, actor: ActorTag) async throws -> [WebHit] {
+    /// Keyless-floor fallback for when the configured provider (SearXNG) is
+    /// unreachable — re-authorizes the fallback host's egress, then searches.
+    private func fallbackSearch(query: String, actor: ActorTag) async throws -> [WebHit] {
         guard let core else { return [] }
-        let host = "en.wikipedia.org"
-        guard let url = URL(string: "https://\(host)/") else { return [] }
+        let host = fallbackProvider.host.lowercased()
+        guard !host.isEmpty, let url = URL(string: "https://\(host)/") else { return [] }
         let intent = try core.dispatch(
             action: .egressRequested(purpose: EgressPurpose.userWeb.rawValue, host: host),
             actor: actor
@@ -524,7 +535,7 @@ public final class SummonAIService: @unchecked Sendable {
         let authorization = try NetworkSovereignty.authorize(
             url: url, purpose: .userWeb, actor: actor, journalEntry: entry
         )
-        return try await WikipediaSearchClient().search(query: query, limit: 5, authorization: authorization)
+        return try await fallbackProvider.search(query: query, limit: 5, authorization: authorization)
     }
 
     public func accept(id: UUID, actor: ActorTag = .user) throws -> StagedAIProposal? {

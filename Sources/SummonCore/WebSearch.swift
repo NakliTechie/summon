@@ -224,13 +224,18 @@ public struct FakeWebSearchProvider: WebSearchProviding, Sendable {
 public struct FakeAuthorizedWebSearchProvider: AuthorizedWebSearchProvider, Sendable {
     public let host: String
     public var hits: [WebHit]
+    /// When set, every search throws this instead of returning hits — a
+    /// configured provider that is down or misbehaving.
+    public var failure: WebSearchError?
 
     public init(
         host: String = "example.com",
-        hits: [WebHit] = [WebHit(title: "Example", url: "https://example.com", snippet: "Example domain")]
+        hits: [WebHit] = [WebHit(title: "Example", url: "https://example.com", snippet: "Example domain")],
+        failure: WebSearchError? = nil
     ) {
         self.host = host
         self.hits = hits
+        self.failure = failure
     }
 
     public func search(
@@ -239,6 +244,7 @@ public struct FakeAuthorizedWebSearchProvider: AuthorizedWebSearchProvider, Send
         authorization: EgressAuthorization?
     ) async throws -> [WebHit] {
         _ = (query, authorization)
+        if let failure { throw failure }
         return Array(hits.prefix(limit))
     }
 }

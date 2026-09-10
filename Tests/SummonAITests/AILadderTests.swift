@@ -96,9 +96,10 @@ final class AILadderTests: XCTestCase {
 
         let outcome = try await service.searchAndAnswer(query: "capital of australia", provider: provider)
 
-        guard case let .answer(text, rung, sources) = outcome else {
+        guard case let .answer(text, rung, sources, note) = outcome else {
             return XCTFail("expected answer, got \(outcome)")
         }
+        XCTAssertNil(note, "the configured provider answered; no fallback note")
         XCTAssertTrue(text.contains("SYNTHESIZED"))
         XCTAssertEqual(rung, .fake)
         XCTAssertEqual(sources.count, 1)
@@ -110,6 +111,44 @@ final class AILadderTests: XCTestCase {
             return false
         }
         XCTAssertTrue(egress)
+    }
+
+    /// harden 2026-09-10 F7: a configured provider that fails must not be presented
+    /// as if it had answered. The fallback answer names the failed provider and the
+    /// host that actually answered. No network: the fallback is an injected fake.
+    func testSearchAndAnswerFallbackNamesTheFailedProvider() async throws {
+        let core = try SummonCore.inMemory(appSearchPaths: [])
+        core.webConfig.enabled = true
+        let service = SummonAIService(
+            ladder: .testing(fake: FakeModelRung(cannedText: "FROM FALLBACK")),
+            core: core
+        )
+        try service.grantWebSearchConsentAlways()
+        service.fallbackProvider = FakeAuthorizedWebSearchProvider(
+            host: "fallback.example",
+            hits: [WebHit(title: "Floor", url: "https://fallback.example/f", snippet: "floor hit")]
+        )
+        let broken = FakeAuthorizedWebSearchProvider(
+            host: "127.0.0.1", hits: [], failure: .network("HTTP 500")
+        )
+
+        let outcome = try await service.searchAndAnswer(query: "hello", provider: broken)
+
+        guard case let .answer(text, _, sources, note) = outcome else {
+            return XCTFail("expected a fallback answer, got \(outcome)")
+        }
+        XCTAssertTrue(text.contains("FROM FALLBACK"))
+        XCTAssertEqual(sources.map(\.url), ["https://fallback.example/f"])
+        let note0 = try XCTUnwrap(note, "fallback answers must carry a note naming the failed provider")
+        XCTAssertTrue(note0.contains("127.0.0.1"), note0)
+        XCTAssertTrue(note0.contains("HTTP 500"), note0)
+        XCTAssertTrue(note0.contains("fallback.example"), note0)
+        // Both egress intents are journaled: the failed provider and the fallback host.
+        let hosts = try core.journal.allEntries().compactMap { entry -> String? in
+            if case .egressRequested(_, let host) = entry.action { return host }
+            return nil
+        }
+        XCTAssertEqual(hosts, ["127.0.0.1", "fallback.example"])
     }
 
     func testSearchAndAnswerReturnsResultsWhenNoModelAvailable() async throws {
@@ -128,7 +167,7 @@ final class AILadderTests: XCTestCase {
 
         let outcome = try await service.searchAndAnswer(query: "when will the mac studio ship", provider: provider)
 
-        guard case let .answer(text, _, sources) = outcome else {
+        guard case let .answer(text, _, sources, _) = outcome else {
             return XCTFail("expected an answer with results, got \(outcome)")
         }
         XCTAssertEqual(sources.count, 2, "fetched web results are returned even without a model")
