@@ -118,6 +118,9 @@ if [ "$RUNTIME" = "container" ]; then
     container inspect "$CONTAINER" 2>/dev/null | grep -Eo '"hostPort"[[:space:]]*:[[:space:]]*[0-9]+' | head -1 | grep -Eo '[0-9]+$' || true
   }
   container_logs_tail() { container logs -n 40 "$CONTAINER" 2>&1 | sed 's/^/  | /' >&2 || true; }
+  # After a create conflict the winner's container can take a moment to become
+  # inspectable; poll briefly before deciding it does not exist.
+  container_wait_visible() { for _ in $(seq 1 10); do [ "$(container_state)" != "missing" ] && return 0; sleep 1; done; return 1; }
 
   state="$(container_state)"
   if [ "$RECREATE" = "1" ] && [ "$state" != "missing" ]; then
@@ -154,13 +157,24 @@ if [ "$RUNTIME" = "container" ]; then
   PORT="$(pick_port)" || { echo "searxng: could not find a free loopback port. Free one up and re-run." >&2; exit 4; }
 
   echo "searxng: starting on 127.0.0.1:$PORT via container (pulling image if needed)…"
-  # Each container is its own lightweight VM, so the compose cap_drop/cap_add
+  # Each container is its own lightweight VM, so the Docker path's cap-drop
   # hardening isn't needed here — VM isolation substitutes for it.
-  container run -d --name "$CONTAINER" \
-    -p "127.0.0.1:${PORT}:8080" \
-    -v "$(pwd)/runtime/settings.yml:/etc/searxng/settings.yml" \
-    -e "SEARXNG_BASE_URL=http://127.0.0.1:${PORT}/" \
-    "$IMAGE" >/dev/null
+  if ! create_out="$(container run -d --name "$CONTAINER" \
+      -p "127.0.0.1:${PORT}:8080" \
+      -v "$(pwd)/runtime/settings.yml:/etc/searxng/settings.yml" \
+      -e "SEARXNG_BASE_URL=http://127.0.0.1:${PORT}/" \
+      "$IMAGE" 2>&1)"; then
+    # Two invocations can race to create the same name; the loser sees a name
+    # conflict. Treat "someone else created it" as reuse, not as failure.
+    if container_wait_visible; then
+      echo "searxng: another invocation created $CONTAINER first; reusing it."
+      port="$(container_host_port)"
+      if [ -n "$port" ] && wait_json "$port"; then record "$port"; exit 0; fi
+    fi
+    echo "searxng: could not create $CONTAINER:" >&2
+    printf '%s\n' "$create_out" | sed 's/^/  | /' >&2
+    exit 1
+  fi
 
   if wait_json "$PORT"; then record "$PORT"; exit 0; fi
   echo "searxng: started on $PORT but the JSON API did not answer in 80s. Last log lines:" >&2
@@ -195,9 +209,15 @@ docker_state() { # running | stopped | missing
   if [ "$status" = "running" ]; then echo running; else echo stopped; fi
 }
 docker_host_port() {
-  docker port "$CONTAINER" 8080/tcp 2>/dev/null | sed -n 's/.*:\([0-9]\{2,5\}\)$/\1/p' | head -1 || true
+  # The configured binding is present from creation on, even before the container
+  # runs; the live mapping (`docker port`) only exists once it is up.
+  docker inspect -f '{{(index (index .HostConfig.PortBindings "8080/tcp") 0).HostPort}}' "$CONTAINER" 2>/dev/null \
+    | grep -Eo '^[0-9]{2,5}$' | head -1 || true
 }
 docker_logs_tail() { docker logs --tail 40 "$CONTAINER" 2>&1 | sed 's/^/  | /' >&2 || true; }
+# After a create conflict the winner's container can take a moment to become
+# inspectable; poll briefly before deciding it does not exist.
+docker_wait_visible() { for _ in $(seq 1 10); do [ "$(docker_state)" != "missing" ] && return 0; sleep 1; done; return 1; }
 
 state="$(docker_state)"
 if [ "$RECREATE" = "1" ] && [ "$state" != "missing" ]; then
@@ -234,10 +254,32 @@ ensure_settings
 PORT="$(pick_port)" || { echo "searxng: could not find a free loopback port. Free one up and re-run." >&2; exit 4; }
 
 echo "searxng: starting on 127.0.0.1:$PORT (pulling image if needed)…"
-SUMMON_SEARXNG_PORT="$PORT" docker compose up -d
+# Plain `docker run`: no dependency on the compose CLI plugin, which lives under
+# the account's ~/.docker and disappears whenever HOME is redirected. Loopback
+# bind, read-only settings mount, drop all capabilities but the three SearXNG
+# needs, bounded logs, and restart-unless-stopped so Docker restores it itself.
+if ! create_out="$(docker run -d --name "$CONTAINER" \
+    --restart unless-stopped \
+    --cap-drop ALL --cap-add CHOWN --cap-add SETGID --cap-add SETUID \
+    --log-driver json-file --log-opt max-size=1m --log-opt max-file=1 \
+    -p "127.0.0.1:${PORT}:8080" \
+    -v "$(pwd)/runtime/settings.yml:/etc/searxng/settings.yml:ro" \
+    -e "SEARXNG_BASE_URL=http://127.0.0.1:${PORT}/" \
+    "$IMAGE" 2>&1)"; then
+  # Two invocations can race to create the same name; the loser sees a name
+  # conflict. Treat "someone else created it" as reuse, not as failure.
+  if docker_wait_visible; then
+    echo "searxng: another invocation created $CONTAINER first; reusing it."
+    existing="$(docker_host_port)"
+    if [ -n "$existing" ] && wait_json "$existing"; then record "$existing"; exit 0; fi
+  fi
+  echo "searxng: could not create $CONTAINER:" >&2
+  printf '%s\n' "$create_out" | sed 's/^/  | /' >&2
+  exit 1
+fi
 
 if wait_json "$PORT"; then record "$PORT"; exit 0; fi
 echo "searxng: started on $PORT but the JSON API did not answer in 80s. Last log lines:" >&2
 docker_logs_tail
-echo "searxng: the container is left in place for inspection ('docker compose logs')." >&2
+echo "searxng: the container is left in place for inspection ('docker logs $CONTAINER')." >&2
 exit 1

@@ -44,7 +44,7 @@ fi
 SEARXNG_SRC="$ROOT/packaging/searxng"
 if [ -d "$SEARXNG_SRC" ]; then
 	mkdir -p "$APP/Contents/Resources/searxng"
-	cp "$SEARXNG_SRC/docker-compose.yml" "$SEARXNG_SRC/settings.yml" \
+	cp "$SEARXNG_SRC/settings.yml" \
 		"$SEARXNG_SRC/searxng-up.sh" "$SEARXNG_SRC/searxng-down.sh" \
 		"$SEARXNG_SRC/README.md" "$APP/Contents/Resources/searxng/"
 	chmod +x "$APP/Contents/Resources/searxng/"*.sh

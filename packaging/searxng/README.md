@@ -4,9 +4,12 @@ The privacy-maximalist rung of Summon's search ladder. Ships **ready to go** so
 that if you opt in later, it's one command — no hunting through SearXNG docs.
 
 Summon **never** installs a container runtime and nothing runs until you opt in.
-After you opt in, the enabled preference is the consent for the service to run:
-Summon restores a stopped instance at launch and on re-enable, and stops it when
-you turn web search off. SearXNG binds to `127.0.0.1` only, with the JSON API
+The opt-in is the explicit setup action ("Set up full web search", or running
+`searxng-up.sh` yourself), which records the backend's URL; the "Search the web"
+preference alone starts nothing, because there is no app-owned container until
+setup has run. After setup, Summon restores a stopped instance at launch and on
+re-enable while web search stays on, and stops it when you turn web search off.
+SearXNG binds to `127.0.0.1` only, with the JSON API
 enabled (Summon's `SearXNGClient` queries `?format=json`), so the app's
 loopback-only sovereignty guard holds whichever runtime starts it.
 
@@ -35,7 +38,8 @@ A failed health check never deletes the container by itself: `searxng-up.sh`
 recreates only when an existing instance stays unhealthy after a start attempt,
 or when `SUMMON_SEARXNG_RECREATE=1` asks for it. On failure the script prints
 the runtime's last 40 log lines and leaves the container in place for
-`container logs summon-searxng` / `docker compose logs`.
+`container logs summon-searxng` / `docker logs summon-searxng`. Two bring-ups
+racing to create the container resolve to one instance: the loser reuses it.
 
 The same verbs are available from the app (Preferences → Search) and the CLI:
 
@@ -51,7 +55,9 @@ Recovery is bounded: three start attempts with 2 s and 5 s backoff, cancelled
 when the feature is disabled. The Apple runtime is started once if it is down,
 and only when a recorded URL shows Summon's own setup ran — a runtime installed
 for other reasons is never booted by the launcher. Docker Desktop is a GUI app
-and is never launched from the app at startup.
+and is never launched from the app at startup; only an explicit `searxng-up.sh`
+run (the setup button, or you at a terminal) opens Docker Desktop or starts
+colima when the Docker daemon is down.
 
 ## Requirements
 
@@ -69,7 +75,9 @@ restart; Remove reclaims the container's disk, and `--purge-image` the rest.
 
 ## Files
 
-- `docker-compose.yml` — loopback-only SearXNG service (Docker fallback path).
 - `settings.yml` — minimal override (JSON on, `use_default_settings: true`); a
   template — the real secret is generated into `runtime/settings.yml` (gitignored).
 - `searxng-up.sh` / `searxng-down.sh` — set up or restore / disable or remove.
+  The Docker path uses plain `docker run` (loopback bind, read-only settings
+  mount, all capabilities dropped but CHOWN/SETGID/SETUID, bounded logs,
+  `--restart unless-stopped`); no compose plugin is required.
