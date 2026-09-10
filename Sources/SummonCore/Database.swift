@@ -14,21 +14,29 @@ public enum SummonDatabase {
     public static let databasePermissions = 0o600
     public static let busyTimeoutSeconds: TimeInterval = 2
 
-    /// Default container: `~/Library/Application Support/Summon/`.
+    /// Default container: `$HOME/Library/Application Support/Summon/`.
     ///
-    /// `SUMMON_CONTAINER_DIR` overrides the location. The Application Support
-    /// API ignores `$HOME`, so tooling (`make verify`, cli-e2e) that only sets
-    /// `HOME` would otherwise mutate the user's real store; the override is the
-    /// hermetic seam.
+    /// `SUMMON_CONTAINER_DIR` overrides the location outright. Without it the
+    /// store follows `$HOME` — the Application Support API resolves the account
+    /// home and ignores an overridden HOME, which let a caller who isolated only
+    /// HOME (tests, agents) read and write the real user's store (harden
+    /// 2026-09-10 F9). In the shipped app HOME is the account home, so the path
+    /// is unchanged there.
     public static func defaultContainerURL() throws -> URL {
         let fm = FileManager.default
-        if let override = ProcessInfo.processInfo.environment["SUMMON_CONTAINER_DIR"],
-            !override.isEmpty {
+        let env = ProcessInfo.processInfo.environment
+        if let override = env["SUMMON_CONTAINER_DIR"], !override.isEmpty {
             let dir = URL(fileURLWithPath: override, isDirectory: true)
             try ensurePrivateContainer(dir, fileManager: fm)
             return dir
         }
-        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        let base: URL
+        if let home = env["HOME"], !home.isEmpty {
+            base = URL(fileURLWithPath: home, isDirectory: true)
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        } else if let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            base = support
+        } else {
             throw CoreError.io("Application Support directory unavailable")
         }
         let dir = base.appendingPathComponent("Summon", isDirectory: true)
