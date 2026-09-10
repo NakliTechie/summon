@@ -113,15 +113,33 @@ public final class WebSearchLifecycleController {
     /// deletes the app-owned container (and, on request, its image).
     public func removeBackend(purgeImage: Bool, completion: @escaping @MainActor (WebSearchBackend.Outcome) -> Void) {
         task?.cancel()
-        core.webConfig.enabled = false
-        core.webConfig.baseURL = ""
-        guard let result = try? core.persistWebConfig(actor: .user), result.isApplied else {
-            completion(WebSearchBackend.Outcome(ok: false, detail: "web search setting was not applied"))
-            return
-        }
         status = .checking
         let backend = self.backend
+        let core = self.core
         task = Task { [weak self] in
+            // B12: a runtime that is down cannot honor the removal; fail before the
+            // preference changes, so "off" never coexists with a backend still on disk.
+            if case .runtimeDown(let runtime) = await backend.inspect() {
+                let outcome = WebSearchBackend.Outcome(ok: false, detail: "the \(runtime.rawValue) runtime is not running")
+                await MainActor.run { [weak self] in
+                    self?.status = .unavailable(outcome.detail)
+                    completion(outcome)
+                }
+                return
+            }
+            let persisted: Bool = await MainActor.run {
+                core.webConfig.enabled = false
+                core.webConfig.baseURL = ""
+                return (try? core.persistWebConfig(actor: .user))?.isApplied == true
+            }
+            guard persisted else {
+                await MainActor.run { [weak self] in
+                    let outcome = WebSearchBackend.Outcome(ok: false, detail: "web search setting was not applied")
+                    self?.status = .unavailable(outcome.detail)
+                    completion(outcome)
+                }
+                return
+            }
             let outcome = await backend.remove(purgeImage: purgeImage)
             await MainActor.run { [weak self] in
                 self?.status = outcome.ok ? .notSetUp : .unavailable(outcome.detail)

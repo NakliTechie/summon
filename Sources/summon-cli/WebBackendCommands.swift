@@ -5,11 +5,37 @@ import SummonCore
 /// beyond the preference flip. Both run through `WebSearchBackend`, so the CLI
 /// and the Preferences pane share one implementation and one vocabulary.
 extension SummonCLI {
+    /// harden F1 (2026-09-10): unknown flags and extra tokens on the lifecycle verbs
+    /// are rejected, never ignored — a mistyped `--purge-image` must not silently
+    /// keep the image. `search` and `answer` take free text and are not checked here.
+    static func cli_rejectUnknownWebArguments(sub: String, rest: [String]) {
+        switch sub {
+        case "enable", "disable", "status":
+            guard rest.isEmpty else {
+                fputs("error: summon web \(sub) takes no arguments (got: \(rest.joined(separator: " ")))\n", stderr)
+                exit(2)
+            }
+        case "remove":
+            if let unknown = rest.first(where: { $0 != "--purge-image" }) {
+                fputs("error: unknown option '\(unknown)' for summon web remove (allowed: --purge-image)\n", stderr)
+                exit(2)
+            }
+        default:
+            break
+        }
+    }
+
     /// Persist web search off with no provider URL, then delete the app-owned
     /// container. `--purge-image` also removes the SearXNG image. Under an agent
     /// actor the setting change stages and nothing is removed.
     static func cli_webRemoveCommand(_ args: [String], core: SummonCore) throws {
         let purgeImage = args.contains("--purge-image")
+        // B12: a runtime that is down cannot honor the removal; fail before the
+        // preference changes so the user is not left "off" with a backend still on disk.
+        if case .runtimeDown(let runtime) = try awaitOrRun({ await WebSearchBackend.production().inspect() }) {
+            fputs("error: web backend not removed; the \(runtime.rawValue) runtime is not running\n", stderr)
+            exit(1)
+        }
         core.webConfig.enabled = false
         core.webConfig.baseURL = ""
         let result = try core.persistWebConfig(actor: cliActor)

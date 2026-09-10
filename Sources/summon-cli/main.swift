@@ -495,6 +495,7 @@ struct SummonCLI {
             )
             exit(2)
         }
+        cli_rejectUnknownWebArguments(sub: sub, rest: Array(args.dropFirst()))
         let core = try makeCore()
         switch sub {
         case "enable":
