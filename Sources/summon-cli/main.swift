@@ -536,8 +536,11 @@ struct SummonCLI {
                 fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
             }
             // Same provider resolution as `web answer` and the launcher (harden F-3):
-            // the configured URL, else the recorded app-owned backend, else the floor.
-            let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
+            // the configured URL, else the recorded app-owned backend — only while it
+            // is verifiably running on that port — else the floor.
+            let verified = try awaitOrRun { await webBackend(core: core).verifiedProvider(webConfig: core.webConfig) }
+            if let note = verified.note { fputs("note: \(note)\n", stderr) }
+            let provider = verified.provider
             let providerHost = provider.host.lowercased()
             guard !providerHost.isEmpty, let providerURL = URL(string: "https://\(providerHost)/") else {
                 throw CoreError.store("web search requires a valid provider URL")
@@ -581,10 +584,11 @@ struct SummonCLI {
                 fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
             }
             let service = SummonAIService.production(core: core)
-            let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
+            let verified = try awaitOrRun { await webBackend(core: core).verifiedProvider(webConfig: core.webConfig) }
+            if let note = verified.note { print("note: \(note)") }
             let outcome = try awaitOrRun {
                 try await service.searchAndAnswer(
-                    query: q, provider: provider, allowOnce: true, actor: cliActor
+                    query: q, provider: verified.provider, allowOnce: true, actor: cliActor
                 )
             }
             switch outcome {

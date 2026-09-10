@@ -108,12 +108,18 @@ latency-hard: build
 
 # One action end-to-end via the real CLI binary (C-spine). Also carries the
 # harden 2026-09-10 checks: the recorded SearXNG URL round-trips under $HOME on
-# both sides (scripts and CLI), and web verbs reject unknown flags / extra tokens.
+# both sides (scripts and CLI), web verbs reject unknown flags / extra tokens,
+# and the lifecycle verbs are driven through scripts/fake-docker. SUMMON_TOOL_DIRS
+# is exported for the whole recipe so no line can reach the developer's real
+# container runtime — a forged recorded URL plus `web remove` once deleted a live
+# backend from inside this target.
 cli-e2e: build
 	@set -euo pipefail; \
 	TMP=$$(mktemp -d); \
 	export HOME="$$TMP"; \
 	export SUMMON_CONTAINER_DIR="$$TMP/container"; \
+	export SUMMON_TOOL_DIRS="$$(pwd)/scripts/fake-docker"; \
+	export FAKE_DOCKER_SCENARIO=missing; \
 	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
 	"$$BIN" version | grep -E -q '.'; \
 	"$$BIN" settings set cspine.cli true; \

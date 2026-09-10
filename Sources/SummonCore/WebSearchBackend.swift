@@ -298,13 +298,17 @@ public struct WebSearchBackend: Sendable {
     /// check to answer on it. Only then is the URL recorded and "recovered" said.
     private func awaitReadiness(attempt: Int) async -> ReconcileOutcome {
         var port: Int?
+        var sawUnpublished = false
         for poll in 0..<max(1, readinessPolls) {
             if Task.isCancelled { return .cancelled }
             switch await inspect() {
             case .running(_, let hostPort):
                 port = hostPort
             case .unpublished:
-                return .unavailable(reason: Self.unpublishedReason)
+                // Right after `start` Docker can report the container running before
+                // the live binding is populated; only a binding that never appears
+                // means another process holds the port.
+                sawUnpublished = true
             case .degraded(_, let status):
                 return .unavailable(reason: "\(Self.containerName) went \(status) after start")
             default:
@@ -314,6 +318,7 @@ public struct WebSearchBackend: Sendable {
             if poll < readinessPolls - 1 { await sleep(.seconds(1)) }
         }
         guard let port else {
+            if sawUnpublished { return .unavailable(reason: Self.unpublishedReason) }
             return .unavailable(reason: "\(Self.containerName) did not report a running state after start")
         }
         let url = Self.baseURL(port: port)
@@ -456,6 +461,31 @@ extension WebSearchBackend.ReconcileOutcome {
 }
 
 extension WebSearchBackend {
+    /// The provider a search may use right now (harden 2026-09-10 H16 follow-up).
+    ///
+    /// An explicitly configured URL is the user's choice and is used as-is. The
+    /// recorded URL is evidence of where Summon's own backend WAS; it is used only
+    /// when the app-owned container is running on that port at this moment.
+    /// Otherwise the keyless floor answers, with a note saying why — a stale
+    /// record must never carry a query to whatever now holds the port.
+    public func verifiedProvider(
+        webConfig: WebSearchConfig
+    ) async -> (provider: any AuthorizedWebSearchProvider, note: String?) {
+        let configured = webConfig.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !configured.isEmpty {
+            return (SearXNGClient(config: webConfig), nil)
+        }
+        guard let recorded = recordedURL() else { return (WikipediaSearchClient(), nil) }
+        let state = await inspect()
+        if case .running(_, let hostPort) = state, recorded == Self.baseURL(port: hostPort) {
+            return (SearXNGClient(config: WebSearchConfig(enabled: true, baseURL: recorded)), nil)
+        }
+        return (
+            WikipediaSearchClient(),
+            "recorded web search backend \(recorded) is \(state.summary); used the keyless floor instead"
+        )
+    }
+
     /// Last non-empty lines of a subprocess transcript, bounded for a status line.
     public static func tail(_ output: String, lines: Int = 3, maxLength: Int = 240) -> String {
         let kept = output

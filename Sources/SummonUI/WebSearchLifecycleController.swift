@@ -47,7 +47,9 @@ public final class WebSearchLifecycleController {
     }
 
     private let core: SummonCore
-    private let backend: WebSearchBackend
+    /// Shared with the launcher's search path so a query only ever goes to a
+    /// backend that is verifiably running on the recorded port right now.
+    public let backend: WebSearchBackend
     private var task: Task<Void, Never>?
     private var observers: [(Status) -> Void] = []
     public private(set) var status: Status = .unknown {

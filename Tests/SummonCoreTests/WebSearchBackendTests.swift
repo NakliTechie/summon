@@ -439,6 +439,86 @@ final class WebSearchBackendTests: XCTestCase {
         XCTAssertEqual(runner.count("docker", ["start"]), 0)
     }
 
+    func testReconcileToleratesABriefUnpublishedBindingRightAfterStart() async {
+        // Docker reports `running` a beat before it populates the live binding.
+        let inspect = Box(Self.dockerStopped)
+        let polls = Box(0)
+        let runner = MockRunner()
+        runner.respond = { call in
+            switch call.args.first {
+            case "info": return ProcessOutcome(exitCode: 0)
+            case "start": inspect.value = Self.dockerRunningUnpublished; return ProcessOutcome(exitCode: 0)
+            case "inspect":
+                polls.value += 1
+                if inspect.value == Self.dockerRunningUnpublished, polls.value >= 4 { inspect.value = Self.dockerRunning }
+                return ProcessOutcome(exitCode: 0, output: inspect.value)
+            default: return ProcessOutcome(exitCode: 0)
+            }
+        }
+        let backend = makeBackend(runner: runner, tools: ["docker"], readinessPolls: 5)
+        let outcome = await backend.reconcile(enabled: true)
+        XCTAssertEqual(outcome, .recovered(baseURL: "http://127.0.0.1:8091/", attempts: 1))
+    }
+
+    func testReconcileReportsUnpublishedOnlyWhenTheBindingNeverAppears() async {
+        let inspect = Box(Self.dockerStopped)
+        let runner = MockRunner()
+        runner.respond = { call in
+            switch call.args.first {
+            case "info": return ProcessOutcome(exitCode: 0)
+            case "start": inspect.value = Self.dockerRunningUnpublished; return ProcessOutcome(exitCode: 0)
+            case "inspect": return ProcessOutcome(exitCode: 0, output: inspect.value)
+            default: return ProcessOutcome(exitCode: 0)
+            }
+        }
+        let recorded = Box<[String]>([])
+        let backend = makeBackend(runner: runner, tools: ["docker"], recorded: recorded, readinessPolls: 3)
+        let outcome = await backend.reconcile(enabled: true, attempts: 1)
+        XCTAssertEqual(outcome, .unavailable(reason: WebSearchBackend.unpublishedReason))
+        XCTAssertEqual(recorded.value, [])
+    }
+
+    // MARK: - Verified provider for searches (harden 2026-09-10 H16 follow-up)
+
+    func testVerifiedProviderUsesTheRecordedURLOnlyWhileRunningOnThatPort() async {
+        let empty = WebSearchConfig(enabled: true, baseURL: "")
+        // Running on the recorded port → the app-owned SearXNG, no note.
+        var backend = makeBackend(
+            runner: dockerWorld(inspect: Box(Self.dockerRunning)), tools: ["docker"], recordedURL: "http://127.0.0.1:8091/"
+        )
+        var verified = await backend.verifiedProvider(webConfig: empty)
+        XCTAssertTrue(verified.provider is SearXNGClient)
+        XCTAssertEqual(verified.provider.host, "127.0.0.1")
+        XCTAssertNil(verified.note)
+        // Port squatted (empty live binding) → the floor, with a note; the query never reaches the port.
+        backend = makeBackend(
+            runner: dockerWorld(inspect: Box(Self.dockerRunningUnpublished)), tools: ["docker"], recordedURL: "http://127.0.0.1:8082/"
+        )
+        verified = await backend.verifiedProvider(webConfig: empty)
+        XCTAssertTrue(verified.provider is WikipediaSearchClient)
+        XCTAssertTrue(verified.note?.contains("http://127.0.0.1:8082/") == true, verified.note ?? "nil")
+        XCTAssertTrue(verified.note?.contains("not published") == true, verified.note ?? "nil")
+        // Recorded port differs from the live one → the floor, with a note.
+        backend = makeBackend(
+            runner: dockerWorld(inspect: Box(Self.dockerRunning)), tools: ["docker"], recordedURL: "http://127.0.0.1:9999/"
+        )
+        verified = await backend.verifiedProvider(webConfig: empty)
+        XCTAssertTrue(verified.provider is WikipediaSearchClient)
+        XCTAssertNotNil(verified.note)
+    }
+
+    func testVerifiedProviderHonorsAnExplicitURLAndTheNoRecordFloor() async {
+        let runner = dockerWorld(inspect: Box(Self.dockerRunningUnpublished))
+        let backend = makeBackend(runner: runner, tools: ["docker"], recordedURL: nil)
+        let explicit = await backend.verifiedProvider(webConfig: WebSearchConfig(enabled: true, baseURL: "http://localhost:8888/"))
+        XCTAssertTrue(explicit.provider is SearXNGClient, "an explicitly configured URL is the user's choice")
+        XCTAssertNil(explicit.note)
+        let floor = await backend.verifiedProvider(webConfig: WebSearchConfig(enabled: true, baseURL: ""))
+        XCTAssertTrue(floor.provider is WikipediaSearchClient)
+        XCTAssertNil(floor.note)
+        XCTAssertEqual(runner.count("docker", ["inspect"]), 0, "no record → nothing to verify, no runtime call")
+    }
+
     func testReconcileRecordsOnlyAfterTheHealthCheckAnswers() async {
         let recorded = Box<[String]>([])
         let slept = Box<[Duration]>([])

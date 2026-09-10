@@ -65,7 +65,7 @@ extension SummonCLI {
         // enable/disable/remove act on the daemon-global container.
         let owned: String
         switch state {
-        case .running, .stopped: owned = backend.isOwned ? "yes" : "no"
+        case .running, .stopped, .degraded, .unpublished: owned = backend.isOwned ? "yes" : "no"
         default: owned = "-"
         }
         print("enabled=\(core.webConfig.enabled) baseURL=\(baseURL)")

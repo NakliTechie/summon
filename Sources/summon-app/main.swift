@@ -516,11 +516,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     return .performed(text: text)
                 }
             },
-            searchHandler: { [weak service] prompt, allowOnce in
+            searchHandler: { [weak service, weak self] prompt, allowOnce in
                 guard let service, let core = service.core else { return .unavailable }
-                // SearXNG when configured/auto-discovered (any port), else the
-                // keyless Wikipedia floor.
-                let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
+                // SearXNG when configured, or recorded AND verifiably running on that
+                // port right now; else the keyless Wikipedia floor (with a note).
+                let verified: (provider: any AuthorizedWebSearchProvider, note: String?)
+                if let backend = await MainActor.run(body: { self?.webLifecycle?.backend }) {
+                    verified = await backend.verifiedProvider(webConfig: core.webConfig)
+                } else {
+                    verified = (WebSearchProviderResolver.resolve(webConfig: core.webConfig), nil)
+                }
+                let provider = verified.provider
                 guard allowOnce || service.webSearchConsentGranted() else {
                     return .needsConsent(host: provider.host.isEmpty ? "en.wikipedia.org" : provider.host)
                 }
@@ -532,10 +538,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     query: prompt, provider: provider, allowOnce: allowOnce, actor: .user
                 ) {
                 case let .answer(text, rung, sources, note):
-                    // A fallback answer carries the failed provider in `note`; show it
-                    // with the answer rather than presenting the floor as the provider.
+                    // A fallback answer carries the failed provider in `note`, and a
+                    // stale recorded backend in `verified.note`; show them with the
+                    // answer rather than presenting the floor as the provider.
+                    let notes = [verified.note, note].compactMap { $0 }
                     return .answer(
-                        text: note.map { "\(text)\n\nNote: \($0)" } ?? text,
+                        text: notes.isEmpty ? text : text + "\n\nNote: " + notes.joined(separator: " "),
                         sources: sources.map { "\($0.title) — \($0.url)" },
                         rung: rung.rawValue
                     )
