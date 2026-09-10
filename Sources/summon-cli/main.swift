@@ -503,15 +503,21 @@ struct SummonCLI {
             let result = try core.persistWebConfig(actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
             // Re-enable restores a stopped app-owned backend; nothing is created here,
-            // and only a backend this profile recorded is touched.
-            let restored = try awaitOrRun { await WebSearchBackend.production().reconcile(enabled: true) }
+            // and only a backend this profile recorded is touched. The preference is
+            // persisted either way; a backend that could not be restored is exit 1 so
+            // scripts see the failure (harden F-4).
+            let restored = try awaitOrRun { await webBackend(core: core).reconcile(enabled: true) }
+            if case .unavailable = restored {
+                fputs("web enabled, but the backend is \(restored.summary)\n", stderr)
+                exit(1)
+            }
             print("ok web enabled baseURL=\(core.webConfig.baseURL) backend: \(restored.summary)")
         case "disable":
             core.webConfig.enabled = false
             let result = try core.persistWebConfig(actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
             // Disable stops the service and keeps the container, settings and data.
-            let stopped = try awaitOrRun { await WebSearchBackend.production().stop() }
+            let stopped = try awaitOrRun { await webBackend(core: core).stop() }
             print("ok web disabled; \(stopped.detail)")
         case "remove":
             try cli_webRemoveCommand(Array(args.dropFirst()), core: core)
@@ -529,15 +535,15 @@ struct SummonCLI {
             guard core.webConfig.enabled else {
                 fputs("error: web search off — run: summon web enable\n", stderr); exit(1)
             }
-            guard let providerURL = URL(string: core.webConfig.baseURL),
-                  let providerHost = providerURL.host else {
+            // Same provider resolution as `web answer` and the launcher (harden F-3):
+            // the configured URL, else the recorded app-owned backend, else the floor.
+            let provider = WebSearchProviderResolver.resolve(webConfig: core.webConfig)
+            let providerHost = provider.host.lowercased()
+            guard !providerHost.isEmpty, let providerURL = URL(string: "https://\(providerHost)/") else {
                 throw CoreError.store("web search requires a valid provider URL")
             }
             let intent = try core.dispatch(
-                action: .egressRequested(
-                    purpose: EgressPurpose.userWeb.rawValue,
-                    host: providerHost.lowercased()
-                ),
+                action: .egressRequested(purpose: EgressPurpose.userWeb.rawValue, host: providerHost),
                 actor: cliActor
             )
             guard let journalEntry = try core.journal.entry(id: intent.envelopeID) else {
@@ -549,9 +555,8 @@ struct SummonCLI {
                 actor: cliActor,
                 journalEntry: journalEntry
             )
-            let client = SearXNGClient(config: core.webConfig)
             let hits = try awaitOrRun {
-                try await client.search(query: q, authorization: authorization)
+                try await provider.search(query: q, limit: 8, authorization: authorization)
             }
             if hits.isEmpty {
                 print("(no hits)")

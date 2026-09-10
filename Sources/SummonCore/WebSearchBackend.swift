@@ -15,8 +15,19 @@ import Foundation
 /// - `remove` — "Remove local backend": delete the container and the recorded
 ///   URL; image cleanup is opt-in because layers can be shared.
 ///
-/// No network primitive lives here. State comes from the runtime CLI (`inspect`),
-/// so the sovereignty inventory of egress files is unchanged.
+/// Two truths govern every claim this type makes (harden 2026-09-10):
+/// - Ownership: the container name is global to the runtime, so the name alone
+///   never proves this profile set it up. Only the recorded URL — written by
+///   Summon's own setup — lets `reconcile`, `stop`, and `remove` act.
+/// - Verified before claimed: "restored at <url>" is said only after the
+///   container reports a live published port and the injected health check has
+///   answered on that URL. A container whose port a squatter took, or that is
+///   still booting, is reported as such, and its URL is never recorded.
+///
+/// No network primitive lives here. State comes from the runtime CLI (`inspect`);
+/// the health check is injected (production: `WebSearchHealth`, a journaled
+/// loopback probe in `WebSearch.swift`), so the sovereignty inventory of egress
+/// files is unchanged.
 public struct WebSearchBackend: Sendable {
     public static let containerName = "summon-searxng"
     public static let imageReference = "docker.io/searxng/searxng:latest"
@@ -34,7 +45,15 @@ public struct WebSearchBackend: Sendable {
         case runtimeDown(Runtime)
         /// No container named `summon-searxng` exists on any reachable runtime.
         case missing
+        /// Exists and can be started (`exited` / `created` / Apple `stopped`).
         case stopped(Runtime)
+        /// Exists in a state that is neither stopped nor serving: `paused`,
+        /// `restarting` (crash loop), `removing`, `dead`, Apple `stopping`.
+        case degraded(Runtime, status: String)
+        /// Running, but the runtime reports no live host-port binding — another
+        /// process holds the port, or the container never published one. Its
+        /// URL must not be claimed or recorded.
+        case unpublished(Runtime)
         case running(Runtime, hostPort: Int)
 
         public var isRunning: Bool {
@@ -72,7 +91,10 @@ public struct WebSearchBackend: Sendable {
     private let recordURL: @Sendable (String) -> Void
     private let clearURL: @Sendable () -> Void
     private let recordedURL: @Sendable () -> String?
+    private let healthCheck: @Sendable (String) async -> Bool
     private let sleep: @Sendable (Duration) async -> Void
+    /// Polls (1 s apart) for a started container to publish its port and answer.
+    private let readinessPolls: Int
 
     public init(
         runner: any ProcessRunning,
@@ -80,6 +102,8 @@ public struct WebSearchBackend: Sendable {
         recordURL: @escaping @Sendable (String) -> Void,
         clearURL: @escaping @Sendable () -> Void,
         recordedURL: @escaping @Sendable () -> String?,
+        healthCheck: @escaping @Sendable (String) async -> Bool,
+        readinessPolls: Int = 30,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.runner = runner
@@ -87,17 +111,25 @@ public struct WebSearchBackend: Sendable {
         self.recordURL = recordURL
         self.clearURL = clearURL
         self.recordedURL = recordedURL
+        self.healthCheck = healthCheck
+        self.readinessPolls = readinessPolls
         self.sleep = sleep
     }
 
-    /// Real subprocesses, real tool lookup, real discovery file.
-    public static func production(timeout: TimeInterval? = 90) -> WebSearchBackend {
+    /// Real subprocesses, real tool lookup, real discovery file. The health check
+    /// is required: callers pass `WebSearchHealth.check` bound to their core so
+    /// the probe is journaled like every other loopback request.
+    public static func production(
+        healthCheck: @escaping @Sendable (String) async -> Bool,
+        timeout: TimeInterval? = 90
+    ) -> WebSearchBackend {
         WebSearchBackend(
             runner: SubprocessRunner(timeout: timeout),
             locator: ToolLocator(),
             recordURL: { SearXNGDiscovery.record(baseURL: $0) },
             clearURL: { SearXNGDiscovery.clear() },
-            recordedURL: { SearXNGDiscovery.discoveredBaseURL() }
+            recordedURL: { SearXNGDiscovery.discoveredBaseURL() },
+            healthCheck: healthCheck
         )
     }
 
@@ -142,43 +174,48 @@ public struct WebSearchBackend: Sendable {
               let first = array.first else { return nil }
         switch runtime {
         case .container:
-            let status = (first["status"] as? [String: Any])?["state"] as? String
+            let status = ((first["status"] as? [String: Any])?["state"] as? String) ?? "unknown"
             let configuration = first["configuration"] as? [String: Any]
             let ports = configuration?["publishedPorts"] as? [[String: Any]]
             let hostPort = ports?.first.flatMap { $0["hostPort"] as? Int }
-            return state(runtime: runtime, running: status == "running", hostPort: hostPort)
+            switch status {
+            case "running": return .running(runtime, hostPort: hostPort ?? 8080)
+            case "stopped": return .stopped(runtime)
+            default: return .degraded(runtime, status: status)
+            }
         case .docker:
-            let status = (first["State"] as? [String: Any])?["Status"] as? String
-            let network = first["NetworkSettings"] as? [String: Any]
-            let ports = network?["Ports"] as? [String: Any]
-            let bindings = ports?["8080/tcp"] as? [[String: Any]]
-            let hostPort = bindings?.first.flatMap { ($0["HostPort"] as? String).flatMap(Int.init) }
-            // A stopped Docker container reports no live bindings; fall back to the
-            // configured port so the recorded URL survives a stop/start cycle.
-            let configured = ((first["HostConfig"] as? [String: Any])?["PortBindings"] as? [String: Any])
-            let configuredBindings = configured?["8080/tcp"] as? [[String: Any]]
-            let configuredPort = configuredBindings?.first
-                .flatMap { ($0["HostPort"] as? String).flatMap(Int.init) }
-            return state(runtime: runtime, running: status == "running", hostPort: hostPort ?? configuredPort)
+            let status = ((first["State"] as? [String: Any])?["Status"] as? String) ?? "unknown"
+            switch status {
+            case "running":
+                // Only the live binding proves the port is ours right now; the
+                // configured binding survives a squatter taking the port.
+                let network = first["NetworkSettings"] as? [String: Any]
+                let ports = network?["Ports"] as? [String: Any]
+                let bindings = ports?["8080/tcp"] as? [[String: Any]]
+                guard let live = bindings?.first.flatMap({ ($0["HostPort"] as? String).flatMap(Int.init) }) else {
+                    return .unpublished(runtime)
+                }
+                return .running(runtime, hostPort: live)
+            case "exited", "created":
+                return .stopped(runtime)
+            default:
+                return .degraded(runtime, status: status)
+            }
         }
-    }
-
-    private static func state(runtime: Runtime, running: Bool, hostPort: Int?) -> State {
-        guard running else { return .stopped(runtime) }
-        return .running(runtime, hostPort: hostPort ?? 8080)
     }
 
     // MARK: - Reconcile (launch / re-enable)
 
     /// Restore an enabled backend after a crash, reboot, or runtime restart.
     ///
-    /// Only an existing app-owned container is started. Bounded: `attempts`
-    /// start attempts with the given `backoff` between them, and the loop exits
-    /// early when the surrounding task is cancelled (the user disabled the
+    /// Only an existing, owned container is touched. A stopped one is started
+    /// (bounded: `attempts` starts with `backoff` between them); a paused one is
+    /// unpaused; a crash-looping or otherwise degraded one is reported, not
+    /// forced. Success is claimed only after the container publishes a live port
+    /// and the health check answers on it — then the URL is recorded. The loop
+    /// exits early when the surrounding task is cancelled (the user disabled the
     /// feature). The Apple runtime is started once if it is down, but only with
-    /// ownership evidence (a recorded URL): a runtime installed for other reasons
-    /// is never booted by a launcher whose web search merely defaults to on.
-    /// Docker Desktop is a GUI app and is never launched from here.
+    /// ownership evidence; Docker Desktop is a GUI app and is never launched here.
     public func reconcile(
         enabled: Bool,
         attempts: Int = 3,
@@ -198,19 +235,39 @@ public struct WebSearchBackend: Sendable {
             return .unavailable(reason: "the \(runtime.rawValue) runtime is not running")
         case .missing:
             return .notManaged
-        case .running, .stopped:
+        case .running, .stopped, .degraded, .unpublished:
             // The name is daemon-global; without this profile's recorded URL the
             // container belongs to someone else's setup and is left alone.
             guard isOwned else { return .notOwned }
-            if case .running(_, let hostPort) = state {
-                let url = Self.baseURL(port: hostPort)
-                recordURL(url)
-                return .alreadyRunning(baseURL: url)
+        }
+        switch state {
+        case .running(_, let hostPort):
+            let url = Self.baseURL(port: hostPort)
+            guard await waitHealthy(url) else {
+                return .unavailable(reason: "\(Self.containerName) is running but \(url) is not answering")
             }
-            guard case .stopped(let runtime) = state else { return .notManaged }
+            recordURL(url)
+            return .alreadyRunning(baseURL: url)
+        case .unpublished:
+            return .unavailable(reason: Self.unpublishedReason)
+        case .degraded(let runtime, let status) where status == "paused":
+            guard let tool = locator.locate(runtime.rawValue) else { return .unavailable(reason: "\(runtime.rawValue) disappeared") }
+            let unpaused = await runner.run(tool, ["unpause", Self.containerName], env: toolEnv())
+            guard unpaused.exitCode == 0 else {
+                return .unavailable(reason: "could not unpause \(Self.containerName): \(Self.tail(unpaused.output))")
+            }
+            return await awaitReadiness(attempt: 1)
+        case .degraded(_, let status):
+            return .unavailable(reason: "\(Self.containerName) is \(status); not started automatically")
+        case .stopped(let runtime):
             return await startWithRetries(runtime, attempts: max(1, attempts), backoff: backoff)
+        default:
+            return .notManaged
         }
     }
+
+    static let unpublishedReason = "\(containerName) is running but its port is not published — "
+        + "another process holds the port it was created with; not recorded"
 
     private func startWithRetries(_ runtime: Runtime, attempts: Int, backoff: [Duration]) async -> ReconcileOutcome {
         guard let tool = locator.locate(runtime.rawValue) else {
@@ -220,12 +277,14 @@ public struct WebSearchBackend: Sendable {
         for attempt in 1...attempts {
             if Task.isCancelled { return .cancelled }
             let started = await runner.run(tool, ["start", Self.containerName], env: toolEnv())
-            if started.exitCode == 0, case .running(_, let hostPort) = await inspect() {
-                let url = Self.baseURL(port: hostPort)
-                recordURL(url)
-                return .recovered(baseURL: url, attempts: attempt)
+            if started.exitCode == 0 {
+                let outcome = await awaitReadiness(attempt: attempt)
+                if case .recovered = outcome { return outcome }
+                if case .unavailable(let reason) = outcome, reason == Self.unpublishedReason { return outcome }
+                if case .unavailable(let reason) = outcome { lastDetail = reason }
+            } else {
+                lastDetail = Self.tail(started.output)
             }
-            lastDetail = Self.tail(started.output)
             if attempt < attempts {
                 let delay = backoff[min(attempt - 1, max(0, backoff.count - 1))]
                 await sleep(delay)
@@ -235,13 +294,54 @@ public struct WebSearchBackend: Sendable {
         return .unavailable(reason: "could not start \(Self.containerName) after \(attempts) attempts\(suffix)")
     }
 
+    /// After a start/unpause: wait for a live published port, then for the health
+    /// check to answer on it. Only then is the URL recorded and "recovered" said.
+    private func awaitReadiness(attempt: Int) async -> ReconcileOutcome {
+        var port: Int?
+        for poll in 0..<max(1, readinessPolls) {
+            if Task.isCancelled { return .cancelled }
+            switch await inspect() {
+            case .running(_, let hostPort):
+                port = hostPort
+            case .unpublished:
+                return .unavailable(reason: Self.unpublishedReason)
+            case .degraded(_, let status):
+                return .unavailable(reason: "\(Self.containerName) went \(status) after start")
+            default:
+                break
+            }
+            if port != nil { break }
+            if poll < readinessPolls - 1 { await sleep(.seconds(1)) }
+        }
+        guard let port else {
+            return .unavailable(reason: "\(Self.containerName) did not report a running state after start")
+        }
+        let url = Self.baseURL(port: port)
+        guard await waitHealthy(url) else {
+            return .unavailable(reason: "\(Self.containerName) started but \(url) is not answering")
+        }
+        recordURL(url)
+        return .recovered(baseURL: url, attempts: attempt)
+    }
+
+    private func waitHealthy(_ url: String) async -> Bool {
+        for poll in 0..<max(1, readinessPolls) {
+            if Task.isCancelled { return false }
+            if await healthCheck(url) { return true }
+            if poll < readinessPolls - 1 { await sleep(.seconds(1)) }
+        }
+        return false
+    }
+
     // MARK: - Disable / Remove
 
     /// "Disable": stop the app-owned container, keep it and its data for a fast
-    /// re-enable. A missing container is not an error.
+    /// re-enable. A paused container is unpaused first so the stop lands. A
+    /// missing container is not an error.
     public func stop() async -> Outcome {
-        switch await inspect() {
-        case .running(let runtime, _):
+        let state = await inspect()
+        switch state {
+        case .running(let runtime, _), .unpublished(let runtime), .degraded(let runtime, _):
             guard isOwned else {
                 return Outcome(
                     ok: true,
@@ -250,6 +350,9 @@ public struct WebSearchBackend: Sendable {
             }
             guard let tool = locator.locate(runtime.rawValue) else {
                 return Outcome(ok: false, detail: "\(runtime.rawValue) not found")
+            }
+            if case .degraded(_, let status) = state, status == "paused" {
+                _ = await runner.run(tool, ["unpause", Self.containerName], env: toolEnv())
             }
             let result = await runner.run(tool, ["stop", Self.containerName], env: toolEnv())
             guard result.exitCode == 0 else {
@@ -263,15 +366,16 @@ public struct WebSearchBackend: Sendable {
         }
     }
 
-    /// "Remove local backend": delete the app-owned container and the recorded
-    /// URL. `purgeImage` also removes the SearXNG image, which is optional because
-    /// images and layers can be shared with other containers. Uses the runtime's
-    /// own removal commands; never deletes runtime storage directories directly.
+    /// "Remove local backend": delete the app-owned container (with its anonymous
+    /// volumes on Docker) and the recorded URL. `purgeImage` also removes the
+    /// SearXNG image, which is optional because images and layers can be shared.
+    /// Uses the runtime's own removal commands; never deletes runtime storage
+    /// directories directly.
     public func remove(purgeImage: Bool) async -> Outcome {
         let state = await inspect()
         var runtime: Runtime?
         switch state {
-        case .running(let r, _), .stopped(let r): runtime = r
+        case .running(let r, _), .stopped(let r), .degraded(let r, _), .unpublished(let r): runtime = r
         case .missing, .noRuntime: runtime = nil
         case .runtimeDown(let r): return Outcome(ok: false, detail: "the \(r.rawValue) runtime is not running")
         }
@@ -286,11 +390,15 @@ public struct WebSearchBackend: Sendable {
         guard let runtime, let tool = locator.locate(runtime.rawValue) else {
             return Outcome(ok: true, detail: "no app-owned backend to remove; recorded URL cleared")
         }
-        let removed = await runner.run(tool, ["rm", "-f", Self.containerName], env: toolEnv())
+        // Docker keeps a container's anonymous volumes unless asked (-v); Apple
+        // `container` reclaims the VM disk with the instance.
+        let rmArgs = runtime == .docker ? ["rm", "-f", "-v", Self.containerName] : ["rm", "-f", Self.containerName]
+        let removed = await runner.run(tool, rmArgs, env: toolEnv())
         guard removed.exitCode == 0 else {
             return Outcome(ok: false, detail: "remove failed: \(Self.tail(removed.output))")
         }
-        var detail = "removed \(Self.containerName); recorded URL cleared"
+        var detail = "removed \(Self.containerName)"
+        detail += runtime == .docker ? " and its volumes; recorded URL cleared" : "; recorded URL cleared"
         if purgeImage {
             let imageName = runtime == .docker ? "searxng/searxng:latest" : Self.imageReference
             let purged = await runner.run(tool, ["image", "rm", imageName], env: toolEnv())
@@ -315,6 +423,11 @@ extension WebSearchBackend.State {
         case .runtimeDown(let runtime): return "\(runtime.rawValue) runtime not running"
         case .missing: return "not set up"
         case .stopped(let runtime): return "stopped (\(runtime.rawValue))"
+        case .degraded(let runtime, let status):
+            let hint = status == "restarting" ? " — crash-looping, check its logs" : ""
+            return "\(status) (\(runtime.rawValue))\(hint)"
+        case .unpublished(let runtime):
+            return "running but its port is not published (\(runtime.rawValue)) — another process holds it"
         case .running(let runtime, let hostPort): return "running on 127.0.0.1:\(hostPort) (\(runtime.rawValue))"
         }
     }
@@ -332,10 +445,17 @@ extension WebSearchBackend.ReconcileOutcome {
         case .cancelled: return "recovery cancelled"
         }
     }
+
+    /// True when the backend is serving at a verified URL.
+    public var isServing: Bool {
+        switch self {
+        case .alreadyRunning, .recovered: return true
+        default: return false
+        }
+    }
 }
 
 extension WebSearchBackend {
-
     /// Last non-empty lines of a subprocess transcript, bounded for a status line.
     public static func tail(_ output: String, lines: Int = 3, maxLength: Int = 240) -> String {
         let kept = output

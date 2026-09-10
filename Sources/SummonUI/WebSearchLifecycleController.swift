@@ -54,9 +54,13 @@ public final class WebSearchLifecycleController {
         didSet { observers.forEach { $0(status) } }
     }
 
-    public init(core: SummonCore, backend: WebSearchBackend = .production()) {
+    /// `backend` defaults to production with its health probe journaled through
+    /// `core`; tests inject a scripted backend.
+    public init(core: SummonCore, backend: WebSearchBackend? = nil) {
         self.core = core
-        self.backend = backend
+        self.backend = backend ?? .production(healthCheck: { url in
+            await WebSearchHealth.check(baseURL: url, core: core)
+        })
     }
 
     public func observe(_ observer: @escaping @MainActor (Status) -> Void) {
@@ -159,9 +163,12 @@ public final class WebSearchLifecycleController {
                 // An in-flight restore/stop/remove owns the status until it lands.
                 guard let self, !self.status.isTransient else { return }
                 switch state {
-                case .running where !backend.isOwned, .stopped where !backend.isOwned: self.status = .notOwned
+                case .running where !backend.isOwned, .stopped where !backend.isOwned,
+                     .degraded where !backend.isOwned, .unpublished where !backend.isOwned:
+                    self.status = .notOwned
                 case .running(_, let hostPort): self.status = .running(baseURL: "http://127.0.0.1:\(hostPort)/")
                 case .stopped: self.status = .stopped
+                case .degraded, .unpublished: self.status = .unavailable(state.summary)
                 case .missing: self.status = .notSetUp
                 case .noRuntime, .runtimeDown: self.status = .unavailable(state.summary)
                 }

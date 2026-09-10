@@ -137,6 +137,39 @@ public struct SearXNGClient: AuthorizedWebSearchProvider, Sendable {
     }
 }
 
+/// Loopback health probe for the app-owned SearXNG (harden 2026-09-10 F-1/F-9):
+/// the lifecycle claims "restored at <url>" only after this answers. It is a
+/// real, journaled `user.web` request to a loopback host — the same path a search
+/// takes — so the sovereignty inventory and the journal see it like any other.
+/// Non-loopback URLs are refused without a request.
+public enum WebSearchHealth {
+    public static func check(
+        baseURL: String,
+        core: SummonCore,
+        actor: ActorTag = .user,
+        timeout: TimeInterval = 3
+    ) async -> Bool {
+        guard let url = URL(string: baseURL), let rawHost = url.host,
+              WebSearchConfig.isLoopbackHost(rawHost) else { return false }
+        let host = rawHost.lowercased()
+        guard let intent = try? core.dispatch(
+            action: .egressRequested(purpose: EgressPurpose.userWeb.rawValue, host: host),
+            actor: actor
+        ), let entry = try? core.journal.entry(id: intent.envelopeID),
+              let authorization = try? NetworkSovereignty.authorize(
+                url: url, purpose: .userWeb, actor: actor, journalEntry: entry
+              ) else { return false }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        let client = SearXNGClient(
+            config: WebSearchConfig(enabled: true, baseURL: baseURL),
+            session: URLSession(configuration: configuration)
+        )
+        return (try? await client.search(query: "test", limit: 1, authorization: authorization)) != nil
+    }
+}
+
 /// Keyless zero-setup search floor (the "pick your poison" default rung):
 /// Wikipedia's REST search API. No key, no Docker, no CAPTCHA — but encyclopedic
 /// only, no live/current web. HTTPS + journaled `.userWeb` egress, same gate as

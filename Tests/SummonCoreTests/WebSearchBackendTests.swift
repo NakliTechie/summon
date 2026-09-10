@@ -55,8 +55,26 @@ final class WebSearchBackendTests: XCTestCase {
     "NetworkSettings":{"Ports":{}}}]
     """
 
+    static let dockerPaused = """
+    [{"State":{"Status":"paused","Running":true,"Paused":true},
+    "HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8091"}]}},
+    "NetworkSettings":{"Ports":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8091"}]}}}]
+    """
+    static let dockerRestarting = """
+    [{"State":{"Status":"restarting","Running":true,"RestartCount":6},
+    "HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8091"}]}},
+    "NetworkSettings":{"Ports":{}}}]
+    """
+    /// Running, but the host port was taken by a squatter: Docker shows the
+    /// configured binding and an EMPTY live binding list.
+    static let dockerRunningUnpublished = """
+    [{"State":{"Status":"running"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8082"}]}},
+    "NetworkSettings":{"Ports":{"8080/tcp":[]}}}]
+    """
+
     /// `recordedURL` is the ownership evidence: the default models a profile whose
     /// own setup recorded the backend; pass nil for a profile that never set it up.
+    /// `health` scripts the injected probe: the default answers on the first poll.
     private func makeBackend(
         runner: MockRunner,
         tools: Set<String>,
@@ -64,6 +82,8 @@ final class WebSearchBackendTests: XCTestCase {
         cleared: Box<Int> = Box(0),
         slept: Box<[Duration]> = Box([]),
         recordedURL: String? = "http://127.0.0.1:8123/",
+        health: @escaping @Sendable (String) async -> Bool = { _ in true },
+        readinessPolls: Int = 3,
         onSleep: @escaping @Sendable () -> Void = {}
     ) -> WebSearchBackend {
         WebSearchBackend(
@@ -72,8 +92,26 @@ final class WebSearchBackendTests: XCTestCase {
             recordURL: { recorded.value.append($0) },
             clearURL: { cleared.value += 1 },
             recordedURL: { recordedURL },
+            healthCheck: health,
+            readinessPolls: readinessPolls,
             sleep: { slept.value.append($0); onSleep() }
         )
+    }
+
+    /// Docker world with a scripted inspect JSON and recording of every verb.
+    private func dockerWorld(inspect: Box<String>) -> MockRunner {
+        let runner = MockRunner()
+        runner.respond = { call in
+            switch (call.tool, call.args.first) {
+            case ("docker", "info"): return ProcessOutcome(exitCode: 0)
+            case ("docker", "inspect"): return ProcessOutcome(exitCode: 0, output: inspect.value)
+            case ("docker", "unpause"): inspect.value = Self.dockerRunning; return ProcessOutcome(exitCode: 0)
+            case ("docker", "stop"): inspect.value = Self.dockerStopped; return ProcessOutcome(exitCode: 0)
+            case ("docker", "start"): inspect.value = Self.dockerRunning; return ProcessOutcome(exitCode: 0)
+            default: return ProcessOutcome(exitCode: 0)
+            }
+        }
+        return runner
     }
 
     /// Apple-runtime world: docker absent, apiserver up, container state scripted.
@@ -371,6 +409,122 @@ final class WebSearchBackendTests: XCTestCase {
         XCTAssertFalse(outcome.ok)
         XCTAssertEqual(cleared.value, 0, "the recorded URL stays until the container is actually gone")
         XCTAssertEqual(runner.count("container", ["rm"]), 0)
+    }
+
+    // MARK: - Verified before claimed (harden 2026-09-10 F-1/F-2/F-9)
+
+    func testParseDockerDegradedAndUnpublishedStates() {
+        XCTAssertEqual(
+            WebSearchBackend.parseInspect(runtime: .docker, json: Self.dockerPaused),
+            .degraded(.docker, status: "paused")
+        )
+        XCTAssertEqual(
+            WebSearchBackend.parseInspect(runtime: .docker, json: Self.dockerRestarting),
+            .degraded(.docker, status: "restarting")
+        )
+        XCTAssertEqual(
+            WebSearchBackend.parseInspect(runtime: .docker, json: Self.dockerRunningUnpublished),
+            .unpublished(.docker),
+            "a running container with an empty live binding must not be reported on its configured port"
+        )
+    }
+
+    func testReconcileNeverClaimsAnUnpublishedPort() async {
+        let recorded = Box<[String]>([])
+        let runner = dockerWorld(inspect: Box(Self.dockerRunningUnpublished))
+        let backend = makeBackend(runner: runner, tools: ["docker"], recorded: recorded)
+        let outcome = await backend.reconcile(enabled: true)
+        XCTAssertEqual(outcome, .unavailable(reason: WebSearchBackend.unpublishedReason))
+        XCTAssertEqual(recorded.value, [], "the squatted port must never be recorded")
+        XCTAssertEqual(runner.count("docker", ["start"]), 0)
+    }
+
+    func testReconcileRecordsOnlyAfterTheHealthCheckAnswers() async {
+        let recorded = Box<[String]>([])
+        let slept = Box<[Duration]>([])
+        let probes = Box(0)
+        let runner = dockerWorld(inspect: Box(Self.dockerStopped))
+        let backend = makeBackend(
+            runner: runner, tools: ["docker"], recorded: recorded, slept: slept,
+            health: { _ in probes.value += 1; return probes.value >= 3 }
+        )
+        let outcome = await backend.reconcile(enabled: true)
+        XCTAssertEqual(outcome, .recovered(baseURL: "http://127.0.0.1:8091/", attempts: 1))
+        XCTAssertEqual(probes.value, 3, "polled until the service answered")
+        XCTAssertEqual(slept.value, [.seconds(1), .seconds(1)], "one-second readiness polls between probes")
+        XCTAssertEqual(recorded.value, ["http://127.0.0.1:8091/"], "recorded once, after health")
+    }
+
+    func testReconcileDoesNotClaimAStartedContainerThatNeverAnswers() async {
+        let recorded = Box<[String]>([])
+        let runner = dockerWorld(inspect: Box(Self.dockerStopped))
+        let backend = makeBackend(
+            runner: runner, tools: ["docker"], recorded: recorded, health: { _ in false }, readinessPolls: 2
+        )
+        let outcome = await backend.reconcile(enabled: true, attempts: 1)
+        guard case .unavailable(let reason) = outcome else { return XCTFail("expected unavailable, got \(outcome)") }
+        XCTAssertTrue(reason.contains("not answering"), reason)
+        XCTAssertEqual(recorded.value, [], "an unverified URL is never recorded")
+    }
+
+    func testAlreadyRunningStillRequiresHealth() async {
+        let recorded = Box<[String]>([])
+        let runner = dockerWorld(inspect: Box(Self.dockerRunning))
+        let backend = makeBackend(
+            runner: runner, tools: ["docker"], recorded: recorded, health: { _ in false }, readinessPolls: 2
+        )
+        let outcome = await backend.reconcile(enabled: true)
+        guard case .unavailable(let reason) = outcome else { return XCTFail("expected unavailable, got \(outcome)") }
+        XCTAssertTrue(reason.contains("running but"), reason)
+        XCTAssertEqual(recorded.value, [])
+    }
+
+    // MARK: - Paused and crash-looping (harden 2026-09-10 F-5/F-8)
+
+    func testReconcileUnpausesAPausedContainer() async {
+        let inspect = Box(Self.dockerPaused)
+        let runner = dockerWorld(inspect: inspect)
+        let backend = makeBackend(runner: runner, tools: ["docker"])
+        let outcome = await backend.reconcile(enabled: true)
+        XCTAssertEqual(outcome, .recovered(baseURL: "http://127.0.0.1:8091/", attempts: 1))
+        XCTAssertEqual(runner.count("docker", ["unpause", "summon-searxng"]), 1)
+        XCTAssertEqual(runner.count("docker", ["start"]), 0, "paused is unpaused, not started")
+    }
+
+    func testReconcileReportsACrashLoopingContainerWithoutForcingIt() async {
+        let runner = dockerWorld(inspect: Box(Self.dockerRestarting))
+        let backend = makeBackend(runner: runner, tools: ["docker"])
+        let outcome = await backend.reconcile(enabled: true)
+        XCTAssertEqual(outcome, .unavailable(reason: "summon-searxng is restarting; not started automatically"))
+        XCTAssertEqual(runner.count("docker", ["start"]), 0)
+        XCTAssertEqual(runner.count("docker", ["rm"]), 0)
+    }
+
+    func testStopUnpausesThenStopsAPausedContainer() async {
+        let inspect = Box(Self.dockerPaused)
+        let runner = dockerWorld(inspect: inspect)
+        let backend = makeBackend(runner: runner, tools: ["docker"])
+        let outcome = await backend.stop()
+        XCTAssertTrue(outcome.ok, outcome.detail)
+        XCTAssertEqual(runner.recorded.filter { $0.tool == "docker" }.map(\.args).filter { $0.first != "info" && $0.first != "inspect" },
+                       [["unpause", "summon-searxng"], ["stop", "summon-searxng"]])
+    }
+
+    func testStatusSummaryNamesDegradedStates() {
+        XCTAssertEqual(WebSearchBackend.State.degraded(.docker, status: "paused").summary, "paused (docker)")
+        XCTAssertTrue(WebSearchBackend.State.degraded(.docker, status: "restarting").summary.contains("crash-looping"))
+        XCTAssertTrue(WebSearchBackend.State.unpublished(.docker).summary.contains("not published"))
+    }
+
+    // MARK: - Volumes (harden 2026-09-10 F-10)
+
+    func testRemoveOnDockerDeletesAnonymousVolumesWithTheContainer() async {
+        let runner = dockerWorld(inspect: Box(Self.dockerStopped))
+        let backend = makeBackend(runner: runner, tools: ["docker"])
+        let outcome = await backend.remove(purgeImage: false)
+        XCTAssertTrue(outcome.ok, outcome.detail)
+        XCTAssertEqual(runner.count("docker", ["rm", "-f", "-v", "summon-searxng"]), 1)
+        XCTAssertTrue(outcome.detail.contains("and its volumes"), outcome.detail)
     }
 
     // MARK: - Tail
