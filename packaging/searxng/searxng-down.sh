@@ -11,8 +11,23 @@
 #   searxng-down.sh --remove --purge-image
 #                                    Also delete the SearXNG image.
 set -euo pipefail
-cd "$(dirname "$0")"
 
+usage() {
+  cat <<'EOF'
+searxng-down.sh — disable or remove the Summon-managed SearXNG (app-owned container
+`summon-searxng` only; the shared runtime is never stopped).
+
+  searxng-down.sh                  Disable: stop the service, keep the container,
+                                   settings and data for a fast re-enable.
+  searxng-down.sh --remove         Remove local backend: delete the container and
+                                   the recorded URL. The image stays (layers can be
+                                   shared with other containers).
+  searxng-down.sh --remove --purge-image
+                                   Also delete the SearXNG image.
+EOF
+}
+
+# Parse arguments before changing directory so `--help` works from any cwd.
 CONTAINER="summon-searxng"
 IMAGE="docker.io/searxng/searxng:latest"
 DISCOVERY="$HOME/.config/summon/searxng.url"
@@ -22,7 +37,7 @@ for arg in "$@"; do
   case "$arg" in
     --remove) MODE="remove" ;;
     --purge-image) PURGE_IMAGE=1 ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "searxng-down: unknown option '$arg'" >&2; exit 2 ;;
   esac
 done

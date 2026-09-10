@@ -139,6 +139,8 @@ cli-e2e: build
 	test "$$("$$BIN" settings get web.search.enabled)" = "true"; \
 	if "$$BIN" web enable extra >/dev/null 2>&1; then echo "cli-e2e: web enable accepted extra tokens"; exit 1; fi; \
 	if "$$BIN" web status --json >/dev/null 2>&1; then echo "cli-e2e: web status accepted an unknown flag"; exit 1; fi; \
+	if bash packaging/searxng/searxng-down.sh --help | grep -q 'set -euo pipefail'; then echo "cli-e2e: searxng-down.sh --help leaks shell directives"; exit 1; fi; \
+	bash packaging/searxng/searxng-down.sh --help | grep -q 'Remove local backend'; \
 	echo "cli-e2e: ok (settings + calc + clipboard pin + quicklink + web lifecycle under temp HOME)"
 
 # Ad-hoc release zip (not notarized — Dev ID last in queue).
