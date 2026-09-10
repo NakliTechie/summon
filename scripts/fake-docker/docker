@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Scripted `docker` for `make cli-e2e` (harden 2026-09-10). Pointed at via
+# SUMMON_TOOL_DIRS so the lifecycle verbs can be driven black-box without a
+# daemon. FAKE_DOCKER_SCENARIO selects what `inspect` reports:
+#   exited   (default) a stopped container; `start` always fails
+#   paused   a paused container
+#   running  a running container publishing 127.0.0.1:8123
+#   missing  no container
+# Every other verb succeeds silently. Never touches anything real.
+set -euo pipefail
+case "${1:-}" in
+  info) exit 0 ;;
+  inspect)
+    case "${FAKE_DOCKER_SCENARIO:-exited}" in
+      paused)
+        echo '[{"State":{"Status":"paused","Running":true,"Paused":true},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8123"}]}},"NetworkSettings":{"Ports":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8123"}]}}}]' ;;
+      running)
+        echo '[{"State":{"Status":"running"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8123"}]}},"NetworkSettings":{"Ports":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8123"}]}}}]' ;;
+      missing)
+        echo "Error: No such object: summon-searxng" >&2; exit 1 ;;
+      *)
+        echo '[{"State":{"Status":"exited"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"8123"}]}},"NetworkSettings":{"Ports":{}}}]' ;;
+    esac ;;
+  start)
+    echo "Error response from daemon: fake start failure" >&2; exit 1 ;;
+  *) exit 0 ;;
+esac

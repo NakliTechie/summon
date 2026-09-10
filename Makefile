@@ -141,6 +141,21 @@ cli-e2e: build
 	if "$$BIN" web status --json >/dev/null 2>&1; then echo "cli-e2e: web status accepted an unknown flag"; exit 1; fi; \
 	if bash packaging/searxng/searxng-down.sh --help | grep -q 'set -euo pipefail'; then echo "cli-e2e: searxng-down.sh --help leaks shell directives"; exit 1; fi; \
 	bash packaging/searxng/searxng-down.sh --help | grep -q 'Remove local backend'; \
+	FAKE="$$(pwd)/scripts/fake-docker"; \
+	printf 'http://127.0.0.1:8123/\n' > "$$HOME/.config/summon/searxng.url"; \
+	if SUMMON_TOOL_DIRS="$$FAKE" FAKE_DOCKER_SCENARIO=exited "$$BIN" web enable >/dev/null 2>&1; then echo "cli-e2e: web enable exited 0 with an unstartable backend"; exit 1; fi; \
+	test "$$("$$BIN" settings get web.search.enabled)" = "true"; \
+	SUMMON_TOOL_DIRS="$$FAKE" FAKE_DOCKER_SCENARIO=paused "$$BIN" web status | grep -q 'backend=paused (docker)'; \
+	SUMMON_TOOL_DIRS="$$FAKE" FAKE_DOCKER_SCENARIO=running "$$BIN" web status | grep -q 'owned=yes'; \
+	rm -f "$$HOME/.config/summon/searxng.url"; \
+	SUMMON_TOOL_DIRS="$$FAKE" FAKE_DOCKER_SCENARIO=running "$$BIN" web status | grep -q 'owned=no'; \
+	OUT=$$(SUMMON_TOOL_DIRS="$$FAKE" FAKE_DOCKER_SCENARIO=running "$$BIN" web remove 2>&1 || true); \
+	printf '%s' "$$OUT" | grep -q 'not set up from this profile'; \
+	printf 'http://127.0.0.1:1/\n' > "$$HOME/.config/summon/searxng.url"; \
+	"$$BIN" settings set web.search.baseURL "" >/dev/null; \
+	OUT=$$("$$BIN" web search hello 2>&1 || true); \
+	if printf '%s' "$$OUT" | grep -q 'requires a valid provider URL'; then echo "cli-e2e: web search ignores the recorded URL"; exit 1; fi; \
+	rm -f "$$HOME/.config/summon/searxng.url"; \
 	echo "cli-e2e: ok (settings + calc + clipboard pin + quicklink + web lifecycle under temp HOME)"
 
 # Ad-hoc release zip (not notarized — Dev ID last in queue).

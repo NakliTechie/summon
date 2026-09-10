@@ -136,12 +136,23 @@ public protocol ToolLocating: Sendable {
 }
 
 /// Locates CLIs across the dirs a GUI app doesn't get on its PATH by default.
+///
+/// `SUMMON_TOOL_DIRS` (colon-separated) replaces the search list. It is the seam
+/// that lets `make cli-e2e` point the lifecycle at a scripted `docker` and drive
+/// the paused / unstartable / recorded-URL paths black-box, without a daemon.
 public struct ToolLocator: ToolLocating {
-    private let dirs: [String]
-    public init(dirs: [String] = [
+    public static let defaultDirs = [
         "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
-    ]) {
-        self.dirs = dirs
+    ]
+    private let dirs: [String]
+    public init(dirs: [String]? = nil) {
+        if let dirs {
+            self.dirs = dirs
+        } else if let override = ProcessInfo.processInfo.environment["SUMMON_TOOL_DIRS"], !override.isEmpty {
+            self.dirs = override.split(separator: ":").map(String.init)
+        } else {
+            self.dirs = Self.defaultDirs
+        }
     }
 
     public func locate(_ tool: String) -> String? {
