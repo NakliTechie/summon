@@ -20,6 +20,23 @@ public enum SearXNGDiscovery {
               WebSearchConfig.isLoopbackHost(host) else { return nil }
         return trimmed
     }
+
+    /// Record the running instance's base URL (the same file `searxng-up.sh`
+    /// writes). Loopback only; anything else is refused and leaves the file alone.
+    public static func record(baseURL: String, file: URL? = nil) {
+        guard let parsed = URL(string: baseURL), let host = parsed.host,
+              WebSearchConfig.isLoopbackHost(host) else { return }
+        let url = file ?? discoveryFile
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try? (baseURL + "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Forget the recorded instance (the backend was removed).
+    public static func clear(file: URL? = nil) {
+        try? FileManager.default.removeItem(at: file ?? discoveryFile)
+    }
 }
 
 /// One place that decides which web-search provider to use, shared by the app

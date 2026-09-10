@@ -489,7 +489,11 @@ struct SummonCLI {
 
     static func webCommand(_ args: [String]) throws {
         guard let sub = args.first else {
-            fputs("usage: summon web enable|disable|search <q> [--enrich]|answer <q>\n", stderr); exit(2)
+            fputs(
+                "usage: summon web enable|disable|remove [--purge-image]|status|search <q> [--enrich]|answer <q>\n",
+                stderr
+            )
+            exit(2)
         }
         let core = try makeCore()
         switch sub {
@@ -497,12 +501,24 @@ struct SummonCLI {
             core.webConfig.enable()
             let result = try core.persistWebConfig(actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
-            print("ok web enabled baseURL=\(core.webConfig.baseURL)")
+            // Re-enable restores a stopped app-owned backend; nothing is created here.
+            // The runtime is only booted when a recorded URL proves Summon set it up.
+            let managed = SearXNGDiscovery.discoveredBaseURL() != nil
+            let restored = try awaitOrRun {
+                await WebSearchBackend.production().reconcile(enabled: true, startRuntimeIfDown: managed)
+            }
+            print("ok web enabled baseURL=\(core.webConfig.baseURL) backend: \(restored.summary)")
         case "disable":
             core.webConfig.enabled = false
             let result = try core.persistWebConfig(actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
-            print("ok web disabled")
+            // Disable stops the service and keeps the container, settings and data.
+            let stopped = try awaitOrRun { await WebSearchBackend.production().stop() }
+            print("ok web disabled; \(stopped.detail)")
+        case "remove":
+            try cli_webRemoveCommand(Array(args.dropFirst()), core: core)
+        case "status":
+            try cli_webStatusCommand(core: core)
         case "search":
             try requireUserOperation(.webSearch)
             var enrich = false
@@ -644,7 +660,7 @@ struct SummonCLI {
           summon quicklink add|list|delete
           summon run <module.action> <path>
           summon ai status | complete | accept | reject | l0-consent | l0-fetch | list-staged | parse-command
-          summon web enable|disable|search <q> [--enrich]
+          summon web enable|disable|remove [--purge-image]|status|search <q> [--enrich]|answer <q>
           summon window <leftHalf|rightHalf|maximize|…>
           summon fts consent|enable|disable|index|search|status
           summon export [file] | import <file>
@@ -653,7 +669,8 @@ struct SummonCLI {
           summon ignore add|list|remove
         Mutating commands journal actor=user by default; pass --actor agent for automation.
         AI output is always staged (never auto-executed).
-        Web search is opt-in (default OFF; enable presets localhost:8080).
+        Web search: enable restores a stopped app-owned SearXNG; disable stops it and keeps its data;
+        remove deletes the app-owned container (and, with --purge-image, its image).
         Binary name: summon-cli (SPM); user-facing brand is Summon.
         """)
     }

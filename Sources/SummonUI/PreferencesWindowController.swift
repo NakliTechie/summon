@@ -19,20 +19,25 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     private let appearancePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let webSetupButton = NSButton(title: "Set up full web search", target: nil, action: nil)
     private let webSetupStatus = NSTextField(labelWithString: "")
+    private let webBackendStatus = NSTextField(labelWithString: "")
+    private let webRemoveButton = NSButton(title: "Remove local backend…", target: nil, action: nil)
     private let onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)?
+    private let webLifecycle: WebSearchLifecycleController?
 
     public init(
         core: SummonCore,
         onOpenClipboard: @escaping () -> Void,
         onOpenIgnoreList: @escaping () -> Void,
         onLoginItemChanged: @escaping () -> Void,
-        onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)? = nil
+        onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)? = nil,
+        webLifecycle: WebSearchLifecycleController? = nil
     ) {
         self.core = core
         self.onOpenClipboard = onOpenClipboard
         self.onOpenIgnoreList = onOpenIgnoreList
         self.onLoginItemChanged = onLoginItemChanged
         self.onSetUpWebSearch = onSetUpWebSearch
+        self.webLifecycle = webLifecycle
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 620, height: 440),
@@ -91,6 +96,24 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         appearancePopup.action = #selector(changeAppearance)
         webSetupButton.target = self
         webSetupButton.action = #selector(setUpWebSearch)
+        webRemoveButton.target = self
+        webRemoveButton.action = #selector(removeWebBackend)
+        webLifecycle?.observe { [weak self] status in
+            guard let self else { return }
+            self.webBackendStatus.stringValue = status.text
+            if case .unavailable = status {
+                self.webBackendStatus.textColor = .systemRed
+            } else {
+                self.webBackendStatus.textColor = .secondaryLabelColor
+            }
+            if case .notSetUp = status {
+                self.webRemoveButton.isEnabled = false
+            } else if case .unknown = status {
+                self.webRemoveButton.isEnabled = false
+            } else {
+                self.webRemoveButton.isEnabled = !status.isTransient
+            }
+        }
     }
 
     private func refresh() {
@@ -101,6 +124,7 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
             withTitle: Self.defaultActionTitle(for: settingString("search.defaultAction") ?? "auto")
         )
         webURLField.stringValue = core.webConfig.baseURL
+        webLifecycle?.refreshStatus()
         agentToggle.state = settingBool("agent.socket.enabled") ? .on : .off
         let appearance = settingString("theme.appearance") ?? "system"
         appearancePopup.selectItem(withTitle: appearance.capitalized)
@@ -152,12 +176,21 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
                 + "(reusing Docker if present). One click sets it up in the background — "
                 + "the launcher stays usable throughout."
         )
+        webBackendStatus.font = .systemFont(ofSize: 11)
+        webBackendStatus.textColor = .secondaryLabelColor
+        webRemoveButton.isEnabled = false
+        let backendDetails = label(
+            "Turning web search off stops the local backend and keeps its data; turning it "
+                + "on restarts it, and Summon restores it at launch. Removing deletes the "
+                + "app-owned container. The shared runtime is never stopped."
+        )
         return tab(
             section: .search,
             views: [
                 heading("Search and indexing"), ftsDetails, ftsToggle, separator(),
                 webDetails, webToggle, defaultRow, urlRow,
                 separator(), setupDetails, webSetupButton, webSetupStatus,
+                backendDetails, webBackendStatus, webRemoveButton,
             ]
         )
     }
@@ -279,8 +312,36 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     }
 
     @objc private func changeWeb() {
-        core.webConfig.enabled = webToggle.state == .on
+        let enabled = webToggle.state == .on
+        core.webConfig.enabled = enabled
         persistWeb()
+        // Only act on the backend when the preference actually landed.
+        guard core.webConfig.enabled == enabled else { return }
+        webLifecycle?.setEnabled(enabled)
+    }
+
+    /// Destructive: confirmed explicitly, image cleanup opt-in (layers can be shared).
+    @objc private func removeWebBackend() {
+        guard let webLifecycle, let window else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Remove the local web search backend?"
+        alert.informativeText = "This deletes the app-owned SearXNG container and turns full web search off. "
+            + "Web search falls back to the keyless floor. The shared container runtime stays as it is."
+        let purge = NSButton(checkboxWithTitle: "Also delete the downloaded SearXNG image", target: nil, action: nil)
+        purge.state = .off
+        alert.accessoryView = purge
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.webRemoveButton.isEnabled = false
+            webLifecycle.removeBackend(purgeImage: purge.state == .on) { [weak self] outcome in
+                guard let self else { return }
+                self.refresh()
+                if !outcome.ok { self.showError(outcome.detail) }
+            }
+        }
     }
 
     @objc private func setUpWebSearch() {
