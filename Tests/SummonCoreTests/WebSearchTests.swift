@@ -51,6 +51,33 @@ final class WebSearchTests: XCTestCase {
         }
     }
 
+    /// harden F2: the scripts write `$HOME/.config/summon/searxng.url`; the Swift
+    /// side must resolve the same `$HOME`, not the account home, or an overridden
+    /// HOME (tests, agents, cli-e2e) reads and deletes the real user's file.
+    func testSearXNGDiscoveryFileFollowsHOMEEnvironment() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("summon-home-\(UUID().uuidString)", isDirectory: true)
+        let previous = ProcessInfo.processInfo.environment["HOME"]
+        setenv("HOME", tmp.path, 1)
+        defer {
+            if let previous { setenv("HOME", previous, 1) } else { unsetenv("HOME") }
+        }
+        let file = SearXNGDiscovery.discoveryFile
+        XCTAssertTrue(
+            file.path.hasPrefix(tmp.path),
+            "discovery file must live under $HOME (\(tmp.path)); got \(file.path)"
+        )
+        XCTAssertEqual(file.lastPathComponent, "searxng.url")
+
+        // record → discover → clear must round-trip under that HOME.
+        SearXNGDiscovery.record(baseURL: "http://127.0.0.1:8123/")
+        XCTAssertEqual(SearXNGDiscovery.discoveredBaseURL(), "http://127.0.0.1:8123/")
+        SearXNGDiscovery.clear()
+        XCTAssertNil(SearXNGDiscovery.discoveredBaseURL())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
     func testSearXNGDiscoveryReadsLoopbackURLOnly() throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("searxng-\(UUID().uuidString).url")

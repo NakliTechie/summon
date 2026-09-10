@@ -6,9 +6,18 @@ import Foundation
 /// — no network primitive (egress stays in `WebSearch.swift`).
 public enum SearXNGDiscovery {
     /// Where `searxng-up.sh` records the running instance's base URL.
+    ///
+    /// Resolves `$HOME` exactly as the scripts do. `homeDirectoryForCurrentUser`
+    /// ignores an overridden HOME, which made every isolated run (tests, agents,
+    /// `make cli-e2e`) read — and on remove, delete — the real user's file.
     public static var discoveryFile: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/summon/searxng.url")
+        let home: URL
+        if let env = ProcessInfo.processInfo.environment["HOME"], !env.isEmpty {
+            home = URL(fileURLWithPath: env, isDirectory: true)
+        } else {
+            home = FileManager.default.homeDirectoryForCurrentUser
+        }
+        return home.appendingPathComponent(".config/summon/searxng.url")
     }
 
     /// The recorded base URL, if a run wrote one (loopback only). nil otherwise.

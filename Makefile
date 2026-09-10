@@ -106,7 +106,9 @@ latency-hard: build
 	BIN="$$($(SWIFT) build $(BUILD_FLAGS) --show-bin-path)/summon-cli"; \
 	"$$BIN" latency live 50
 
-# One action end-to-end via the real CLI binary (C-spine).
+# One action end-to-end via the real CLI binary (C-spine). Also carries the
+# harden 2026-09-10 checks: the recorded SearXNG URL round-trips under $HOME on
+# both sides (scripts and CLI), and web verbs reject unknown flags / extra tokens.
 cli-e2e: build
 	@set -euo pipefail; \
 	TMP=$$(mktemp -d); \
@@ -127,7 +129,17 @@ cli-e2e: build
 	"$$BIN" clipboard list | grep -q "^\\* $$CLIP_ID"; \
 	"$$BIN" quicklink add Example https://example.com ex; \
 	"$$BIN" quicklink list | grep -q 'Example'; \
-	echo "cli-e2e: ok (settings + calc + clipboard pin + quicklink under temp HOME)"
+	mkdir -p "$$HOME/.config/summon"; \
+	printf 'http://127.0.0.1:8123/\n' > "$$HOME/.config/summon/searxng.url"; \
+	"$$BIN" web status | grep -q 'recordedURL=http://127.0.0.1:8123/'; \
+	"$$BIN" web remove | grep -q '^ok web backend removed'; \
+	test ! -f "$$HOME/.config/summon/searxng.url"; \
+	"$$BIN" web enable >/dev/null; \
+	if "$$BIN" web remove --bogus-flag >/dev/null 2>&1; then echo "cli-e2e: web remove accepted an unknown flag"; exit 1; fi; \
+	test "$$("$$BIN" settings get web.search.enabled)" = "true"; \
+	if "$$BIN" web enable extra >/dev/null 2>&1; then echo "cli-e2e: web enable accepted extra tokens"; exit 1; fi; \
+	if "$$BIN" web status --json >/dev/null 2>&1; then echo "cli-e2e: web status accepted an unknown flag"; exit 1; fi; \
+	echo "cli-e2e: ok (settings + calc + clipboard pin + quicklink + web lifecycle under temp HOME)"
 
 # Ad-hoc release zip (not notarized — Dev ID last in queue).
 # Version is read from VERSION; `version-consistency` checks Swift/plist/cask mirrors.
