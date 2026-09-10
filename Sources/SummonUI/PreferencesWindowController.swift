@@ -110,6 +110,9 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
                 self.webRemoveButton.isEnabled = false
             } else if case .unknown = status {
                 self.webRemoveButton.isEnabled = false
+            } else if case .notOwned = status {
+                // Not this profile's backend: removing it is not offered here.
+                self.webRemoveButton.isEnabled = false
             } else {
                 self.webRemoveButton.isEnabled = !status.isTransient
             }

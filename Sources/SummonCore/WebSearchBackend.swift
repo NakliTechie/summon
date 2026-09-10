@@ -48,6 +48,10 @@ public struct WebSearchBackend: Sendable {
         case preferenceOff
         /// No app-owned container to manage (never set up, or removed).
         case notManaged
+        /// A `summon-searxng` exists, but this profile never recorded its URL:
+        /// another profile (or a hand-run script under a different HOME) set it
+        /// up. Left untouched; running setup from this profile adopts it.
+        case notOwned
         case alreadyRunning(baseURL: String)
         case recovered(baseURL: String, attempts: Int)
         case unavailable(reason: String)
@@ -67,6 +71,7 @@ public struct WebSearchBackend: Sendable {
     private let locator: any ToolLocating
     private let recordURL: @Sendable (String) -> Void
     private let clearURL: @Sendable () -> Void
+    private let recordedURL: @Sendable () -> String?
     private let sleep: @Sendable (Duration) async -> Void
 
     public init(
@@ -74,12 +79,14 @@ public struct WebSearchBackend: Sendable {
         locator: any ToolLocating,
         recordURL: @escaping @Sendable (String) -> Void,
         clearURL: @escaping @Sendable () -> Void,
+        recordedURL: @escaping @Sendable () -> String?,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.runner = runner
         self.locator = locator
         self.recordURL = recordURL
         self.clearURL = clearURL
+        self.recordedURL = recordedURL
         self.sleep = sleep
     }
 
@@ -89,9 +96,15 @@ public struct WebSearchBackend: Sendable {
             runner: SubprocessRunner(timeout: timeout),
             locator: ToolLocator(),
             recordURL: { SearXNGDiscovery.record(baseURL: $0) },
-            clearURL: { SearXNGDiscovery.clear() }
+            clearURL: { SearXNGDiscovery.clear() },
+            recordedURL: { SearXNGDiscovery.discoveredBaseURL() }
         )
     }
+
+    /// Ownership evidence: only Summon's own setup (the script, or a recovery this
+    /// profile performed) writes the recorded URL. The container name is global to
+    /// the daemon, so the name alone never proves this profile set it up.
+    public var isOwned: Bool { recordedURL() != nil }
 
     // MARK: - Inspect
 
@@ -162,20 +175,18 @@ public struct WebSearchBackend: Sendable {
     /// Only an existing app-owned container is started. Bounded: `attempts`
     /// start attempts with the given `backoff` between them, and the loop exits
     /// early when the surrounding task is cancelled (the user disabled the
-    /// feature). The Apple runtime is started once if it is down, but only when
-    /// `startRuntimeIfDown` is true: callers pass evidence that Summon set the
-    /// backend up (a recorded URL), so a runtime installed for other reasons is
-    /// never booted by a launcher whose web search merely defaults to on. Docker
-    /// Desktop is a GUI app and is never launched from here.
+    /// feature). The Apple runtime is started once if it is down, but only with
+    /// ownership evidence (a recorded URL): a runtime installed for other reasons
+    /// is never booted by a launcher whose web search merely defaults to on.
+    /// Docker Desktop is a GUI app and is never launched from here.
     public func reconcile(
         enabled: Bool,
-        startRuntimeIfDown: Bool = false,
         attempts: Int = 3,
         backoff: [Duration] = [.seconds(2), .seconds(5)]
     ) async -> ReconcileOutcome {
         guard enabled else { return .preferenceOff }
         var state = await inspect()
-        if startRuntimeIfDown, case .runtimeDown(.container) = state,
+        if isOwned, case .runtimeDown(.container) = state,
            let tool = locator.locate(Runtime.container.rawValue) {
             _ = await runner.run(tool, ["system", "start"], env: toolEnv())
             state = await inspect()
@@ -187,11 +198,16 @@ public struct WebSearchBackend: Sendable {
             return .unavailable(reason: "the \(runtime.rawValue) runtime is not running")
         case .missing:
             return .notManaged
-        case .running(_, let hostPort):
-            let url = Self.baseURL(port: hostPort)
-            recordURL(url)
-            return .alreadyRunning(baseURL: url)
-        case .stopped(let runtime):
+        case .running, .stopped:
+            // The name is daemon-global; without this profile's recorded URL the
+            // container belongs to someone else's setup and is left alone.
+            guard isOwned else { return .notOwned }
+            if case .running(_, let hostPort) = state {
+                let url = Self.baseURL(port: hostPort)
+                recordURL(url)
+                return .alreadyRunning(baseURL: url)
+            }
+            guard case .stopped(let runtime) = state else { return .notManaged }
             return await startWithRetries(runtime, attempts: max(1, attempts), backoff: backoff)
         }
     }
@@ -226,6 +242,12 @@ public struct WebSearchBackend: Sendable {
     public func stop() async -> Outcome {
         switch await inspect() {
         case .running(let runtime, _):
+            guard isOwned else {
+                return Outcome(
+                    ok: true,
+                    detail: "\(Self.containerName) is running but was not set up from this profile; left running"
+                )
+            }
             guard let tool = locator.locate(runtime.rawValue) else {
                 return Outcome(ok: false, detail: "\(runtime.rawValue) not found")
             }
@@ -252,6 +274,13 @@ public struct WebSearchBackend: Sendable {
         case .running(let r, _), .stopped(let r): runtime = r
         case .missing, .noRuntime: runtime = nil
         case .runtimeDown(let r): return Outcome(ok: false, detail: "the \(r.rawValue) runtime is not running")
+        }
+        if runtime != nil, !isOwned {
+            return Outcome(
+                ok: false,
+                detail: "\(Self.containerName) exists but was not set up from this profile; refusing to remove it. "
+                    + "Run searxng-up.sh here first to adopt it, or searxng-down.sh --remove to remove it deliberately."
+            )
         }
         clearURL()
         guard let runtime, let tool = locator.locate(runtime.rawValue) else {
@@ -296,6 +325,7 @@ extension WebSearchBackend.ReconcileOutcome {
         switch self {
         case .preferenceOff: return "web search off; backend left as is"
         case .notManaged: return "no app-owned backend; nothing to restore"
+        case .notOwned: return "a summon-searxng exists but this profile did not set it up; left untouched (run setup to adopt it)"
         case .alreadyRunning(let baseURL): return "running at \(baseURL)"
         case .recovered(let baseURL, let attempts): return "restored at \(baseURL) after \(attempts) attempt(s)"
         case .unavailable(let reason): return "unavailable: \(reason)"

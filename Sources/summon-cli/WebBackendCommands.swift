@@ -50,10 +50,18 @@ extension SummonCLI {
 
     /// Read-only: the persisted preference beside the observed backend state.
     static func cli_webStatusCommand(core: SummonCore) throws {
-        let state = try awaitOrRun { await WebSearchBackend.production().inspect() }
+        let backend = WebSearchBackend.production()
+        let state = try awaitOrRun { await backend.inspect() }
         let recorded = SearXNGDiscovery.discoveredBaseURL() ?? "-"
         let baseURL = core.webConfig.baseURL.isEmpty ? "-" : core.webConfig.baseURL
+        // `owned` is the ownership evidence: only this profile's recorded URL lets
+        // enable/disable/remove act on the daemon-global container.
+        let owned: String
+        switch state {
+        case .running, .stopped: owned = backend.isOwned ? "yes" : "no"
+        default: owned = "-"
+        }
         print("enabled=\(core.webConfig.enabled) baseURL=\(baseURL)")
-        print("backend=\(state.summary) recordedURL=\(recorded)")
+        print("backend=\(state.summary) recordedURL=\(recorded) owned=\(owned)")
     }
 }

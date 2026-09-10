@@ -26,6 +26,13 @@ Summon owns exactly one container, `summon-searxng`, and addresses it by name.
 It never touches other containers and never runs `container system stop`: the
 runtime is shared, and another tool may have started using it since.
 
+The name is global to the runtime, so the name alone never proves ownership:
+the app and CLI act on the container only when this profile's recorded URL
+(`$HOME/.config/summon/searxng.url`, written by setup) exists. A profile that
+never set the backend up sees `owned=no` in `summon web status`, and its
+`enable` / `disable` / `remove` leave the container alone. Running
+`searxng-up.sh` from that profile adopts a healthy instance by recording its URL.
+
 | Intent | Command | Effect |
 |---|---|---|
 | Set up / re-enable | `./searxng-up.sh` | inspect → reuse if healthy → start if stopped → create if missing |

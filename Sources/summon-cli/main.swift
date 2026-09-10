@@ -502,12 +502,9 @@ struct SummonCLI {
             core.webConfig.enable()
             let result = try core.persistWebConfig(actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
-            // Re-enable restores a stopped app-owned backend; nothing is created here.
-            // The runtime is only booted when a recorded URL proves Summon set it up.
-            let managed = SearXNGDiscovery.discoveredBaseURL() != nil
-            let restored = try awaitOrRun {
-                await WebSearchBackend.production().reconcile(enabled: true, startRuntimeIfDown: managed)
-            }
+            // Re-enable restores a stopped app-owned backend; nothing is created here,
+            // and only a backend this profile recorded is touched.
+            let restored = try awaitOrRun { await WebSearchBackend.production().reconcile(enabled: true) }
             print("ok web enabled baseURL=\(core.webConfig.baseURL) backend: \(restored.summary)")
         case "disable":
             core.webConfig.enabled = false

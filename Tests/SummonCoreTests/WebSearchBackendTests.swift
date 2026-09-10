@@ -55,12 +55,15 @@ final class WebSearchBackendTests: XCTestCase {
     "NetworkSettings":{"Ports":{}}}]
     """
 
+    /// `recordedURL` is the ownership evidence: the default models a profile whose
+    /// own setup recorded the backend; pass nil for a profile that never set it up.
     private func makeBackend(
         runner: MockRunner,
         tools: Set<String>,
         recorded: Box<[String]> = Box([]),
         cleared: Box<Int> = Box(0),
         slept: Box<[Duration]> = Box([]),
+        recordedURL: String? = "http://127.0.0.1:8123/",
         onSleep: @escaping @Sendable () -> Void = {}
     ) -> WebSearchBackend {
         WebSearchBackend(
@@ -68,6 +71,7 @@ final class WebSearchBackendTests: XCTestCase {
             locator: MockLocator(tools),
             recordURL: { recorded.value.append($0) },
             clearURL: { cleared.value += 1 },
+            recordedURL: { recordedURL },
             sleep: { slept.value.append($0); onSleep() }
         )
     }
@@ -230,23 +234,63 @@ final class WebSearchBackendTests: XCTestCase {
             }
         }
         let backend = makeBackend(runner: runner, tools: ["container"])
-        let outcome = await backend.reconcile(enabled: true, startRuntimeIfDown: true)
+        let outcome = await backend.reconcile(enabled: true)
         XCTAssertEqual(outcome, .alreadyRunning(baseURL: "http://127.0.0.1:8123/"))
         XCTAssertEqual(runner.count("container", ["system", "start"]), 1)
         XCTAssertEqual(runner.count("container", ["system", "stop"]), 0)
     }
 
-    func testReconcileLeavesADownAppleRuntimeAloneWithoutManagedEvidence() async {
+    func testReconcileLeavesADownAppleRuntimeAloneWithoutOwnershipEvidence() async {
         // Web search defaults to on, so a runtime installed for other reasons must
         // not be booted by a launcher that never set a backend up.
         let runner = MockRunner()
         runner.respond = { call in
             call.args == ["system", "status"] ? ProcessOutcome(exitCode: 1) : ProcessOutcome(exitCode: 0)
         }
-        let backend = makeBackend(runner: runner, tools: ["container"])
+        let backend = makeBackend(runner: runner, tools: ["container"], recordedURL: nil)
         let outcome = await backend.reconcile(enabled: true)
         XCTAssertEqual(outcome, .unavailable(reason: "the container runtime is not running"))
         XCTAssertEqual(runner.count("container", ["system", "start"]), 0)
+    }
+
+    // MARK: - Ownership (harden 2026-09-10 F6)
+    // The container name is daemon-global. A profile that never recorded the URL
+    // (an isolated HOME, a test, an agent) must not start, stop, or remove a
+    // backend some other profile set up.
+
+    func testReconcileWithoutOwnershipLeavesAStoppedContainerAlone() async {
+        let state = Box("stopped")
+        let runner = containerWorld(state: state)
+        let backend = makeBackend(runner: runner, tools: ["container"], recordedURL: nil)
+        let outcome = await backend.reconcile(enabled: true)
+        XCTAssertEqual(outcome, .notOwned)
+        XCTAssertEqual(runner.count("container", ["start"]), 0)
+        XCTAssertEqual(state.value, "stopped")
+    }
+
+    func testStopWithoutOwnershipLeavesTheBackendRunning() async {
+        let state = Box("running")
+        let runner = containerWorld(state: state)
+        let backend = makeBackend(runner: runner, tools: ["container"], recordedURL: nil)
+        let outcome = await backend.stop()
+        XCTAssertTrue(outcome.ok, outcome.detail)
+        XCTAssertTrue(outcome.detail.contains("not set up from this profile"), outcome.detail)
+        XCTAssertEqual(runner.count("container", ["stop"]), 0)
+        XCTAssertEqual(state.value, "running")
+    }
+
+    func testRemoveWithoutOwnershipRefuses() async {
+        let cleared = Box(0)
+        let state = Box("running")
+        let runner = containerWorld(state: state)
+        let backend = makeBackend(runner: runner, tools: ["container"], cleared: cleared, recordedURL: nil)
+        let outcome = await backend.remove(purgeImage: true)
+        XCTAssertFalse(outcome.ok)
+        XCTAssertTrue(outcome.detail.contains("not set up from this profile"), outcome.detail)
+        XCTAssertEqual(runner.count("container", ["rm"]), 0)
+        XCTAssertEqual(runner.count("container", ["image"]), 0)
+        XCTAssertEqual(cleared.value, 0)
+        XCTAssertEqual(state.value, "running")
     }
 
     func testReconcileNeverLaunchesDockerDesktop() async {

@@ -19,6 +19,9 @@ public final class WebSearchLifecycleController {
         case running(baseURL: String)
         case stopped
         case notSetUp
+        /// A `summon-searxng` exists on the shared runtime, but this profile never
+        /// recorded it; Summon leaves it alone until setup adopts it.
+        case notOwned
         case unavailable(String)
 
         public var text: String {
@@ -29,6 +32,7 @@ public final class WebSearchLifecycleController {
             case .running(let baseURL): return "Local backend: running at \(baseURL)"
             case .stopped: return "Local backend: stopped (disable keeps its data; enable restarts it)"
             case .notSetUp: return "Local backend: not set up"
+            case .notOwned: return "Local backend: present but not set up from this profile — run Set up to adopt it"
             case .unavailable(let reason): return "Local backend: \(reason)"
             }
         }
@@ -74,16 +78,14 @@ public final class WebSearchLifecycleController {
         task?.cancel()
         status = .restoring
         let backend = self.backend
-        // A recorded URL exists only when Summon's own setup ran; without it the
-        // Apple runtime is never booted on the user's behalf.
-        let managed = SearXNGDiscovery.discoveredBaseURL() != nil
         task = Task { [weak self] in
-            let outcome = await backend.reconcile(enabled: true, startRuntimeIfDown: managed)
+            let outcome = await backend.reconcile(enabled: true)
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 switch outcome {
                 case .preferenceOff, .cancelled: break
                 case .notManaged: self.status = .notSetUp
+                case .notOwned: self.status = .notOwned
                 case .alreadyRunning(let baseURL), .recovered(let baseURL, _): self.status = .running(baseURL: baseURL)
                 case .unavailable(let reason): self.status = .unavailable(reason)
                 }
@@ -157,6 +159,7 @@ public final class WebSearchLifecycleController {
                 // An in-flight restore/stop/remove owns the status until it lands.
                 guard let self, !self.status.isTransient else { return }
                 switch state {
+                case .running where !backend.isOwned, .stopped where !backend.isOwned: self.status = .notOwned
                 case .running(_, let hostPort): self.status = .running(baseURL: "http://127.0.0.1:\(hostPort)/")
                 case .stopped: self.status = .stopped
                 case .missing: self.status = .notSetUp
