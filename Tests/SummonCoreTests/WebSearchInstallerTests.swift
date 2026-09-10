@@ -109,6 +109,25 @@ final class WebSearchInstallerTests: XCTestCase {
         }
     }
 
+    func testBringUpFailureCarriesTheScriptOutputTail() async {
+        let runner = MockRunner()
+        runner.outcomeFor = { call in
+            guard call.exe == "/bin/bash" else { return ProcessOutcome(exitCode: 0) }
+            return ProcessOutcome(
+                exitCode: 1,
+                output: "searxng: runtime = container\nsearxng: started on 8080 but the JSON API did not answer in 80s.\n"
+                    + "  | Traceback: settings.yml: permission denied\n"
+            )
+        }
+        let installer = makeInstaller(runner: runner, locator: MockLocator(["container"]))
+        let phases = await collectPhases(installer)
+        guard case .failed(let reason) = phases.last else {
+            return XCTFail("expected failed, got \(String(describing: phases.last))")
+        }
+        XCTAssertTrue(reason.hasPrefix("Web search backend didn't start: "), reason)
+        XCTAssertTrue(reason.contains("permission denied"), "failure surfaces the log tail: \(reason)")
+    }
+
     func testUnreachableAfterBringUpFails() async {
         let installer = makeInstaller(
             runner: MockRunner(), locator: MockLocator(["docker"]),

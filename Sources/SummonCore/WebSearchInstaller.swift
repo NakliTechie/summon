@@ -75,7 +75,14 @@ public struct WebSearchInstaller: Sendable {
         progress(.preparing)
         let up = await runner.run("/bin/bash", [scriptPath], env: toolEnv())
         guard up.exitCode == 0 else {
-            return fail("Web search backend didn't start.", progress)
+            // Keep the script's last lines: they name the failing step and the
+            // `container logs` / `docker logs` tail it printed, so the user is
+            // not left with a bare "didn't start".
+            let detail = WebSearchBackend.tail(up.output)
+            let reason = detail.isEmpty
+                ? "Web search backend didn't start."
+                : "Web search backend didn't start: \(detail)"
+            return fail(reason, progress)
         }
 
         progress(.verifying)
@@ -147,27 +154,54 @@ public struct ToolLocator: ToolLocating {
 }
 
 /// Runs a subprocess to completion, capturing merged stdout/stderr.
+///
+/// The pipe is drained concurrently while the child runs, so a child that prints
+/// more than the pipe buffer (log tails, verbose runtimes) cannot block on write
+/// and deadlock against a reader that only starts after exit. An optional
+/// `timeout` terminates a hung child and reports exit code -1.
 public struct SubprocessRunner: ProcessRunning {
-    public init() {}
+    private let timeout: TimeInterval?
+
+    public init(timeout: TimeInterval? = nil) {
+        self.timeout = timeout
+    }
 
     public func run(_ executable: String, _ args: [String], env: [String: String]) async -> ProcessOutcome {
-        await withCheckedContinuation { continuation in
+        let timeout = self.timeout
+        return await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = args
             process.environment = env
+            process.standardInput = FileHandle.nullDevice
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
-            process.terminationHandler = { finished in
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let text = String(data: data, encoding: .utf8) ?? ""
-                continuation.resume(returning: ProcessOutcome(exitCode: finished.terminationStatus, output: text))
-            }
             do {
                 try process.run()
             } catch {
                 continuation.resume(returning: ProcessOutcome(exitCode: -1, output: error.localizedDescription))
+                return
+            }
+            let watchdog: DispatchWorkItem? = timeout.map { seconds in
+                let item = DispatchWorkItem {
+                    guard process.isRunning else { return }
+                    process.terminate()
+                }
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds, execute: item)
+                return item
+            }
+            DispatchQueue.global(qos: .utility).async {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                watchdog?.cancel()
+                var text = String(data: data, encoding: .utf8) ?? ""
+                var code = process.terminationStatus
+                if process.terminationReason == .uncaughtSignal, let timeout {
+                    text += "\n(timed out after \(Int(timeout))s)"
+                    code = -1
+                }
+                continuation.resume(returning: ProcessOutcome(exitCode: code, output: text))
             }
         }
     }

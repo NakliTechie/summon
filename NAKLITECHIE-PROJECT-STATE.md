@@ -2,6 +2,15 @@
 
 ## Status
 
+**2026-09-10** — SearXNG lifecycle hardening, from the `apple/container` Discussion #2223 community reply:
+
+- `searxng-up.sh` now follows inspect → reuse if healthy → start if stopped → recreate only after a failed start or `SUMMON_SEARXNG_RECREATE=1`, on both runtimes; a stale recorded URL or a transient health failure no longer deletes the container. Failure prints the runtime's last 40 log lines and leaves the container for inspection.
+- `WebSearchBackend` (SummonCore): runtime-agnostic inspect/reconcile/stop/remove over the one app-owned container by name. Bounded recovery (3 attempts, 2 s/5 s backoff, cancellable). Never `container system stop`; Docker Desktop never launched; the Apple runtime is booted only when a recorded URL proves Summon's own setup ran.
+- App: `WebSearchLifecycleController` reconciles the persisted preference with the observed backend at launch and on toggle; Preferences → Search gains a backend status row and "Remove local backend…" (confirmed, image purge opt-in). CLI: `web enable` restores, `web disable` stops and keeps data, `web remove [--purge-image]`, `web status`; agent actor stays staged.
+- `WebSearchInstaller` failure reasons carry the script's output tail; `SubprocessRunner` drains its pipe concurrently and takes an optional timeout.
+- `make verify`: 461 tests, 10 live-gated skips, 0 failures; SwiftLint 0 violations / 182 files; shellcheck clean on both scripts. 21 new `WebSearchBackendTests`, 1 new installer test.
+- Not exercised live: Apple `container` is not installed on this host (Docker only). Stop → relaunch → restored and remove → not set up remain for the gate host.
+
 **2026-08-31** — AI-core truth and Apple-outreach cleanup on `main`:
 
 - Removed the phantom `SUMMON_AI_ENABLED` contract and dead executable compile branches; `SummonAI` is an unconditional app/CLI dependency.

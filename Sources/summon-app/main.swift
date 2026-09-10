@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var primaryHotkeyLabel = "⌥Space"
     var primaryHotkeyError: String?
     var webSearchSetup: WebSearchSetupController?
+    var webLifecycle: WebSearchLifecycleController?
     var onboarding: OnboardingWindowController?
     let loginChoicePromptedKey = "onboarding.loginChoicePrompted"
     var aiService: SummonAIService?
@@ -48,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 fputs("Summon startup warning: \(warning)\n", stderr)
             }
             webSearchSetup = WebSearchSetupController(core: core, scriptPath: bundledSearxngUpPath())
+            webLifecycle = WebSearchLifecycleController(core: core)
             let needsFirstRunLoginChoice = shouldOfferFirstRunLoginChoice()
 
             let service = SummonAIService.production(core: core)
@@ -112,6 +114,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             startAgentSocketMonitoring()
             installStatusItem()
+            // Reconcile the persisted web-search preference with the observed
+            // backend: restore a stopped app-owned SearXNG the user left enabled.
+            // Off-main, bounded, cancellable; nothing runs when the preference is off.
+            webLifecycle?.observe { [weak self] status in
+                self?.panel.showWebSearchStatus(status.isTransient ? status.text : nil)
+            }
+            webLifecycle?.reconcileIfEnabled()
             if shouldShowIntro() {
                 showOnboarding()
             } else if needsFirstRunLoginChoice {
@@ -381,6 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func beginWebSearchInstall(onPhase: @escaping @MainActor (WebSearchInstaller.Phase) -> Void) {
         webSearchSetup?.enableWebSearch { [weak self] phase in
             self?.panel.showWebSearchStatus(phase.isRunning ? phase.statusText : nil)
+            if phase.isTerminal { self?.webLifecycle?.refreshStatus() }
             onPhase(phase)
         }
     }
@@ -585,7 +595,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onLoginItemChanged: { [weak self] in self?.installStatusItem() },
                 onSetUpWebSearch: { [weak self] onPhase in
                     MainActor.assumeIsolated { self?.beginWebSearchInstall(onPhase: onPhase) }
-                }
+                },
+                webLifecycle: webLifecycle
             )
         }
         preferences?.show(section: section)
@@ -641,6 +652,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // A recovery still in flight must not restart a backend after the app is gone.
+        webLifecycle?.cancel()
         pasteboard?.stopPolling()
         hotkey?.unregister()
         clipboardHotkey?.unregister()
