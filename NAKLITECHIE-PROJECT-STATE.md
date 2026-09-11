@@ -2,7 +2,7 @@
 
 ## Status
 
-**2026-09-12** — **0.7.0** released: the web-search backend lifecycle after `/harden-nt` (record: `plan/harden-2026-09-10.md`, 3 rounds, 9 isolated agents, 41-path map grown to 52):
+**2026-09-12** — **0.7.0** released: the web-search backend lifecycle after `/harden-nt` (record: `plan/harden-2026-09-10.md`, 3 rounds, 9 isolated agents, 44-path map grown to 62):
 
 - Every claim the surface makes about the app-owned SearXNG container is verified before it is said: live port binding + journaled loopback health probe before "restored at"; a search uses the recorded backend only while it is running on that port right now; fallback answers name the failed provider.
 - Ownership by evidence, not by name: the recorded URL written by Summon's own setup gates enable / disable / remove; another profile sees `owned=no` and is refused. Found the hard way — two isolated runs (an agent's, then `make cli-e2e`'s) deleted the live container mid-test.
