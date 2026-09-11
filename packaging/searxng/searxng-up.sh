@@ -51,7 +51,7 @@ pick_port() {
 wait_json() { # $1 = port, $2 = attempts (2s apart; default 40 = 80s)
   local attempts="${2:-40}"
   for _ in $(seq 1 "$attempts"); do
-    curl -fsS "http://127.0.0.1:$1/search?q=test&format=json" >/dev/null 2>&1 && return 0
+    curl -fsS --max-time 5 "http://127.0.0.1:$1/search?q=test&format=json" >/dev/null 2>&1 && return 0
     sleep 2
   done
   return 1
@@ -60,7 +60,7 @@ wait_json() { # $1 = port, $2 = attempts (2s apart; default 40 = 80s)
 # Reuse a still-healthy instance regardless of which runtime started it.
 if [ -f "$DISCOVERY" ] && [ "$RECREATE" != "1" ]; then
   base="$(tr -d '\n' < "$DISCOVERY")"
-  if [ -n "$base" ] && curl -fsS "${base}search?q=test&format=json" >/dev/null 2>&1; then
+  if [ -n "$base" ] && curl -fsS --max-time 5 "${base}search?q=test&format=json" >/dev/null 2>&1; then
     echo "searxng: reusing running instance ($base)"
     exit 0
   fi
@@ -203,10 +203,14 @@ if ! docker info >/dev/null 2>&1; then
   echo "searxng: Docker daemon is up."
 fi
 
-docker_state() { # running | stopped | missing
+docker_state() { # running | paused | stopped | missing
   local status
   status="$(docker inspect -f '{{.State.Status}}' "$CONTAINER" 2>/dev/null)" || { echo missing; return; }
-  if [ "$status" = "running" ]; then echo running; else echo stopped; fi
+  case "$status" in
+    running) echo running ;;
+    paused) echo paused ;;   # frozen, not stopped: `docker start` would fail and provoke a needless recreate
+    *) echo stopped ;;
+  esac
 }
 docker_host_port() {
   # The configured binding is present from creation on, even before the container
@@ -222,7 +226,7 @@ docker_wait_visible() { for _ in $(seq 1 10); do [ "$(docker_state)" != "missing
 state="$(docker_state)"
 if [ "$RECREATE" = "1" ] && [ "$state" != "missing" ]; then
   echo "searxng: SUMMON_SEARXNG_RECREATE=1 — removing the existing $CONTAINER to rebuild it"
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
   state="missing"
 fi
 
@@ -235,7 +239,19 @@ case "$state" in
     fi
     echo "searxng: $CONTAINER is running but its JSON API isn't answering on ${existing:-?}; recreating it." >&2
     echo "searxng: last log lines before recreate:" >&2; docker_logs_tail
-    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
+    ;;
+  paused)
+    # A paused container is intact; unpausing restores it in a second where a
+    # start would fail and a recreate would take minutes.
+    echo "searxng: unpausing $CONTAINER…"
+    if docker unpause "$CONTAINER" >/dev/null 2>&1; then
+      existing="$(docker_host_port)"
+      if [ -n "$existing" ] && wait_json "$existing" 10; then record "$existing"; exit 0; fi
+    fi
+    echo "searxng: $CONTAINER did not answer after unpause; recreating it." >&2
+    echo "searxng: last log lines before recreate:" >&2; docker_logs_tail
+    docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
     ;;
   stopped)
     echo "searxng: starting the stopped $CONTAINER…"
@@ -245,7 +261,7 @@ case "$state" in
     fi
     echo "searxng: $CONTAINER did not come back healthy after start; recreating it." >&2
     echo "searxng: last log lines before recreate:" >&2; docker_logs_tail
-    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
     ;;
   missing) ;;
 esac

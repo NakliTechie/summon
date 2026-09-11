@@ -72,8 +72,10 @@ if [ "$handled" -eq 0 ] && command -v docker >/dev/null 2>&1 && docker info >/de
     docker stop "$CONTAINER" >/dev/null 2>&1 || true
     echo "searxng: disabled (docker container stopped; instance, settings and data kept)."
   else
-    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-    echo "searxng: removed (docker container deleted)."
+    # -v also removes the container's anonymous volumes (/var/cache/searxng,
+    # /etc/searxng); without it "Remove reclaims the disk" would be false on Docker.
+    docker rm -f -v "$CONTAINER" >/dev/null 2>&1 || true
+    echo "searxng: removed (docker container and its volumes deleted)."
     if [ "$PURGE_IMAGE" -eq 1 ]; then
       docker image rm searxng/searxng:latest >/dev/null 2>&1 && echo "searxng: image removed." \
         || echo "searxng: image kept (still referenced, or already gone)."
