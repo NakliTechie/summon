@@ -3,6 +3,53 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.7.0 — 2026-09-12
+
+The web-search backend lifecycle, hardened against a two-day adversarial run
+(`plan/harden-2026-09-10.md`): every claim the surface makes about the
+app-owned SearXNG container is now verified before it is said.
+
+### Added
+- `summon web remove [--purge-image]` and `summon web status`. Disable now stops
+  the app-owned container and keeps its data; Remove deletes the container (and
+  its volumes on Docker) and the recorded URL; the image is purged only on request.
+- Launch-time reconcile: a backend the user left enabled is restored after a
+  crash, reboot, or runtime restart — bounded (3 attempts, 2 s / 5 s backoff),
+  cancellable, and only for a container this profile set up.
+- Preferences → Search shows the backend state and offers "Remove local backend…"
+  with an explicit confirmation and an opt-in image purge.
+- Ownership evidence: the container name is global to the runtime, so the
+  recorded URL written by Summon's own setup is what lets enable / disable /
+  remove act. Another profile sees `owned=no` and is refused.
+
+### Changed
+- "Restored at <url>" is said only after the container publishes a live port and
+  answers a journaled loopback probe; a port taken by another process is reported
+  as unpublished and never recorded.
+- A search uses the recorded backend only while it is verifiably running on that
+  port right now; otherwise the keyless floor answers with a note. A fallback
+  answer from `web answer` names the provider that failed.
+- `searxng-up.sh`: inspect → reuse → unpause / start → recreate only after a
+  failed start or `SUMMON_SEARXNG_RECREATE=1`; plain `docker run` (no compose
+  plugin needed); two racing bring-ups resolve to one container; log tail on failure.
+- Paused and crash-looping containers are named as such instead of "stopped".
+- The recorded URL and the default store both follow `$HOME`, so an isolated HOME
+  can no longer read or delete the real user's state.
+- Web verbs reject unknown flags and extra tokens instead of ignoring them.
+
+### Fixed
+- `web enable` exits 1 when the backend could not be restored; `web search` no
+  longer demands `web.search.baseURL` when a recorded backend exists.
+- A subprocess whose helper kept the output pipe open, or whose exit Foundation
+  never observed, could park the lifecycle indefinitely; completion now rides on
+  the termination handler with a bounded drain and a kill escalation.
+- `searxng-down.sh --help` no longer prints a shell directive, and works from any
+  directory.
+
+### Removed
+- `packaging/searxng/docker-compose.yml` — the Docker path no longer depends on
+  the compose CLI plugin.
+
 ## 0.6.8 — 2026-08-19
 
 ### Added

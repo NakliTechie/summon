@@ -2,6 +2,15 @@
 
 ## Status
 
+**2026-09-12** — **0.7.0** released: the web-search backend lifecycle after `/harden-nt` (record: `plan/harden-2026-09-10.md`, 3 rounds, 9 isolated agents, 41-path map grown to 52):
+
+- Every claim the surface makes about the app-owned SearXNG container is verified before it is said: live port binding + journaled loopback health probe before "restored at"; a search uses the recorded backend only while it is running on that port right now; fallback answers name the failed provider.
+- Ownership by evidence, not by name: the recorded URL written by Summon's own setup gates enable / disable / remove; another profile sees `owned=no` and is refused. Found the hard way — two isolated runs (an agent's, then `make cli-e2e`'s) deleted the live container mid-test.
+- `$HOME` is honored for both the recorded URL and the default store; unknown flags rejected; `web remove|status` added; paused / crash-looping / unpublished states named; `searxng-up.sh` unpauses instead of recreating, uses plain `docker run`, resolves create races; volumes removed with the container; help text fixed.
+- Subprocess runner: termination-handler completion, bounded drain, kill escalation — a launch-time reconcile had parked ten minutes in `waitUntilExit` (sampled) after a `docker start` hung against a squatted port.
+- Black-box seam: `SUMMON_TOOL_DIRS` + `scripts/fake-docker` let `make cli-e2e` drive the lifecycle without a daemon, and keep it from ever touching the developer's real runtime.
+- 13 hardening commits, each check proven red by reintroducing its defect before green. `make verify`: 484 tests, 10 live-gated skips, 0 failures; lint 0 / 183. Live control pairs on Docker 29.4.3 green (paused, squatter, kill/restore, foreign profile, volumes, concurrent create). Not exercised live: Apple `container` runtime (not installed on this host), daemon-down paths.
+
 **2026-09-10** — SearXNG lifecycle hardening, from the `apple/container` Discussion #2223 community reply:
 
 - `searxng-up.sh` now follows inspect → reuse if healthy → start if stopped → recreate only after a failed start or `SUMMON_SEARXNG_RECREATE=1`, on both runtimes; a stale recorded URL or a transient health failure no longer deletes the container. Failure prints the runtime's last 40 log lines and leaves the container for inspection.
