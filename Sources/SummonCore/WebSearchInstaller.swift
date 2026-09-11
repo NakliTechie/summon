@@ -164,6 +164,30 @@ public struct ToolLocator: ToolLocating {
     }
 }
 
+/// Single mutable slot shared between the launch path and the termination handler.
+private final class LockedBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}
+
+/// Append-only byte buffer shared between the pipe reader and the completion path.
+private final class LockedBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    func append(_ chunk: Data) {
+        lock.lock(); data.append(chunk); lock.unlock()
+    }
+    func snapshot() -> Data {
+        lock.lock(); defer { lock.unlock() }
+        return data
+    }
+}
+
 /// Runs a subprocess to completion, capturing merged stdout/stderr.
 ///
 /// The pipe is drained concurrently while the child runs, so a child that prints
@@ -188,9 +212,31 @@ public struct SubprocessRunner: ProcessRunning {
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
+            // Completion rides on Foundation's termination handler, set before run().
+            // `waitUntilExit` on a worker thread was observed parked forever for a
+            // child that had already exited and been reaped (sampled live: the
+            // reconcile sat ten minutes in -[NSConcreteTask waitUntilExit]).
+            let buffer = LockedBuffer()
+            let drained = DispatchGroup()
+            let watchdogBox = LockedBox<DispatchWorkItem?>(nil)
+            process.terminationHandler = { finished in
+                watchdogBox.value?.cancel()
+                // Give the reader a moment to reach EOF; if a grandchild still holds
+                // the pipe, return with what was captured so far.
+                _ = drained.wait(timeout: .now() + 2)
+                var text = String(data: buffer.snapshot(), encoding: .utf8) ?? ""
+                var code = finished.terminationStatus
+                if finished.terminationReason == .uncaughtSignal, let timeout {
+                    text += "\n(timed out after \(Int(timeout))s)"
+                    code = -1
+                }
+                continuation.resume(returning: ProcessOutcome(exitCode: code, output: text))
+            }
+            drained.enter()
             do {
                 try process.run()
             } catch {
+                drained.leave()
                 continuation.resume(returning: ProcessOutcome(exitCode: -1, output: error.localizedDescription))
                 return
             }
@@ -198,21 +244,28 @@ public struct SubprocessRunner: ProcessRunning {
                 let item = DispatchWorkItem {
                     guard process.isRunning else { return }
                     process.terminate()
+                    // A child that ignores SIGTERM (or is stuck in the kernel) still
+                    // has to die, or the timeout is only advisory.
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+                    }
                 }
                 DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds, execute: item)
                 return item
             }
+            watchdogBox.value = watchdog
+            // Drain concurrently in chunks. Completion is keyed to the CHILD's exit,
+            // not to EOF on the pipe: a grandchild that inherited the pipe (Docker
+            // Desktop's CLI helper, a backgrounded job) would otherwise keep this
+            // call blocked for its whole lifetime.
             DispatchQueue.global(qos: .utility).async {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                watchdog?.cancel()
-                var text = String(data: data, encoding: .utf8) ?? ""
-                var code = process.terminationStatus
-                if process.terminationReason == .uncaughtSignal, let timeout {
-                    text += "\n(timed out after \(Int(timeout))s)"
-                    code = -1
+                let reader = pipe.fileHandleForReading
+                while true {
+                    let chunk = reader.availableData
+                    if chunk.isEmpty { break }
+                    buffer.append(chunk)
                 }
-                continuation.resume(returning: ProcessOutcome(exitCode: code, output: text))
+                drained.leave()
             }
         }
     }

@@ -165,6 +165,21 @@ final class WebSearchInstallerTests: XCTestCase {
         XCTAssertTrue(outcome.output.contains("timed out after 1s"), outcome.output)
     }
 
+    /// harden 2026-09-10 (live H16): a child that exits while a grandchild keeps
+    /// the stdout pipe open must not block the runner until the grandchild ends.
+    /// Docker Desktop's CLI does exactly this when its front process is killed.
+    func testSubprocessRunnerReturnsWhenTheChildExitsButAGrandchildHoldsThePipe() async {
+        let runner = SubprocessRunner(timeout: 20)
+        let start = Date()
+        let outcome = await runner.run(
+            "/bin/sh", ["-c", "sleep 15 & echo started; exit 0"], env: ["PATH": "/usr/bin:/bin"]
+        )
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 6, "must return shortly after the child exits, took \(elapsed)s")
+        XCTAssertEqual(outcome.exitCode, 0)
+        XCTAssertTrue(outcome.output.contains("started"), outcome.output)
+    }
+
     func testSubprocessRunnerDrainsLargeOutputWithoutDeadlock() async {
         // > 64 KiB (the pipe buffer) written before exit; a reader that starts only
         // after termination would deadlock here.
