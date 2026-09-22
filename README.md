@@ -1,54 +1,69 @@
-# Summon
+<h1 align="center">Summon</h1>
 
-A sovereign, native macOS launcher. Local-first, free, open source (AGPL-3.0). No account, no server, no telemetry. On-device AI is core; the launcher degrades cleanly when no model is available.
+<p align="center"><b>A sovereign, native macOS launcher with on-device AI.<br>
+Summon apps, files, your clipboard, and answers — from one keystroke, on your Mac.</b></p>
+
+<p align="center"><i>One app. macOS Sonoma 14+. No account, no server, no telemetry.</i></p>
+
+<p align="center">
+<img alt="Latest release" src="https://img.shields.io/github/v/release/NakliTechie/summon?style=flat-square&color=0F1A1F">
+<img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-0F1A1F?style=flat-square">
+<img alt="Telemetry: none" src="https://img.shields.io/badge/telemetry-none-0F1A1F?style=flat-square">
+<img alt="AI: on-device" src="https://img.shields.io/badge/AI-on--device-0F1A1F?style=flat-square">
+</p>
 
 **[📖 Visual guide](https://naklitechie.github.io/summon/guide/)** — every screen, captioned and searchable.
 
 ## Install
 
-```bash
-brew install --cask naklitechie/tap/summon
-```
-
-macOS Sonoma 14+ (on-device AI needs Apple Intelligence / macOS 26+). The 0.6.x build is ad-hoc signed, not notarized — if macOS blocks it, right-click → Open once. First launch offers **Keep Ready at Login** (on by default; clipboard history needs the background app).
-
-## Highlights
-
-- **Launcher** — ⌥Space: fuzzy-match apps, files, calculator, unit conversion, snippets, quicklinks, emoji, system commands, window layouts. Select → Tab / ⌘K → act.
-- **Clipboard history** — ⌥⇧C: local text, image, HTML, RTF, with an ignore list for sensitive apps.
-- **On-device AI** — answers from Apple Foundation Models, on your Mac. Safe actions run instantly ("set the volume to 30"); destructive ones ("empty the trash") stage in amber for one-click Accept. The model never claims an action it didn't run — [how the harness guarantees that](docs/harness.md).
-- **Web search** — keyless Wikipedia floor by default; opt-in SearXNG for full search. The first search asks permission; SearXNG may forward the query to its configured upstream engines.
-- **Agent face** — local CLI + default-off UNIX socket; every call journaled with `actor=`.
-
-## Built on Apple frameworks
-
-Apple-native throughout — no Electron, no web view: **AppKit/SwiftUI** for the UI, **Apple Foundation Models** for on-device AI, and **Apple's `container`** runtime for the opt-in web-search backend (no Docker Desktop, no license; Docker is a fallback).
-
-## Shortcuts
-
-| Action | Keys |
+| Platform | Command |
 |---|---|
-| Launcher | ⌥Space |
-| Clipboard history | ⌥⇧C |
-| Result actions | Tab or ⌘K |
-| Arrange focused window | ⌃⌥ + arrows / U I J K / Return C / D F G |
+| macOS (Homebrew) | `brew install --cask naklitechie/tap/summon` |
 
-## Sovereignty
-
-No account, no server of ours, no telemetry — not even opt-in. Network access follows an explicit action and a journal-bound authorization. Local model requests stay on the Mac; web queries reach the selected search backend and its configured upstream engines. Sovereignty and no-model launcher degradation are first-class test gates.
-
-## Develop
+Press **⌥Space** to open the launcher; it lives in the menu bar and captures your clipboard in the background. The first launch offers **Keep Ready at Login** (on by default). Point another tool at it over the local agent socket:
 
 ```bash
-make build     # SPM debug build
-make test
-make verify    # merge gate: tests, lint, CLI, sovereignty, no-model launcher, latency
-make battery   # gated batteries: 1000-probe routing + deterministic-surface + Macaw-parity
-make app       # ad-hoc Summon.app under dist/
+summon agent version          # the CLI face; the UNIX socket is default-off
 ```
 
-SPM targets: `SummonCore` · `SummonUI` · `SummonShim` (dev-only) · `SummonAI` (always built; embedded llama.cpp gated by `SUMMON_LLAMA`) · `summon-cli` · `summon-app`. Specs in [`docs/`](docs/).
+No config file, no account, no restart. The build is ad-hoc signed, not notarized — if macOS blocks it, right-click → Open once (or `xattr -dr com.apple.quarantine "/Applications/Summon.app"`).
+
+## Why
+
+You reach for a launcher a hundred times a day, and it either respects that your Mac is yours or it doesn't. Summon keeps everything local: the index, the clipboard, the AI. No account to make, no server of ours to trust, nothing phoning home — not even opt-in telemetry.
+
+**Use something else if:** you want the deepest third-party extension ecosystem — [Raycast](https://raycast.com) (proprietary, cloud AI, account) is far richer. You want a mature, scriptable workflow engine — [Alfred](https://www.alfredapp.com) (proprietary, paid Powerpack) is the standard. You just want app search and nothing more — Spotlight ships with macOS. Summon is for wanting a launcher *and* on-device AI *and* sovereignty in one tool.
+
+## On-device AI, and Smart Paste
+
+Answers come from **Apple Foundation Models**, on your Mac. Ask a question and it answers inline; ask for a safe action ("set the volume to 30") and it runs; ask for a destructive one ("empty the trash") and it stages in amber for one-click Accept. The model never claims an action it didn't run — [how the harness guarantees that](docs/harness.md).
+
+**Smart Paste (⌥⌘V)** reads what you copied — a contact block, a signature — and fills a form's fields by meaning: email into Email, phone into Phone, name into the name field. Clean fields route instantly on-device; anything unclear is decided by a small local model. Every fill is reversible from the toast, and secure fields are never touched.
+
+## Web search and the agent face
+
+Web search is off until you ask for it: a keyless Wikipedia floor by default, opt-in **SearXNG** for full search on Apple's `container` runtime (no Docker Desktop; Docker is a fallback). The first search asks permission; SearXNG may forward the query to its configured upstream engines.
+
+Every capability is reachable by machine: a local CLI and a default-off UNIX socket, each call journaled with `actor=`. Two doors, one core.
+
+## Keys and commands
+
+```
+⌥Space                          open the launcher
+⌥⇧C                             clipboard history (text · image · HTML · RTF)
+⌥⌘V                             Smart Paste into the frontmost form
+Tab  or  ⌘K                     act on the selected result
+⌃⌥ + arrows / U I J K / ⏎ C     arrange the focused window
+```
+
+## Verify it yourself
+
+```bash
+make verify    # merge gate: tests, lint, CLI e2e, sovereignty, no-model launcher, latency
+```
+
+The gate refuses a network primitive outside the two declared egress files, refuses an AI action that reports success without running, and refuses a launcher that dead-ends when no model is present. Sovereignty and no-model degradation are first-class test gates, run on every merge.
 
 ## License
 
-[AGPL-3.0](LICENSE).
+[AGPL-3.0](LICENSE). Founding docs and specs in [`docs/`](docs/) · what shipped in the [CHANGELOG](CHANGELOG.md).
