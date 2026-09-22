@@ -33,15 +33,15 @@ cask "summon" do
     run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/Summon.app"]
   end
 
+  zap trash: [
+    "~/Library/Application Support/Summon",
+    "~/Library/Preferences/tech.nakli.Summon.plist",
+  ]
+
   caveats <<~EOS
     Summon #{version} is ad-hoc signed, not Apple-notarized. It is safe to run, but
     macOS cannot verify the developer. If macOS still blocks it, open it once with
     right-click → Open, or run:
       xattr -dr com.apple.quarantine "#{appdir}/Summon.app"
   EOS
-
-  zap trash: [
-    "~/Library/Application Support/Summon",
-    "~/Library/Preferences/tech.nakli.Summon.plist",
-  ]
 end
