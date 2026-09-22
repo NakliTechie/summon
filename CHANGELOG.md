@@ -3,6 +3,33 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.8.0 — 2026-09-22
+
+Smart Paste, and Apple's `container` as the default web-search runtime.
+
+### Added
+- **Smart Paste (⌥⌘V).** Reads the clipboard, enumerates the frontmost app's
+  fields through Accessibility, and routes each value to a field — staged as an
+  amber proposal that fills nothing until you confirm. Routing is verdict-first
+  (a local, on-device typed-decision service reached over loopback, its egress
+  journaled) with a deterministic `NSDataDetector` floor as the fallback, so it
+  still works with no model present (removable AI). Secure fields are never
+  filled. Measured lift on ambiguously-labelled fields: verdict 8/8 vs the
+  deterministic floor 3/8.
+
+### Changed
+- Web search now prefers Apple's native `container` runtime and falls back to
+  Docker, coherent across setup, teardown, and reconcile. Only takes effect where
+  `container` is installed; unchanged on Docker-only hosts.
+
+### Known gaps (documented, not yet closed)
+- The Accessibility read/write path and the ⌥⌘V flow are unit- and fake-target
+  tested but not yet exercised end-to-end on a real app (a gate-host live check).
+- Name/organization extraction is not wired into the live flow yet, so today it
+  routes the deterministic entity kinds (email, phone, URL, date, address); the
+  verdict lift on names/orgs is proven in the benchmark, not the shipped path.
+- The review is a confirmation dialog, not the drawn review surface.
+
 ## 0.7.0 — 2026-09-12
 
 The web-search backend lifecycle, hardened against a two-day adversarial run
