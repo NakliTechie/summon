@@ -51,9 +51,18 @@ if [ -d "$SEARXNG_SRC" ]; then
 	echo "build-app: bundled SearXNG opt-in assets"
 fi
 
-# Ad-hoc sign (identity "-") — enough for local cask install tests; not for distribution.
-codesign --force --deep --sign - "$APP"
+# Signing identity. Default ad-hoc ("-") for release/CI — enough for local cask
+# tests, not for distribution. Set SUMMON_SIGN_IDENTITY to a stable local
+# code-signing identity (e.g. "Summon Local Signing") for dev builds: a stable
+# designated requirement keeps the Accessibility (TCC) grant across rebuilds,
+# instead of the ad-hoc cdhash churn that drops it on every build.
+IDENTITY="${SUMMON_SIGN_IDENTITY:--}"
+codesign --force --deep --sign "$IDENTITY" "$APP"
 codesign --verify --verbose=2 "$APP"
 
 echo "build-app: wrote $APP"
-echo "build-app: version $VERSION (ad-hoc signed)"
+if [ "$IDENTITY" = "-" ]; then
+	echo "build-app: version $VERSION (ad-hoc signed)"
+else
+	echo "build-app: version $VERSION (signed: $IDENTITY)"
+fi
