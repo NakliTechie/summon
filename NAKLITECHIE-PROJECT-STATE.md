@@ -2,6 +2,13 @@
 
 ## Status
 
+**2026-09-22** — **Smart paste** (entity-and-target-aware clipboard fill) + **Apple-container default**, on `main`, `make verify` green:
+
+- Smart paste, ⌥⌘V: reads the clipboard, enumerates the frontmost app's fields via Accessibility, routes each value to a field, stages an amber proposal, and writes accepted fills back via AX on explicit confirm — no auto-fill. Router is verdict-first (`~/Code/verdict` loopback typed-decision daemon, `POST /v1/systemone`, journaled `.localModel` egress through the declared `VerdictClient`) with a deterministic NSDataDetector floor as the removable-AI fallback. Live benchmark: verdict-fm 8/8 vs deterministic 3/8 on ambiguously-labelled fields; verdict-fm is the default (Laya deprioritized — consistent underperformance, possibly misconfig, a later session).
+- `/harden-nt` (record: `plan/harden-2026-09-22.md`, 2 rounds, homogeneous-but-isolated): one real defect found and hardened — duplicate field ids trapped the review label map (`Dictionary(uniqueKeysWithValues:)`), fixed with `SmartPasteService.fieldLabels`, check proven red (`Fatal error: Duplicate values for key`); the accept/reject actor gate's check proven to bite. X2 (verdict field-limit fallback) and X3 (injection-in-state) parked untested.
+- Web-search runtime default switched to Apple `container`, Docker fallback — coherent across `WebSearchBackend.inspect`, `searxng-up.sh`, and the already-container-first `searxng-down.sh`; locked by a test. Only activates where `container` is installed (unchanged on this Docker-only host).
+- Owed before ship: gate-host `/live-check-nt` (AX read/write + verdict live path + the container default, on a container-capable Mac with Accessibility granted); name/org extraction so the real flow reaches verdict's lift; a drawn review panel replacing the NSAlert.
+
 **2026-09-12** — **0.7.0** released: the web-search backend lifecycle after `/harden-nt` (record: `plan/harden-2026-09-10.md`, 3 rounds, 9 isolated agents, 44-path map grown to 62):
 
 - Every claim the surface makes about the app-owned SearXNG container is verified before it is said: live port binding + journaled loopback health probe before "restored at"; a search uses the recorded backend only while it is running on that port right now; fallback answers name the failed provider.
