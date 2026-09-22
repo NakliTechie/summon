@@ -3,8 +3,8 @@ import Foundation
 /// One-consent, background installer for full web search (opt-in SearXNG).
 ///
 /// A single user action ("turn on web search") runs this to completion with no
-/// further steps: reuse Docker if it's already installed, otherwise pull Apple's
-/// `container` runtime via Homebrew, then the SearXNG image, start it loopback-only,
+/// further steps: reuse an installed runtime if one is present, otherwise pull
+/// Apple's `container` runtime via Homebrew, then the SearXNG image, start it loopback-only,
 /// and flip the setting on. Never blocks the launcher — the caller runs it off the
 /// main actor and observes `Phase`. The runtime is only ever installed on this
 /// explicit consent (a package-manager user's deliberate opt-in); Summon never
@@ -52,8 +52,8 @@ public struct WebSearchInstaller: Sendable {
     @discardableResult
     public func install(progress: @Sendable (Phase) -> Void) async -> Phase {
         progress(.detecting)
-        // Reuse an installed Docker (or an already-present container) before pulling
-        // anything: "if docker not available already, then container gets pulled."
+        // Reuse any already-installed runtime (Apple's container or Docker) before
+        // pulling anything; only when neither is present is `container` pulled.
         let hasRuntime = locator.locate("docker") != nil || locator.locate("container") != nil
         if !hasRuntime {
             guard let brew = locator.locate("brew") else {

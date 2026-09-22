@@ -176,7 +176,7 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         webSetupStatus.textColor = .secondaryLabelColor
         let setupDetails = label(
             "Full web search runs an opt-in SearXNG on Apple's container runtime "
-                + "(reusing Docker if present). One click sets it up in the background — "
+                + "(or Docker as a fallback). One click sets it up in the background — "
                 + "the launcher stays usable throughout."
         )
         webBackendStatus.font = .systemFont(ofSize: 11)

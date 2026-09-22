@@ -141,11 +141,12 @@ public struct WebSearchBackend: Sendable {
     // MARK: - Inspect
 
     /// Ask each installed runtime whether it holds the app-owned container.
-    /// Docker is asked first to match `searxng-up.sh`, which prefers an installed Docker.
+    /// Apple's `container` is asked first — it is Summon's default runtime — and
+    /// Docker is the fallback, matching `searxng-up.sh`'s selection order.
     public func inspect() async -> State {
         var sawRuntimeDown: Runtime?
         var sawAnyRuntime = false
-        for runtime in [Runtime.docker, .container] {
+        for runtime in [Runtime.container, .docker] {
             guard let tool = locator.locate(runtime.rawValue) else { continue }
             sawAnyRuntime = true
             guard await daemonUp(runtime, tool: tool) else {

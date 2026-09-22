@@ -198,6 +198,30 @@ final class WebSearchBackendTests: XCTestCase {
         XCTAssertEqual(runner.count("container", ["inspect"]), 1)
     }
 
+    func testInspectPrefersAppleContainerWhenBothRuntimesHoldIt() async {
+        // Both runtimes are installed and both would report a running container.
+        // Apple's `container` is the default, so it wins and Docker is never asked.
+        let runner = MockRunner()
+        runner.respond = { call in
+            switch (call.tool, call.args.first) {
+            case ("container", "system"): return ProcessOutcome(exitCode: 0)
+            case ("container", "inspect"): return ProcessOutcome(exitCode: 0, output: Self.containerRunning)
+            case ("docker", "info"): return ProcessOutcome(exitCode: 0)
+            case ("docker", "inspect"): return ProcessOutcome(exitCode: 0, output: Self.dockerRunning)
+            default: return ProcessOutcome(exitCode: 0)
+            }
+        }
+        let backend = makeBackend(runner: runner, tools: ["docker", "container"])
+        let state = await backend.inspect()
+        if case .running(let runtime, _) = state {
+            XCTAssertEqual(runtime, .container, "Apple container is the default runtime")
+        } else {
+            XCTFail("expected a running container, got \(state)")
+        }
+        XCTAssertEqual(runner.count("container", ["inspect"]), 1)
+        XCTAssertEqual(runner.count("docker", ["inspect"]), 0, "the default runtime short-circuits Docker")
+    }
+
     // MARK: - Reconcile
 
     func testReconcilePreferenceOffTouchesNothing() async {
