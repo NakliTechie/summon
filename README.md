@@ -12,6 +12,8 @@ Summon apps, files, your clipboard, and answers — from one keystroke, on your 
 <img alt="AI: on-device" src="https://img.shields.io/badge/AI-on--device-0F1A1F?style=flat-square">
 </p>
 
+<p align="center"><img alt="Summon — a sovereign, native macOS launcher with on-device AI" src="marketing/social.png" width="840"></p>
+
 **[📖 Visual guide](https://naklitechie.github.io/summon/guide/)** — every screen, captioned and searchable.
 
 ## Install

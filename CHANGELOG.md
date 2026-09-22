@@ -3,6 +3,27 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.8.1 — 2026-09-22
+
+Smart Paste that actually fills — verified live on real forms.
+
+### Fixed
+- Smart Paste's Accessibility write now lands on real form fields (web forms and
+  native cards). 0.8.0 staged a proposal but the write failed; it re-activates and
+  refocuses the target, sets the value without an over-strict settable pre-check,
+  and verifies focus before any keystroke fallback.
+
+### Changed
+- Smart Paste fills directly on ⌥⌘V — no confirmation dialog — then a non-blocking
+  toast with Undo. A focus-change guard cancels the fill if focus left the app you
+  invoked it on, so a fill never lands in the wrong place.
+- The verdict decision call is bounded (3 s); a slow backend falls back to the
+  deterministic router instead of stalling the fill.
+
+### Added
+- Name and organization extraction (on-device, via NaturalLanguage), so a copied
+  contact routes its name and company into the matching fields, not just email/phone.
+
 ## 0.8.0 — 2026-09-22
 
 Smart Paste, and Apple's `container` as the default web-search runtime.
