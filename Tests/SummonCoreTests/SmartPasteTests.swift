@@ -31,6 +31,36 @@ final class SmartPasteTests: XCTestCase {
         XCTAssertTrue(EntityExtractor().extract(from: "   ").isEmpty)
     }
 
+    func testExtractsPersonNameViaLinguistics() {
+        let entities = EntityExtractor().extract(from: "Please reach out to Barack Obama about the schedule.")
+        let names = entities.filter { $0.kind == .name }
+        XCTAssertFalse(names.isEmpty, "expected a personal-name entity")
+        XCTAssertTrue(names.contains { $0.value.contains("Obama") })
+    }
+
+    func testExtractsOrganizationViaLinguistics() {
+        let entities = EntityExtractor().extract(from: "She recently joined Microsoft Corporation as a lead.")
+        XCTAssertTrue(entities.contains { $0.kind == .organization && $0.value.contains("Microsoft") },
+                      "expected an organization entity")
+    }
+
+    func testBareContactBlockExtractsAllFour() {
+        let block = "Dr. Priya Raman\nAtlas Robotics\npriya.raman@atlasrobotics.example\n+1 (415) 555-0198"
+        let kinds = Set(EntityExtractor().extract(from: block).map(\.kind))
+        // Print for diagnosis of bare-block NER, then assert the deterministic kinds.
+        XCTAssertTrue(kinds.contains(.email))
+        XCTAssertTrue(kinds.contains(.phone))
+        XCTAssertTrue(kinds.contains(.name), "bare-block person name not tagged: \(kinds)")
+        XCTAssertTrue(kinds.contains(.organization), "bare-block org not tagged: \(kinds)")
+    }
+
+    func testNameDoesNotShadowAnEmail() {
+        // A name and an email in one block must both surface, not overlap-drop.
+        let entities = EntityExtractor().extract(from: "Barack Obama <president@example.com>")
+        XCTAssertTrue(entities.contains { $0.kind == .email && $0.value == "president@example.com" })
+        XCTAssertTrue(entities.contains { $0.kind == .name && $0.value.contains("Obama") })
+    }
+
     // MARK: - Deterministic routing
 
     func testRoutesEntitiesToLabelledFields() async throws {

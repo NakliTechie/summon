@@ -5,11 +5,12 @@ import SummonCore
 import SummonUI
 
 /// The live smart-paste flow, invoked from a global hotkey. It runs while the
-/// target app is still frontmost (Summon shows no panel first), reads the current
+/// target app is still frontmost (Summon shows no panel), reads the current
 /// clipboard text, enumerates the target app's fields through Accessibility, asks
-/// the router where each value belongs, stages the proposal (amber), and — only
-/// on explicit accept in a confirmation — writes the fills back through
-/// Accessibility. Nothing is ever filled without that accept.
+/// the router where each value belongs, and — per the 2026-09-22 decision —
+/// **fills directly** (no blocking dialog), then shows a non-blocking toast with
+/// Undo. The fill is still staged+journaled (transient amber → accepted) for
+/// audit; secure fields are never written; Undo restores each field's prior value.
 ///
 /// The router is verdict-first with a deterministic fallback: verdict when its
 /// loopback daemon is up (egress journaled by `CoreAuthorizedVerdictTransport`),
@@ -18,6 +19,7 @@ import SummonUI
 final class SmartPasteController {
     private let core: SummonCore
     private let router: any SmartPasteRouter
+    private let toast = SmartPasteToast()
 
     init(core: SummonCore) {
         self.core = core
@@ -50,54 +52,54 @@ final class SmartPasteController {
                 sourceText: text, fields: fields, router: router
             )
             guard !proposal.isEmpty else { return }
+
+            // Routing can take a beat (a verdict round-trip). If focus left the
+            // app that was frontmost at ⌥⌘V, do NOT fill — a direct fill must
+            // never land in a different app than the one you invoked it on.
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
+                toast.show(message: "Smart Paste cancelled — focus changed", undo: nil, duration: 3)
+                return
+            }
+
+            // Stage (journal) then accept immediately — the target is still
+            // frontmost and focused, so the AX write lands without a modal
+            // stealing focus first.
             let persisted = try SmartPasteService.persisted(from: proposal)
             try core.staged.upsert(persisted)
-            presentReview(
-                id: persisted.id,
-                proposal: proposal,
-                fields: fields,
-                appName: app.localizedName ?? "the frontmost app",
-                target: target
-            )
+            let outcomes = try core.acceptStagedSmartPaste(id: persisted.id, target: target, actor: .user)
+
+            presentToast(outcomes: outcomes, fields: fields, target: target)
         } catch {
             fputs("Summon smart paste failed: \(error.localizedDescription)\n", stderr)
         }
     }
 
-    private func presentReview(
-        id: String,
-        proposal: SmartPasteProposal,
+    private func presentToast(
+        outcomes: [SmartPasteFillOutcome],
         fields: [SmartPasteFieldDescriptor],
-        appName: String,
         target: SmartPasteTarget
     ) {
         let labels = SmartPasteService.fieldLabels(for: fields)
-        let lines = proposal.fills.map { fill -> String in
-            let fieldLabel = labels[fill.fieldID] ?? fill.fieldID
-            let conf = String(format: "%.2f", fill.confidence)
-            return "• \(fill.value) → \(fieldLabel)  (\(fill.confidenceKind.rawValue) \(conf))"
+        let priorByID = Dictionary(fields.map { ($0.id, $0.currentValue ?? "") }, uniquingKeysWith: { a, _ in a })
+        let applied = outcomes.filter(\.applied)
+        guard !applied.isEmpty else {
+            let failed = outcomes.count
+            toast.show(message: failed > 0 ? "Smart Paste: no field accepted the value" : "Smart Paste: nothing to fill", undo: nil)
+            return
         }
 
-        let alert = NSAlert()
-        alert.messageText = "Smart Paste into \(appName)?"
-        alert.informativeText = (["Summon proposes these fills. Nothing is written until you confirm."]
-            + lines).joined(separator: "\n")
-        alert.addButton(withTitle: "Fill")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
+        let names = applied.map { labels[$0.fill.fieldID] ?? $0.fill.fieldID }
+        var message = "Filled " + names.joined(separator: ", ")
+        let failedCount = outcomes.count - applied.count
+        if failedCount > 0 { message += " · \(failedCount) skipped" }
 
-        if alert.runModal() == .alertFirstButtonReturn {
-            do {
-                let outcomes = try core.acceptStagedSmartPaste(id: id, target: target, actor: .user)
-                let failed = outcomes.filter { !$0.applied }
-                if !failed.isEmpty {
-                    fputs("Summon smart paste: \(failed.count) field(s) did not accept the value\n", stderr)
-                }
-            } catch {
-                fputs("Summon smart paste accept failed: \(error.localizedDescription)\n", stderr)
+        // Undo restores each filled field's prior value through the same target.
+        let undo: () -> Void = { [weak self] in
+            for outcome in applied {
+                _ = try? target.apply(value: priorByID[outcome.fill.fieldID] ?? "", toFieldID: outcome.fill.fieldID)
             }
-        } else {
-            try? core.rejectStagedSmartPaste(id: id, actor: .user)
+            self?.toast.show(message: "Undone", undo: nil, duration: 2)
         }
+        toast.show(message: message, undo: undo)
     }
 }

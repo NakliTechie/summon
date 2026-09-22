@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 /// Deterministic entity extraction over pasted text.
 ///
@@ -36,9 +37,53 @@ public struct EntityExtractor: Sendable {
         // narrow, well-bounded regex over ranges the detector did not claim.
         for emailEntity in Self.emails(in: trimmed, excluding: claimedRanges) {
             entities.append(emailEntity)
+            if let loc = emailEntity.location, let len = emailEntity.length {
+                claimedRanges.append(NSRange(location: loc, length: len))
+            }
+        }
+
+        // Person and organization names — on-device linguistics (no model, no
+        // network, no latency). This is the residue NSDataDetector cannot see;
+        // it is what lets a name reach a "Full name" field and an org a "Company".
+        for nameEntity in Self.names(in: trimmed, excluding: claimedRanges) {
+            entities.append(nameEntity)
         }
 
         return entities.sorted { ($0.location ?? 0) < ($1.location ?? 0) }
+    }
+
+    /// Personal and organization names via `NLTagger` `.nameType` — Apple's
+    /// on-device named-entity recognition, synchronous and instant.
+    private static func names(in text: String, excluding claimed: [NSRange]) -> [SmartPasteEntity] {
+        let tagger = NLTagger(tagSchemes: [.nameType])
+        tagger.string = text
+        let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .omitOther, .joinNames]
+        var out: [SmartPasteEntity] = []
+        tagger.enumerateTags(
+            in: text.startIndex..<text.endIndex,
+            unit: .word,
+            scheme: .nameType,
+            options: options
+        ) { tag, range in
+            let kind: SmartPasteEntityKind
+            switch tag {
+            case .personalName: kind = .name
+            case .organizationName: kind = .organization
+            default: return true
+            }
+            let nsRange = NSRange(range, in: text)
+            if claimed.contains(where: { NSIntersectionRange($0, nsRange).length > 0 }) { return true }
+            let value = String(text[range])
+            guard !value.isEmpty else { return true }
+            out.append(
+                SmartPasteEntity(
+                    kind: kind, value: value, raw: value,
+                    location: nsRange.location, length: nsRange.length
+                )
+            )
+            return true
+        }
+        return out
     }
 
     private static func entity(

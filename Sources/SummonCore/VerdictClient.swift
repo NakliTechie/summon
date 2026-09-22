@@ -15,7 +15,7 @@ public protocol VerdictHTTPTransport: Sendable {
 public struct LiveVerdictHTTPTransport: VerdictHTTPTransport {
     public var session: URLSession
     public var timeout: TimeInterval
-    public init(session: URLSession = .shared, timeout: TimeInterval = 8) {
+    public init(session: URLSession = .shared, timeout: TimeInterval = 3) {
         self.session = session
         self.timeout = timeout
     }

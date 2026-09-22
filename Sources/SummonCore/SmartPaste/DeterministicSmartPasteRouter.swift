@@ -110,7 +110,8 @@ public struct DeterministicSmartPasteRouter: SmartPasteRouter {
         case .currency:
             return [("price", 0.85), ("amount", 0.85), ("cost", 0.8), ("total", 0.75)]
         case .name:
-            return [("name", 0.8), ("fullname", 0.9), ("firstname", 0.85), ("lastname", 0.85), ("contact", 0.6)]
+            return [("name", 0.8), ("fullname", 0.9), ("firstname", 0.85), ("lastname", 0.85),
+                    ("first", 0.7), ("last", 0.7), ("contact", 0.6)]
         case .organization:
             return [("company", 0.9), ("organization", 0.9), ("organisation", 0.9), ("employer", 0.85), ("org", 0.8)]
         case .text:
