@@ -5,18 +5,16 @@ import SummonCore
 import SummonUI
 import SummonAI
 
-/// Menu-bar host: ⌥Space launcher, ⌥⇧C clipboard history, resident pasteboard capture, login item.
-@main
-enum SummonAppMain {
-    static func main() {
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
-
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        app.run()
-    }
-}
+/// Menu-bar host: ⌥Space launcher, ⌥⇧C clipboard history, ⌥⌘V smart paste,
+/// resident pasteboard capture, login item.
+///
+/// This file is named `main.swift`, so its top-level statements are the process
+/// entry point (a second file in this target rules out `@main`).
+let summonApp = NSApplication.shared
+summonApp.setActivationPolicy(.accessory)
+let summonDelegate = AppDelegate()
+summonApp.delegate = summonDelegate
+summonApp.run()
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var core: SummonCore!
@@ -26,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var pasteboard: PasteboardService!
     var hotkey: GlobalHotkey?
     var clipboardHotkey: GlobalHotkey?
+    var smartPasteController: SmartPasteController!
+    var smartPasteHotkey: GlobalHotkey?
     var windowHotkeys: [GlobalHotkey] = []
     var windowShortcutRegistrationErrors: [String] = []
     var windowShortcutLastError: String?
@@ -60,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onNavigate: { [weak self] destination in self?.open(destination: destination) }
             )
             clipboardHistory = ClipboardHistoryController(core: core)
+            smartPasteController = SmartPasteController(core: core)
             core.setExecutor(
                 ProcessModuleExecutor(
                     pasteboardWriter: { text in
@@ -110,6 +111,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     "Summon: clipboard hotkey \(ShortcutCatalog.clipboardHistory) not registered: \(error)\n",
                     stderr
                 )
+            }
+
+            // Smart-paste hotkey is optional (another app may own ⌥⌘V).
+            smartPasteHotkey = GlobalHotkey(id: 3)
+            smartPasteHotkey?.onPressed = { [weak self] in
+                self?.smartPasteController.run()
+            }
+            do {
+                try smartPasteHotkey?.register(
+                    keyCode: UInt32(kVK_ANSI_V),
+                    modifiers: UInt32(optionKey | cmdKey)
+                )
+            } catch {
+                fputs("Summon: smart-paste hotkey ⌥⌘V not registered: \(error)\n", stderr)
             }
 
             startAgentSocketMonitoring()

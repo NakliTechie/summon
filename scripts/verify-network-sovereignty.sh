@@ -18,6 +18,7 @@ network_files="$({
         Sources || true
 } | LC_ALL=C sort)"
 expected_network_files="Sources/SummonCore/LocalModelClient.swift
+Sources/SummonCore/VerdictClient.swift
 Sources/SummonCore/WebSearch.swift"
 if [[ "$network_files" != "$expected_network_files" ]]; then
     echo "network-sovereignty: undeclared direct network primitive"
@@ -44,6 +45,8 @@ rg -q 'authorization\?\.permits\(url: url, purpose: \.userWeb\)' \
     Sources/SummonCore/WebSearch.swift
 rg -q 'authorization\?\.permits\(url: url, purpose: \.localModel\)' \
     Sources/SummonCore/LocalModelClient.swift
+rg -q 'authorization\?\.permits\(url: url, purpose: \.localModel\)' \
+    Sources/SummonCore/VerdictClient.swift
 rg -q 'authorization\?\.permits\(url: providerURL, purpose: \.userModelFetch\)' \
     Sources/SummonAI/L0ModelFetch.swift
 rg -q 'NetworkSovereignty\.authorize' Sources/summon-cli/main.swift

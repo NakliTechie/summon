@@ -283,6 +283,61 @@ public final class SummonCore: @unchecked Sendable {
         notifyStagedProposalChange(id: id)
     }
 
+    /// Human acceptance of a staged smart-paste proposal. Claims the proposal,
+    /// writes the accepted fills into the target through Accessibility, and
+    /// journals the decision — the one accept path for smart paste (the effect is
+    /// an AX write, so it runs outside the DB transaction, recovered by
+    /// `reconcileApplying` like any other applied proposal). `acceptedFieldIDs`
+    /// gates which fills are written; nil applies the whole proposal.
+    @discardableResult
+    public func acceptStagedSmartPaste(
+        id: String,
+        acceptedFieldIDs: Set<String>? = nil,
+        target: SmartPasteTarget,
+        actor: ActorTag,
+        applicator: SmartPasteApplicator = SmartPasteApplicator()
+    ) throws -> [SmartPasteFillOutcome] {
+        guard actor == .user else {
+            throw CoreError.store("staged smart paste requires human acceptance in Summon UI")
+        }
+        guard let existing = try staged.get(id), existing.rung == SmartPasteService.rung else {
+            throw CoreError.store("proposal \(id) is not a staged smart-paste proposal")
+        }
+        guard try staged.claimForApply(
+            id: id,
+            rung: SmartPasteService.rung,
+            reviewedOutput: existing.output
+        ) != nil else {
+            throw CoreError.store("proposal \(id) is not staged for apply")
+        }
+        let proposal = try SmartPasteService.proposal(from: existing)
+        let outcomes = applicator.apply(proposal, acceptedFieldIDs: acceptedFieldIDs, to: target)
+
+        let anyApplied = outcomes.contains(where: \.applied)
+        let reason = anyApplied
+            ? nil
+            : outcomes.filter { !$0.applied }
+                .map { "\($0.fill.fieldID): \($0.detail)" }
+                .joined(separator: "; ")
+        try finalizeProposal(
+            id: id,
+            from: "applying",
+            to: anyApplied ? "accepted" : "apply_failed",
+            reason: reason ?? (anyApplied ? nil : "no fill was applied"),
+            actor: actor
+        )
+        notifyStagedProposalChange(id: id)
+        return outcomes
+    }
+
+    /// Human rejection of a staged smart-paste proposal.
+    public func rejectStagedSmartPaste(id: String, actor: ActorTag) throws {
+        guard let proposal = try staged.get(id), proposal.rung == SmartPasteService.rung else {
+            throw CoreError.store("proposal \(id) is not a smart-paste proposal")
+        }
+        try rejectStagedProposal(id: id, actor: actor)
+    }
+
     /// Human rejection of any staged proposal. State and decision journal commit together.
     public func rejectStagedProposal(id: String, actor: ActorTag) throws {
         guard actor == .user else {
