@@ -22,13 +22,15 @@ Summon apps, files, your clipboard, and answers — from one keystroke, on your 
 |---|---|
 | macOS (Homebrew) | `brew install --cask naklitechie/tap/summon` |
 
-Press **⌥Space** to open the launcher; it lives in the menu bar and captures your clipboard in the background. The first launch offers **Keep Ready at Login** (on by default). Point another tool at it over the local agent socket:
+The command taps `naklitechie/homebrew-tap` and installs the app in one step. Or grab the `.zip` from the [latest release](https://github.com/NakliTechie/summon/releases/latest) and drag `Summon.app` to `/Applications`.
+
+Requires **macOS Sonoma 14+** to run; **on-device AI needs macOS 26+ with Apple Intelligence** (without it, the launcher, clipboard, and search work and the AI rung degrades cleanly). The build is ad-hoc signed, not notarized — if macOS blocks it, right-click → **Open** once (or `xattr -dr com.apple.quarantine "/Applications/Summon.app"`).
+
+Press **⌥Space** to open the launcher; it lives in the menu bar and captures your clipboard in the background. The first launch offers **Keep Ready at Login** (on by default). No config file, no account, no restart. Point another tool at it over the local agent socket:
 
 ```bash
 summon agent version          # the CLI face; the UNIX socket is default-off
 ```
-
-No config file, no account, no restart. The build is ad-hoc signed, not notarized — if macOS blocks it, right-click → Open once (or `xattr -dr com.apple.quarantine "/Applications/Summon.app"`).
 
 ## Why
 
