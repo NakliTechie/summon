@@ -47,3 +47,6 @@ Models/
 # --- Editors ---
 .idea/
 .vscode/
+# Promo output (regenerable; /windup-nt sweeps it)
+/marketing
+/brag-output*
