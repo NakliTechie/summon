@@ -3,6 +3,10 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.8.2 — 2026-10-22
+
+Rebuilt with the macOS 26.7.1 SDK and patched certificate stores after the eMudhra CA compromise. No source change from 0.8.1 apart from the version string.
+
 ## 0.8.1 — 2026-09-22
 
 Smart Paste that actually fills — verified live on real forms.
