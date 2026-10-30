@@ -29,14 +29,15 @@ final class AgentSocketTests: XCTestCase {
     func testDispatchOpJournalsAgent() throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let server = AgentSocketServer(core: core)
-        // Non-restricted settings key (agent.* is propose-only)
+        // An unlisted key stages too: every agent write waits for the user (A9).
         let req = """
         {"op":"dispatch","action":{"v":1,"action":"settings.set","key":"cli.test.flag","value":true}}
         """
         let data = try server.handleRequest(Data(req.utf8))
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        XCTAssertEqual(obj?["ok"] as? Bool, true)
-        XCTAssertEqual(try core.settings.get("cli.test.flag"), .bool(true))
+        XCTAssertEqual(obj?["ok"] as? Bool, false)
+        XCTAssertEqual(obj?["outcome"] as? String, "staged")
+        XCTAssertNil(try core.settings.get("cli.test.flag"))
         let entries = try core.journal.allEntries()
         XCTAssertEqual(entries.last?.actor, .agent)
     }
@@ -170,14 +171,25 @@ final class AgentSocketTests: XCTestCase {
         XCTAssertTrue(kinds.contains("clipboard"))
     }
 
-    func testAgentOverwriteUpsertsStageWithoutMutation() throws {
+    func testAgentUpsertsStageWithoutMutation() throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let server = AgentSocketServer(core: core)
-        let firstSnippet = """
-        {"op":"dispatch","action":{"v":1,"action":"snippet.upsert","id":"stable","key":"Name","body":"old"}}
+        // New items stage as well as overwrites (A10, decided 2026-10-30).
+        let newSnippet = """
+        {"op":"dispatch","action":{"v":1,"action":"snippet.upsert","id":"fresh","key":"Name","body":"x"}}
         """
-        var response = try responseObject(server, request: firstSnippet)
-        XCTAssertEqual(response["outcome"] as? String, "applied")
+        var response = try responseObject(server, request: newSnippet)
+        XCTAssertEqual(response["outcome"] as? String, "staged")
+        XCTAssertNil(try core.snippets.get(id: "fresh"))
+
+        _ = try core.dispatch(
+            action: .snippetUpsert(id: "stable", name: "Name", body: "old", keyword: nil),
+            actor: .user
+        )
+        _ = try core.dispatch(
+            action: .quicklinkUpsert(id: "stable-q", name: "Docs", url: "https://example.com/old", keyword: nil),
+            actor: .user
+        )
 
         let overwriteSnippet = """
         {"op":"dispatch","action":{"v":1,"action":"snippet.upsert","id":"stable","key":"Name","body":"new"}}
@@ -185,12 +197,6 @@ final class AgentSocketTests: XCTestCase {
         response = try responseObject(server, request: overwriteSnippet)
         XCTAssertEqual(response["outcome"] as? String, "staged")
         XCTAssertEqual(try core.snippets.get(id: "stable")?.body, "old")
-
-        let firstQuicklink = """
-        {"op":"dispatch","action":{"v":1,"action":"quicklink.upsert","id":"stable-q","key":"Docs","url":"https://example.com/old"}}
-        """
-        response = try responseObject(server, request: firstQuicklink)
-        XCTAssertEqual(response["outcome"] as? String, "applied")
 
         let overwriteQuicklink = """
         {"op":"dispatch","action":{"v":1,"action":"quicklink.upsert","id":"stable-q","key":"Docs","url":"https://example.com/new"}}

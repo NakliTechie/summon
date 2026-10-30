@@ -8,7 +8,8 @@ final class JournalReplayTests: XCTestCase {
 
         let actions: [(ActorTag, CoreAction)] = [
             (.user, .settingsSet(key: "theme", value: .string("dark"))),
-            (.agent, .settingsSet(key: "feature.agent_ui", value: .bool(false))),
+            // Agent writes stage since 2026-10-30; replay of historical applied
+            // agent entries is covered by IntegrityBatchETests.
             (.system, .settingsSet(key: "lastAppcastCheck", value: .string("2026-08-03T00:00:00Z"))),
             (.user, .settingsSet(key: "theme", value: .string("light"))),
             // ext: non-restricted key only (elevated settings stage)
@@ -82,13 +83,13 @@ final class JournalReplayTests: XCTestCase {
         let value = JSONValue.parseCLI("true")
         let result = try core.dispatch(
             action: .settingsSet(key: "feature.cli_e2e", value: value),
-            actor: .agent
+            actor: .user
         )
         XCTAssertTrue(result.isApplied)
         XCTAssertEqual(try core.settings.get("feature.cli_e2e"), .bool(true))
 
         let entries = try core.journal.allEntries()
         XCTAssertEqual(entries.count, 1)
-        XCTAssertEqual(entries[0].actor, .agent)
+        XCTAssertEqual(entries[0].actor, .user)
     }
 }

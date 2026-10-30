@@ -84,8 +84,30 @@ final class ActionBusTests: XCTestCase {
         let entries = try core.journal.allEntries()
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries[0].actor, .agent)
-        XCTAssertEqual(entries[0].outcome, "applied")
+        XCTAssertTrue(entries[0].outcome.hasPrefix("staged:"), "agent writes stage")
         XCTAssertEqual(entries[0].action, .settingsSet(key: "a", value: .bool(true)))
+        XCTAssertNil(try core.settings.get("a"))
+    }
+
+    /// B15: deleting a missing key used to report "ok deleted".
+    func testDeletingAMissingSettingIsRejectedButReplayStillApplies() throws {
+        let core = try SummonCore.inMemory()
+        let result = try core.dispatch(action: .settingsDelete(key: "never.set"), actor: .user)
+        guard case .rejected(let reason) = result.outcome else {
+            return XCTFail("expected rejection, got \(result.outcome)")
+        }
+        XCTAssertTrue(reason.contains("no setting named never.set"), reason)
+
+        _ = try core.dispatch(action: .settingsSet(key: "real", value: .bool(true)), actor: .user)
+        XCTAssertTrue(try core.dispatch(action: .settingsDelete(key: "real"), actor: .user).isApplied)
+
+        // Older journals recorded such deletes as applied; replay must not fail on them.
+        let historical = JournalEntry(
+            seq: 1, id: UUID(), actor: .user, timestamp: Date(),
+            action: .settingsDelete(key: "never.set"), outcome: "applied"
+        )
+        let fresh = try SummonCore.inMemory()
+        XCTAssertNoThrow(try fresh.replay(entries: [historical]))
     }
 
     func testExternalDispatchThroughSchemaGate() throws {

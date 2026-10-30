@@ -3,17 +3,6 @@ import Foundation
 /// Propose-only gate for destructive / elevated ops (RC-42, RC-59).
 /// Non-user actors (agent, extension) must not apply these directly — stage for human accept.
 public enum DestructiveGuard {
-    /// Settings keys agents/extensions must not flip without user accept.
-    public static let restrictedSettingsKeys: Set<String> = [
-        "agent.socket.enabled",
-        "web.search.enabled",
-        "web.search.baseURL",
-        "web.search.allowNonLoopback",
-        "search.fts.enabled",
-        "search.files.index.enabled",
-        "launchAtLogin",
-    ]
-
     public static func isDestructive(actionName: String) -> Bool {
         switch actionName {
         case "clipboard.delete", "snippet.delete", "quicklink.delete",
@@ -22,13 +11,6 @@ public enum DestructiveGuard {
         default:
             return false
         }
-    }
-
-    public static func isRestrictedSettingKey(_ key: String) -> Bool {
-        if restrictedSettingsKeys.contains(key) { return true }
-        if key.hasPrefix("web.search.") { return true }
-        if key.hasPrefix("agent.") { return true }
-        return false
     }
 
     /// System effects that destroy data or disrupt the machine (agent must not apply).
@@ -81,14 +63,47 @@ public enum DestructiveGuard {
 
     /// True when actor must stage (or be rejected) instead of applying.
     public static func requiresUserApproval(actor: ActorTag, action: CoreAction) -> Bool {
-        guard actor.requiresProposeOnly else { return false }
+        switch actor {
+        case .user, .system:
+            return false
+        case .agent:
+            // Every agent write stages for the user (decided 2026-10-30); only the
+            // journal notes of read-only agent commands apply directly.
+            switch action {
+            case .agentSearch, .agentVersion, .agentCLI:
+                return false
+            default:
+                return true
+            }
+        case .ext:
+            return extensionRequiresApproval(action)
+        }
+    }
+
+    /// Settings keys an extension must not flip without user accept.
+    public static let extensionRestrictedSettingsKeys: Set<String> = [
+        "agent.socket.enabled",
+        "web.search.enabled",
+        "web.search.baseURL",
+        "web.search.allowNonLoopback",
+        "search.fts.enabled",
+        "search.files.index.enabled",
+        "launchAtLogin",
+    ]
+
+    public static func isExtensionRestrictedSettingKey(_ key: String) -> Bool {
+        extensionRestrictedSettingsKeys.contains(key)
+            || key.hasPrefix("web.search.") || key.hasPrefix("agent.")
+    }
+
+    /// Extensions (a development seam, not shipped) stage elevated ops only, so
+    /// their own storage writes apply. Overwrites stage too (`ActionBus`).
+    static func extensionRequiresApproval(_ action: CoreAction) -> Bool {
         if case .moduleRun = action { return true }
         if isDestructive(action) { return true }
         switch action {
-        case .settingsSet(let key, _):
-            return isRestrictedSettingKey(key)
-        case .settingsDelete(let key):
-            return isRestrictedSettingKey(key)
+        case .settingsSet(let key, _), .settingsDelete(let key):
+            return isExtensionRestrictedSettingKey(key)
         case .clipboardIgnoreAdd, .clipboardIgnoreRemove, .aliasSet, .aliasDelete,
              .favoriteAdd, .favoriteRemove, .importReset, .webConfigSet, .ftsSetEnabled,
              .ftsConsentGrant, .modelConsentGrant, .egressRequested,

@@ -11,8 +11,6 @@ public enum CLIPrivilegedOperation: String, CaseIterable, Sendable {
     case ftsIndex
     case importData
     case exportFile
-    case aliasMutation
-    case favoriteMutation
     case fileIndex
 }
 

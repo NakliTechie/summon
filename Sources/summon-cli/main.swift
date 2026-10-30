@@ -237,9 +237,8 @@ struct SummonCLI {
                 sourceApp: "summon-cli",
                 actor: cliActor
             )
-            if result == nil {
-                fputs("error: skipped by privacy gate\n", stderr); exit(1)
-            }
+            guard let result else { fputs("error: skipped by privacy gate\n", stderr); exit(1) }
+            guard result.isApplied else { exitForOutcome(result) }
             print("ok ingested")
         case "delete":
             guard args.count >= 2 else { fputs("usage: summon clipboard delete <id>\n", stderr); exit(2) }

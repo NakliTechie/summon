@@ -21,21 +21,29 @@ final class IntegrityBatchETests: XCTestCase {
     }
 
     func testReplayAppliesAgentHistoricalActionsWithoutRestage() throws {
-        let original = try SummonCore.inMemory()
-        // Agent non-restricted setting applies
-        _ = try original.dispatch(
+        // Journals from before 2026-10-30 hold agent writes that applied directly.
+        // Today the same write would stage; replay must still apply it as recorded.
+        let historical = JournalEntry(
+            seq: 1,
+            id: UUID(),
+            actor: .agent,
+            timestamp: Date(timeIntervalSince1970: 1_780_000_000),
             action: .settingsSet(key: "feature.x", value: .bool(true)),
+            outcome: "applied"
+        )
+        let original = try SummonCore.inMemory()
+        // A current agent write stages — not in appliedEntries.
+        _ = try original.dispatch(
+            action: .settingsSet(key: "feature.y", value: .bool(true)),
             actor: .agent
         )
-        // Agent destructive stages — not in appliedEntries
-        _ = try original.dispatch(action: .clipboardClearUnpinned, actor: .agent)
-        let applied = try original.journal.appliedEntries()
-        XCTAssertEqual(applied.count, 1)
+        XCTAssertEqual(try original.journal.appliedEntries().count, 0)
 
         let fresh = try SummonCore.inMemory()
-        try fresh.replay(entries: applied)
+        try fresh.replay(entries: [historical])
         XCTAssertEqual(try fresh.settings.get("feature.x"), .bool(true))
         XCTAssertEqual(try fresh.journal.allEntries().count, 0)
+        XCTAssertTrue(try fresh.staged.list(state: "staged").isEmpty, "replay never restages")
     }
 
     func testImportVersionGate() throws {

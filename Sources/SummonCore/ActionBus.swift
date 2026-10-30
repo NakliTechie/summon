@@ -85,11 +85,20 @@ public final class ActionBus: @unchecked Sendable {
                 return ActionResult(envelopeID: envelope.id, outcome: existing)
             }
 
-            // Agent/ext elevated ops are propose-only — stage for human accept.
+            // Deleting a setting that does not exist is an error, not "ok deleted".
+            // Checked here, not in apply(), so replaying older journals still works.
+            if case .settingsDelete(let key) = envelope.action,
+               try !settings.contains(key, in: db) {
+                let outcome = ActionResult.Outcome.rejected(reason: "no setting named \(key)")
+                try journal.append(envelope: envelope, outcome: outcome, in: db)
+                return ActionResult(envelopeID: envelope.id, outcome: outcome)
+            }
+
+            // Agent writes and elevated extension ops are propose-only — stage for human accept.
             let requiresApproval = try DestructiveGuard.requiresUserApproval(
                 actor: envelope.actor,
                 action: envelope.action
-            ) || requiresContextualApproval(envelope, in: db)
+            ) || extensionOverwriteRequiresApproval(envelope, in: db)
             if requiresApproval {
                 let outcome: ActionResult.Outcome
                 if let stageElevated {
@@ -496,11 +505,12 @@ public final class ActionBus: @unchecked Sendable {
         try ModuleRouter.perform(actionName: name, result: result, executor: executor)
     }
 
-    private func requiresContextualApproval(
+    /// An extension may add snippets and quicklinks, but overwriting one stages.
+    private func extensionOverwriteRequiresApproval(
         _ envelope: ActionEnvelope,
         in db: Database
     ) throws -> Bool {
-        guard envelope.actor.requiresProposeOnly else { return false }
+        guard case .ext = envelope.actor else { return false }
         switch envelope.action {
         case .snippetUpsert(let id, _, _, _):
             return try snippets.get(id: id, in: db) != nil

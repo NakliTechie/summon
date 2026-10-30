@@ -98,7 +98,6 @@ extension SummonCLI {
         }
         switch sub {
         case "set":
-            try requireUserOperation(.aliasMutation)
             guard args.count >= 4 else {
                 fputs("usage: summon alias set <kw> <resultID> <title>\n", stderr)
                 exit(2)
@@ -128,7 +127,6 @@ extension SummonCLI {
                 print("\(alias.keyword)\t\(alias.title)\t\(alias.targetResultID)")
             }
         case "delete":
-            try requireUserOperation(.aliasMutation)
             guard args.count >= 2 else { exit(2) }
             let result = try core.dispatch(action: .aliasDelete(keyword: args[1]), actor: cliActor)
             guard result.isApplied else { exitForOutcome(result) }
@@ -146,7 +144,6 @@ extension SummonCLI {
         }
         switch sub {
         case "add":
-            try requireUserOperation(.favoriteMutation)
             guard args.count >= 3 else { exit(2) }
             let item = FavoriteItem(
                 resultID: args[1],
@@ -171,7 +168,6 @@ extension SummonCLI {
                 print("\(favorite.resultID)\t\(favorite.title)")
             }
         case "remove":
-            try requireUserOperation(.favoriteMutation)
             guard args.count >= 2 else { exit(2) }
             let result = try core.dispatch(
                 action: .favoriteRemove(resultID: args[1]),

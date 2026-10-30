@@ -31,13 +31,35 @@ final class DestructiveGuardTests: XCTestCase {
         XCTAssertTrue(DestructiveGuard.requiresUserApproval(actor: .agent, action: action))
     }
 
-    func testRestrictedSettings() {
-        let set = CoreAction.settingsSet(key: "web.search.enabled", value: .bool(true))
-        XCTAssertTrue(DestructiveGuard.requiresUserApproval(actor: .agent, action: set))
-        let login = CoreAction.settingsSet(key: "launchAtLogin", value: .bool(true))
-        XCTAssertTrue(DestructiveGuard.requiresUserApproval(actor: .agent, action: login))
-        let free = CoreAction.settingsSet(key: "theme.appearance", value: .string("dark"))
-        XCTAssertFalse(DestructiveGuard.requiresUserApproval(actor: .agent, action: free))
+    /// Decided 2026-10-30: every agent write stages, listed key or not (closes A9, A10).
+    func testEveryAgentWriteStagesAndReadNotesApply() {
+        let writes: [CoreAction] = [
+            .settingsSet(key: "web.search.enabled", value: .bool(true)),
+            .settingsSet(key: "theme.appearance", value: .string("dark")),
+            .settingsDelete(key: "theme.appearance"),
+            .snippetUpsert(id: "s", name: "n", body: "b", keyword: nil),
+            .quicklinkUpsert(id: "q", name: "n", url: "https://example.com", keyword: nil),
+            .clipboardIngest(id: "c", text: "t", sourceApp: nil, createdAt: Date(), pinned: false),
+            .clipboardPin(id: "c", pinned: true),
+            .aliasSet(keyword: "k", targetResultID: "app:/x", title: "X", kind: "app",
+                      path: nil, payload: nil),
+            .favoriteAdd(id: "f", resultID: "app:/x", title: "X", kind: "app", path: nil),
+        ]
+        for action in writes {
+            XCTAssertTrue(DestructiveGuard.requiresUserApproval(actor: .agent, action: action), action.name)
+            XCTAssertFalse(DestructiveGuard.requiresUserApproval(actor: .user, action: action), action.name)
+        }
+        for read in [CoreAction.agentVersion, .agentCLI(command: "search x")] {
+            XCTAssertFalse(DestructiveGuard.requiresUserApproval(actor: .agent, action: read), read.name)
+        }
+    }
+
+    /// Extensions keep the elevated-only rule, so their own storage writes apply.
+    func testExtensionRestrictedSettingsOnly() {
+        let restricted = CoreAction.settingsSet(key: "launchAtLogin", value: .bool(true))
+        XCTAssertTrue(DestructiveGuard.requiresUserApproval(actor: .ext(id: "x"), action: restricted))
+        let own = CoreAction.settingsSet(key: "ext.x.lastRender", value: .string("List"))
+        XCTAssertFalse(DestructiveGuard.requiresUserApproval(actor: .ext(id: "x"), action: own))
     }
 
     func testIgnoreAndWebConfigurationStageForAgent() {

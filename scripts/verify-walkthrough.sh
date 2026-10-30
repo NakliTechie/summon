@@ -166,6 +166,52 @@ printf '%s\n' "$AGENT_WINDOW_OUTPUT" \
   | expect "agent native window effect stages" "outcome staged proposalID="
 echo "  ok: alternate agent mutation paths did not apply directly"
 
+echo "== agent actor: every write STAGES, including unlisted settings and adds =="
+agent_stages() {
+  local desc="$1" out status
+  shift
+  set +e
+  out="$("$BIN" --actor agent "$@" 2>&1)"
+  status=$?
+  set -e
+  [ "$status" -eq 3 ] || fail "$desc — wanted exit 3 (staged), got $status: $out"
+  printf '%s\n' "$out" | expect "$desc" "outcome staged proposalID="
+}
+agent_stages "agent unlisted setting set stages" settings set walkthrough.agentKey agent
+if "$BIN" settings get walkthrough.agentKey >/dev/null 2>&1; then
+  fail "agent unlisted setting applied directly"
+fi
+"$BIN" settings set walkthrough.userKey kept >/dev/null
+agent_stages "agent unlisted setting delete stages" settings delete walkthrough.userKey
+"$BIN" settings get walkthrough.userKey | expect "staged delete keeps the setting" "kept"
+agent_stages "agent snippet add stages" snippet add AgentWalkSnippet "agent body"
+agent_stages "agent quicklink add stages" quicklink add AgentWalkLink https://example.com
+agent_stages "agent clipboard ingest stages" clipboard ingest agent-walkthrough-clip
+"$BIN" clipboard ingest user-walkthrough-clip >/dev/null
+USER_CLIP_ID="$("$BIN" clipboard list | awk '/user-walkthrough-clip/{print $2; exit}')"
+[ -n "$USER_CLIP_ID" ] || fail "user clipboard ingest did not list"
+agent_stages "agent clipboard pin stages" clipboard pin "$USER_CLIP_ID" on
+agent_stages "agent alias set stages" alias set agentwalk app:/Applications/Safari.app AgentWalkAlias
+agent_stages "agent favorite add stages" favorite add app:/Applications/Safari.app AgentWalkFavorite
+WRITES_AFTER="$("$BIN" snippet list; "$BIN" quicklink list; "$BIN" clipboard list;
+  "$BIN" alias list; "$BIN" favorite list)"
+for leaked in AgentWalkSnippet AgentWalkLink agent-walkthrough-clip agentwalk AgentWalkFavorite; do
+  if grep -qF -- "$leaked" <<<"$WRITES_AFTER"; then fail "agent write applied directly: $leaked"; fi
+done
+if "$BIN" clipboard list | grep -F -- "user-walkthrough-clip" | grep -q '^\*'; then
+  fail "agent pin applied directly"
+fi
+echo "  ok: no agent write applied before user review"
+
+echo "== settings: deleting a missing key is an error =="
+set +e
+MISSING_DELETE_OUTPUT="$("$BIN" settings delete walkthrough.neverSet 2>&1)"
+MISSING_DELETE_STATUS=$?
+set -e
+[ "$MISSING_DELETE_STATUS" -eq 1 ] || fail "missing-key delete — wanted exit 1, got $MISSING_DELETE_STATUS"
+printf '%s\n' "$MISSING_DELETE_OUTPUT" \
+  | expect "missing-key delete is rejected" "no setting named walkthrough.neverSet"
+
 echo "== extension surface: omitted from R1 =="
 set +e
 EXTENSION_OUTPUT="$("$BIN" extension list 2>&1)"

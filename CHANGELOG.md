@@ -21,10 +21,16 @@ ad-hoc-signed (not yet Apple-notarized).
   the fallback. A cold local server could take over a minute to load its model.
 - Model rungs have readable names: `apple-fm`, `local-server`, `mlx` (were `L1`,
   `L2`, `L0`). Existing staged proposals are renamed on first launch.
+- Every write an agent makes now waits for your review, over the CLI and the
+  socket: any settings key, snippet and quicklink adds, clipboard ingest and pin,
+  aliases and favorites. Before, only listed keys and destructive actions staged,
+  and aliases and favorites were refused outright.
 
 ### Fixed
 - `build-app.sh` refuses an output folder that holds an installed Summon.app, and
   every script deletion is limited to the path it created.
+- `summon settings delete` on a key that does not exist is an error, not "ok deleted".
+- `summon clipboard ingest` reports a staged or rejected outcome instead of "ok ingested".
 
 ## 0.8.2 — 2026-10-22
 

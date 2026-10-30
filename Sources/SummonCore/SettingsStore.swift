@@ -32,6 +32,14 @@ public struct SettingsStore: Sendable {
         }
     }
 
+    func contains(_ key: String, in db: Database) throws -> Bool {
+        try Bool.fetchOne(
+            db,
+            sql: "SELECT EXISTS(SELECT 1 FROM settings WHERE key = ?)",
+            arguments: [key]
+        ) ?? false
+    }
+
     func set(_ key: String, value: JSONValue, in db: Database) throws {
         let data = try JSONEncoder().encode(value)
         guard let raw = String(data: data, encoding: .utf8) else {
