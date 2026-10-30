@@ -29,6 +29,9 @@ ad-hoc-signed (not yet Apple-notarized).
 ### Fixed
 - `build-app.sh` refuses an output folder that holds an installed Summon.app, and
   every script deletion is limited to the path it created.
+- Web search setup on Apple `container` no longer re-downloads the ~700 MB guest
+  kernel on every cold start of the runtime; it fetches one only when none is
+  installed. With a kernel and the image present, setup takes about 20 seconds.
 - `summon settings delete` on a key that does not exist is an error, not "ok deleted".
 - `summon clipboard ingest` reports a staged or rejected outcome instead of "ok ingested".
 

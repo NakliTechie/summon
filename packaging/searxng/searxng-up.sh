@@ -95,11 +95,18 @@ echo "searxng: runtime = $RUNTIME"
 
 # ============================ Apple `container` path ============================
 if [ "$RUNTIME" = "container" ]; then
-  # Bring up the container system; first run fetches a small guest kernel.
+  # Bring up the container system. The guest kernel is the kata-containers static
+  # bundle (~700 MB), so fetch it only when none is installed: re-running
+  # `kernel set --recommended` re-downloads it on every cold start. If a future
+  # `container` moves this path, the fetch runs again (slow, never wrong).
+  KERNEL_LINK="$HOME/Library/Application Support/com.apple.container/kernels/default.kernel-$(uname -m)"
   if ! container system status >/dev/null 2>&1; then
-    echo "searxng: starting the container runtime (first run downloads a guest kernel)…" >&2
-    container system start </dev/null >/dev/null 2>&1 || true
-    container system kernel set --recommended >/dev/null 2>&1 || true
+    echo "searxng: starting the container runtime…" >&2
+    if [ ! -e "$KERNEL_LINK" ]; then
+      echo "searxng: first run: downloading the guest kernel (~700 MB, once)…" >&2
+      container system start </dev/null >/dev/null 2>&1 || true
+      container system kernel set --recommended </dev/null >/dev/null 2>&1 || true
+    fi
     container system start </dev/null >/dev/null 2>&1 || true
   fi
   if ! container system status >/dev/null 2>&1; then
