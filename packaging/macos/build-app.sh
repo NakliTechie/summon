@@ -11,13 +11,25 @@ OUT_DIR="${SUMMON_APP_OUT:-$ROOT/dist}"
 APP="$OUT_DIR/Summon.app"
 BIN_NAME="summon-app"
 
+# The build replaces $APP, so refuse an output folder that holds an installed copy.
+case "$OUT_DIR" in
+  ""|"/"|"/Applications"|"/Applications/"|"$HOME/Applications"|"$HOME/Applications/")
+    echo "build-app: refused SUMMON_APP_OUT=$OUT_DIR (would replace an installed app)" >&2
+    exit 1
+    ;;
+esac
+
 echo "build-app: swift build -c release"
 swift build -c release --product summon-app
 
 BIN="$(swift build -c release --show-bin-path)/$BIN_NAME"
 test -x "$BIN"
 
-rm -rf "$APP"
+# Only ever delete a Summon.app this script builds.
+case "$APP" in
+  */Summon.app) rm -rf -- "$APP" ;;
+  *) echo "build-app: refused cleanup of unexpected path: $APP" >&2; exit 1 ;;
+esac
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # Stamp version only on the app copy — never mutate the source-controlled plist

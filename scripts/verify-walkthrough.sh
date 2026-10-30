@@ -26,9 +26,15 @@ echo "== first-run: choice and launcher-seen policy =="
 swift test --filter FirstRunLoginChoiceTests >/dev/null
 echo "  ok: Decide Later, registration failure, and sheet timing regressions"
 
-WORK="$(mktemp -d)"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/summon-walkthrough.XXXXXX")"
 export SUMMON_CONTAINER_DIR="$WORK/container"
-trap 'rm -rf "$WORK"' EXIT
+cleanup_work() {
+  case "$WORK" in
+    */summon-walkthrough.*) rm -rf -- "$WORK" ;;
+    *) echo "verify-walkthrough: refused cleanup outside temporary root: $WORK" >&2 ;;
+  esac
+}
+trap cleanup_work EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 # expect <description> <substring> ; reads the command output from stdin
