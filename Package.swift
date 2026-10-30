@@ -117,7 +117,8 @@ targets.append(
                 "SummonCore",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ],
-            path: "Tests/SummonAITests"
+            path: "Tests/SummonAITests",
+            exclude: ["Fixtures"]
         )
     )
     // Links both UI and AI to drive the real launcher through the real model

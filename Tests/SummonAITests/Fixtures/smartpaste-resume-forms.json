@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "about": "Resume-to-form fixture for the Smart Paste extractor experiment (workplan Chunk 1). Each case pairs a free-text source with a form; every field has a ground-truth expectation. People, companies and contacts are fictional; emails use the reserved .example domain and phone numbers use invalid or reserved ranges.",
+  "matchModes": {
+    "exact": "case-insensitive equality after collapsing whitespace",
+    "digits": "the last 10 digits of the fill equal the last 10 digits of the value",
+    "url": "same host and path, ignoring scheme, leading www. and a trailing slash",
+    "month": "the fill names this year and month (value is YYYY-MM)",
+    "set": "the fill lists every item, comma- or semicolon-separated, in any order",
+    "contains": "the fill contains this phrase, case-insensitive",
+    "empty": "the field must stay empty: the source does not state it, or it is a secure field",
+    "skip": "not scored: the value is derivable only relative to today's date"
+  },
+  "sources": [
+    {
+      "id": "r1-bio",
+      "kind": "first-person bio",
+      "text": "Hi, I'm Ananya Iyer, a senior iOS engineer with 9 years of experience. Since March 2021 I have led the patient-app team at Lumora Health in Bengaluru. Before that I spent four years at Kestrel Payments building their merchant SDK in Swift and Objective-C. Day to day I work in Swift, SwiftUI, Combine and Core Data, and I mentor two junior developers. I studied Computer Science (B.Tech) at the College of Engineering, Pune, graduating in 2016. You can reach me at ananya.iyer@lumora.example or +91 55555 01234. Portfolio: https://ananya.example.dev, LinkedIn: linkedin.com/in/ananya-iyer-ios. Address: Flat 4B, Palm Grove Apartments, 12th Main Road, Indiranagar, Bengaluru 560038, Karnataka."
+    },
+    {
+      "id": "r2-resume",
+      "kind": "bullet resume",
+      "text": "MARCUS DELACROIX-OYELARAN\nData Engineer · Austin, TX\nmarcus.d.oyelaran@mailbox.example | (512) 555-0147 | github.com/mdoyelaran | linkedin.com/in/marcus-oyelaran\n\nEXPERIENCE\nSenior Data Engineer, Brightwater Analytics, Austin, TX    Jun 2022 – Present\n• Built streaming pipelines in Python, Apache Kafka and Spark processing 2B events/day\n• Cut warehouse cost 38% by moving batch jobs to dbt on Snowflake\nData Engineer, Harlow Freight, Dallas, TX    Aug 2019 – May 2022\n• Owned Airflow orchestration for 140 DAGs\n\nEDUCATION\nM.S. Computer Science, University of Texas at Austin, 2019\nB.S. Mathematics, Rice University, 2017\n\nSKILLS\nPython, SQL, Apache Kafka, Spark, dbt, Snowflake, Airflow, Terraform"
+    },
+    {
+      "id": "r3-cv",
+      "kind": "European CV, dd/mm dates",
+      "text": "Lebenslauf / CV\nName: Sofie Brandt-Halvorsen\nPosition sought: Product Designer\nE-mail: sofie.brandt@studio-nord.example\nTelefon: +49 30 0000 1290\nAnschrift: Lindenstraße 42, 10969 Berlin, Germany\nPortfolio: https://sofiebrandt.example\n\nExperience\n01/04/2020 – present: Lead Product Designer, Studio Nord GmbH, Berlin\n15/09/2016 – 31/03/2020: UX Designer, Kaskade Mobility, Hamburg\n\nEducation: MA Interaction Design, Universität der Künste Berlin (2016)\nTools: Figma, Framer, Principle, Adobe Illustrator\nLanguages: German (native), Norwegian (native), English (C2)"
+    },
+    {
+      "id": "r4-message",
+      "kind": "email message",
+      "text": "Thanks for the call today! As promised, my details for the speaker form:\n\nKenji Watanabe-Morales, Staff ML Engineer, Orbitra AI (Tokyo office)\nTalk: \"Distilling small on-device models\" (we agreed on the 30-minute slot)\nkenji.wm@orbitra.example · +81 3-5555-0198 · https://github.com/kwatanabe-m\nBio: I build on-device inference for Orbitra's camera app; before Orbitra I spent 5 years at Sora Robotics.\nX: @kenji_wm\n\nBest,\nKenji"
+    }
+  ],
+  "forms": [
+    {
+      "id": "job-application",
+      "fields": [
+        { "id": "full-name", "label": "Full name" },
+        { "id": "email", "label": "Email address" },
+        { "id": "phone", "label": "Phone number" },
+        { "id": "title", "label": "Current job title" },
+        { "id": "employer", "label": "Current employer" },
+        { "id": "city", "label": "City" },
+        { "id": "street", "label": "Street address" },
+        { "id": "postal", "label": "Postal code" },
+        { "id": "linkedin", "label": "LinkedIn profile URL" },
+        { "id": "website", "label": "Portfolio / website" },
+        { "id": "years", "label": "Years of experience" },
+        { "id": "skills", "label": "Skills (comma separated)" },
+        { "id": "degree", "label": "Highest degree" },
+        { "id": "university", "label": "University" },
+        { "id": "grad-year", "label": "Graduation year" },
+        { "id": "cover", "label": "Cover letter" },
+        { "id": "password", "label": "Create a password", "secure": true }
+      ]
+    },
+    {
+      "id": "profile",
+      "fields": [
+        { "id": "first", "label": "First name" },
+        { "id": "last", "label": "Last name" },
+        { "id": "work-email", "label": "Work email" },
+        { "id": "mobile", "label": "Mobile" },
+        { "id": "company", "label": "Company" },
+        { "id": "role", "label": "Role" },
+        { "id": "start", "label": "Start date in current role (YYYY-MM)" },
+        { "id": "github", "label": "GitHub" }
+      ]
+    },
+    {
+      "id": "speaker",
+      "fields": [
+        { "id": "speaker-name", "label": "Speaker name" },
+        { "id": "affiliation", "label": "Affiliation" },
+        { "id": "job-title", "label": "Job title" },
+        { "id": "contact-email", "label": "Contact email" },
+        { "id": "talk-title", "label": "Talk title" },
+        { "id": "talk-length", "label": "Talk length (minutes)" },
+        { "id": "handle", "label": "Social handle" },
+        { "id": "link", "label": "GitHub or website" },
+        { "id": "bio", "label": "Short bio" }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "r1-job",
+      "source": "r1-bio",
+      "form": "job-application",
+      "expected": {
+        "full-name": { "mode": "exact", "value": "Ananya Iyer" },
+        "email": { "mode": "exact", "value": "ananya.iyer@lumora.example" },
+        "phone": { "mode": "digits", "value": "+91 55555 01234" },
+        "title": { "mode": "exact", "value": "Senior iOS engineer" },
+        "employer": { "mode": "exact", "value": "Lumora Health" },
+        "city": { "mode": "exact", "value": "Bengaluru" },
+        "street": { "mode": "contains", "value": "12th Main Road" },
+        "postal": { "mode": "exact", "value": "560038" },
+        "linkedin": { "mode": "url", "value": "linkedin.com/in/ananya-iyer-ios" },
+        "website": { "mode": "url", "value": "https://ananya.example.dev" },
+        "years": { "mode": "exact", "value": "9" },
+        "skills": { "mode": "set", "value": ["Swift", "SwiftUI", "Combine", "Core Data"] },
+        "degree": { "mode": "contains", "value": "B.Tech" },
+        "university": { "mode": "exact", "value": "College of Engineering, Pune" },
+        "grad-year": { "mode": "exact", "value": "2016" },
+        "cover": { "mode": "empty" },
+        "password": { "mode": "empty" }
+      }
+    },
+    {
+      "id": "r1-profile",
+      "source": "r1-bio",
+      "form": "profile",
+      "expected": {
+        "first": { "mode": "exact", "value": "Ananya" },
+        "last": { "mode": "exact", "value": "Iyer" },
+        "work-email": { "mode": "exact", "value": "ananya.iyer@lumora.example" },
+        "mobile": { "mode": "digits", "value": "+91 55555 01234" },
+        "company": { "mode": "exact", "value": "Lumora Health" },
+        "role": { "mode": "exact", "value": "Senior iOS engineer" },
+        "start": { "mode": "month", "value": "2021-03" },
+        "github": { "mode": "empty" }
+      }
+    },
+    {
+      "id": "r1-speaker",
+      "source": "r1-bio",
+      "form": "speaker",
+      "expected": {
+        "speaker-name": { "mode": "exact", "value": "Ananya Iyer" },
+        "affiliation": { "mode": "exact", "value": "Lumora Health" },
+        "job-title": { "mode": "exact", "value": "Senior iOS engineer" },
+        "contact-email": { "mode": "exact", "value": "ananya.iyer@lumora.example" },
+        "talk-title": { "mode": "empty" },
+        "talk-length": { "mode": "empty" },
+        "handle": { "mode": "empty" },
+        "link": { "mode": "url", "value": "https://ananya.example.dev" },
+        "bio": { "mode": "contains", "value": "patient-app" }
+      }
+    },
+    {
+      "id": "r2-job",
+      "source": "r2-resume",
+      "form": "job-application",
+      "expected": {
+        "full-name": { "mode": "exact", "value": "Marcus Delacroix-Oyelaran" },
+        "email": { "mode": "exact", "value": "marcus.d.oyelaran@mailbox.example" },
+        "phone": { "mode": "digits", "value": "(512) 555-0147" },
+        "title": { "mode": "exact", "value": "Senior Data Engineer" },
+        "employer": { "mode": "exact", "value": "Brightwater Analytics" },
+        "city": { "mode": "exact", "value": "Austin" },
+        "street": { "mode": "empty" },
+        "postal": { "mode": "empty" },
+        "linkedin": { "mode": "url", "value": "linkedin.com/in/marcus-oyelaran" },
+        "website": { "mode": "url", "value": "github.com/mdoyelaran" },
+        "years": { "mode": "skip" },
+        "skills": { "mode": "set", "value": ["Python", "SQL", "Apache Kafka", "Spark", "dbt", "Snowflake", "Airflow", "Terraform"] },
+        "degree": { "mode": "contains", "value": "M.S. Computer Science" },
+        "university": { "mode": "exact", "value": "University of Texas at Austin" },
+        "grad-year": { "mode": "exact", "value": "2019" },
+        "cover": { "mode": "empty" },
+        "password": { "mode": "empty" }
+      }
+    },
+    {
+      "id": "r2-profile",
+      "source": "r2-resume",
+      "form": "profile",
+      "expected": {
+        "first": { "mode": "exact", "value": "Marcus" },
+        "last": { "mode": "exact", "value": "Delacroix-Oyelaran" },
+        "work-email": { "mode": "exact", "value": "marcus.d.oyelaran@mailbox.example" },
+        "mobile": { "mode": "digits", "value": "(512) 555-0147" },
+        "company": { "mode": "exact", "value": "Brightwater Analytics" },
+        "role": { "mode": "exact", "value": "Senior Data Engineer" },
+        "start": { "mode": "month", "value": "2022-06" },
+        "github": { "mode": "url", "value": "github.com/mdoyelaran" }
+      }
+    },
+    {
+      "id": "r3-job",
+      "source": "r3-cv",
+      "form": "job-application",
+      "expected": {
+        "full-name": { "mode": "exact", "value": "Sofie Brandt-Halvorsen" },
+        "email": { "mode": "exact", "value": "sofie.brandt@studio-nord.example" },
+        "phone": { "mode": "digits", "value": "+49 30 0000 1290" },
+        "title": { "mode": "exact", "value": "Lead Product Designer" },
+        "employer": { "mode": "exact", "value": "Studio Nord GmbH" },
+        "city": { "mode": "exact", "value": "Berlin" },
+        "street": { "mode": "exact", "value": "Lindenstraße 42" },
+        "postal": { "mode": "exact", "value": "10969" },
+        "linkedin": { "mode": "empty" },
+        "website": { "mode": "url", "value": "https://sofiebrandt.example" },
+        "years": { "mode": "skip" },
+        "skills": { "mode": "set", "value": ["Figma", "Framer", "Principle", "Adobe Illustrator"] },
+        "degree": { "mode": "contains", "value": "MA Interaction Design" },
+        "university": { "mode": "exact", "value": "Universität der Künste Berlin" },
+        "grad-year": { "mode": "exact", "value": "2016" },
+        "cover": { "mode": "empty" },
+        "password": { "mode": "empty" }
+      }
+    },
+    {
+      "id": "r3-profile",
+      "source": "r3-cv",
+      "form": "profile",
+      "expected": {
+        "first": { "mode": "exact", "value": "Sofie" },
+        "last": { "mode": "exact", "value": "Brandt-Halvorsen" },
+        "work-email": { "mode": "exact", "value": "sofie.brandt@studio-nord.example" },
+        "mobile": { "mode": "digits", "value": "+49 30 0000 1290" },
+        "company": { "mode": "exact", "value": "Studio Nord GmbH" },
+        "role": { "mode": "exact", "value": "Lead Product Designer" },
+        "start": { "mode": "month", "value": "2020-04" },
+        "github": { "mode": "empty" }
+      }
+    },
+    {
+      "id": "r4-speaker",
+      "source": "r4-message",
+      "form": "speaker",
+      "expected": {
+        "speaker-name": { "mode": "exact", "value": "Kenji Watanabe-Morales" },
+        "affiliation": { "mode": "exact", "value": "Orbitra AI" },
+        "job-title": { "mode": "exact", "value": "Staff ML Engineer" },
+        "contact-email": { "mode": "exact", "value": "kenji.wm@orbitra.example" },
+        "talk-title": { "mode": "exact", "value": "Distilling small on-device models" },
+        "talk-length": { "mode": "exact", "value": "30" },
+        "handle": { "mode": "exact", "value": "@kenji_wm" },
+        "link": { "mode": "url", "value": "https://github.com/kwatanabe-m" },
+        "bio": { "mode": "contains", "value": "on-device inference" }
+      }
+    },
+    {
+      "id": "r4-profile",
+      "source": "r4-message",
+      "form": "profile",
+      "expected": {
+        "first": { "mode": "exact", "value": "Kenji" },
+        "last": { "mode": "exact", "value": "Watanabe-Morales" },
+        "work-email": { "mode": "exact", "value": "kenji.wm@orbitra.example" },
+        "mobile": { "mode": "digits", "value": "+81 3-5555-0198" },
+        "company": { "mode": "exact", "value": "Orbitra AI" },
+        "role": { "mode": "exact", "value": "Staff ML Engineer" },
+        "start": { "mode": "empty" },
+        "github": { "mode": "url", "value": "https://github.com/kwatanabe-m" }
+      }
+    }
+  ]
+}
