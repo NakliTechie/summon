@@ -16,7 +16,12 @@ ad-hoc-signed (not yet Apple-notarized).
   to replace its role) get a fixed, true answer naming the model in use, without
   calling the model. A small model used to invent a persona for these.
 
+- File-index events (load, replay, autosave, save failures) go to the system log
+  under `tech.nakli.Summon`, category `fileindex`; a failed save is logged, not swallowed.
+
 ### Changed
+- Smart Paste's notice now drops down from the notch on a Mac with one, and shows
+  as a pill below the menu bar on other screens. Hovering it keeps Undo on screen.
 - Apple Foundation Models now answers first; a running Ollama or LM Studio server is
   the fallback. A cold local server could take over a minute to load its model.
 - Model rungs have readable names: `apple-fm`, `local-server`, `mlx` (were `L1`,

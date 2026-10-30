@@ -31,10 +31,22 @@ extension SummonCore {
         search.spotlight = IndexedFileSearch(service: service)
         // The CLI loads lazily on its first file search (`IndexedFileSearch`).
         guard watch else { return service }
-        let loaded = (try? service.load()) == true
+        let loaded: Bool
+        do {
+            loaded = try service.load()
+        } catch {
+            fileIndexLog.error("load failed: \(error.localizedDescription, privacy: .public)")
+            loaded = false
+        }
         DispatchQueue.global(qos: .utility).async {
             if !loaded {
-                guard (try? service.build()) != nil else { return }
+                fileIndexLog.info("enable: no usable snapshot, building")
+                do {
+                    try service.build()
+                } catch {
+                    fileIndexLog.error("build failed: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
             }
             service.catchUp(keepWatching: true, timeout: 60)
         }

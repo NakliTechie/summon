@@ -1,4 +1,9 @@
 import Foundation
+import os
+
+/// Lifecycle events of the file index, so a stalled watcher or a failed save is
+/// visible: `log stream --predicate 'subsystem == "tech.nakli.Summon"'`.
+let fileIndexLog = Logger(subsystem: "tech.nakli.Summon", category: "fileindex")
 
 /// Owns the file-name index: build, snapshot, catch-up on restart, live
 /// watching, and search. Off by default (`search.files.index.enabled`);
@@ -81,13 +86,20 @@ public final class FileIndexService: @unchecked Sendable {
     /// Loads the snapshot. False when there is none or it was built for other roots.
     @discardableResult
     public func load() throws -> Bool {
-        guard FileManager.default.fileExists(atPath: snapshotURL.path) else { return false }
+        guard FileManager.default.fileExists(atPath: snapshotURL.path) else {
+            fileIndexLog.info("load: no snapshot")
+            return false
+        }
         let loaded = try FileNameIndex.read(from: snapshotURL)
-        guard loaded.roots == roots else { return false }
+        guard loaded.roots == roots else {
+            fileIndexLog.error("load: snapshot roots \(loaded.roots, privacy: .public) differ from \(self.roots, privacy: .public)")
+            return false
+        }
         lock.lock()
         index = loaded
         dirty = false
         lock.unlock()
+        fileIndexLog.info("load: \(loaded.entryCount) entries, event id \(loaded.eventID)")
         return true
     }
 
@@ -112,7 +124,13 @@ public final class FileIndexService: @unchecked Sendable {
         index = compacted
         dirty = false
         lock.unlock()
-        try compacted.write(to: snapshotURL)
+        do {
+            try compacted.write(to: snapshotURL)
+            fileIndexLog.info("save: \(compacted.entryCount) entries, event id \(compacted.eventID)")
+        } catch {
+            fileIndexLog.error("save failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
     }
 
     // MARK: Watching
@@ -129,8 +147,17 @@ public final class FileIndexService: @unchecked Sendable {
         let watcher = FileIndexWatcher { [weak self] changes, lastID in
             self?.apply(changes, lastEventID: lastID)
         }
-        guard watcher.start(roots: roots, since: since) else { return false }
+        guard watcher.start(roots: roots, since: since) else {
+            fileIndexLog.error("watch: FSEvents stream did not start (since \(since))")
+            return false
+        }
+        let started = Date()
         let finished = watcher.waitForHistory(timeout: timeout)
+        let waited = Date().timeIntervalSince(started)
+        let outcome = finished ? "replayed" : "timed out"
+        fileIndexLog.info(
+            "watch: history \(outcome, privacy: .public) after \(waited, format: .fixed(precision: 1)) s; keep: \(keepWatching)"
+        )
         if keepWatching {
             lock.lock()
             self.watcher = watcher
@@ -162,7 +189,9 @@ public final class FileIndexService: @unchecked Sendable {
         }
         if lastEventID > index.eventID { index.eventID = lastEventID }
         dirty = true
+        fileIndexLog.debug("apply: \(seen.count) folders, watching: \(self.watcher != nil), autosave pending: \(self.autosaveScheduled)")
         if watcher != nil, !autosaveScheduled {
+            fileIndexLog.info("autosave scheduled in \(Self.autosaveDelay, format: .fixed(precision: 0)) s")
             autosaveScheduled = true
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.autosaveDelay) { [weak self] in
                 guard let self else { return }
