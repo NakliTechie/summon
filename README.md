@@ -44,6 +44,17 @@ Answers come from **Apple Foundation Models**, on your Mac. Ask a question and i
 
 **Smart Paste (⌥⌘V)** reads what you copied — a contact block, a signature — and fills a form's fields by meaning: email into Email, phone into Phone, name into the name field. Clean fields route instantly on-device; anything unclear is decided by a small local model. Every fill is reversible from the toast, and secure fields are never touched.
 
+## File search
+
+Files come from Spotlight by default. An opt-in Swift index searches file and folder names with typo tolerance (`mian` finds `main.rs`), matches words against the folders above a file (`summon pending`), and stays current through FSEvents:
+
+```bash
+summon files enable && summon files index    # build once; the app keeps it live
+summon files status                          # entries, snapshot size, everything excluded
+```
+
+It indexes your home folder and skips, by design: `.git`, `.DS_Store`; `~/.Trash`, `~/Library/Caches`; other apps' sandbox data (`~/Library/Containers`, `Group Containers`, `Daemon Containers`); anything a repository's `.gitignore`, `.ignore` or `.git/info/exclude` excludes. Symlinks are listed, never followed. Folders macOS protects stay out unless Summon has Full Disk Access. Names only; file contents are not indexed.
+
 ## Web search and the agent face
 
 Web search is off until you ask for it: a keyless Wikipedia floor by default, opt-in **SearXNG** for full search on Apple's `container` runtime (no Docker Desktop; Docker is a fallback). The first search asks permission; SearXNG may forward the query to its configured upstream engines.

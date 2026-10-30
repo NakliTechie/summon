@@ -3,6 +3,16 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## Unreleased
+
+### Added
+- Opt-in Swift file-name index (`summon files enable|index|status|search|bench`). It crawls
+  the home folder with `getattrlistbulk` and stores each distinct name once. Search is
+  substring, subsequence and typo-tolerant (Damerau, bit-parallel), and words can match
+  folders above a file. It honours `.gitignore`/`.ignore` inside repositories, and every
+  other exclusion is listed by `summon files status`. FSEvents keeps it live in the app,
+  and a restart replays only what changed. Spotlight stays the default file source.
+
 ## 0.8.2 — 2026-10-22
 
 Rebuilt with the macOS 26.7.1 SDK and patched certificate stores after the eMudhra CA compromise. No source change from 0.8.1 apart from the version string.

@@ -13,6 +13,7 @@ public enum CLIPrivilegedOperation: String, CaseIterable, Sendable {
     case exportFile
     case aliasMutation
     case favoriteMutation
+    case fileIndex
 }
 
 public enum CLIActorPolicy {

@@ -64,6 +64,7 @@ struct SummonCLI {
             try cli_latencyCommand(Array(args.dropFirst()))
         case "fts":
             try cli_ftsCommand(Array(args.dropFirst()))
+        case "files": try cli_filesCommand(Array(args.dropFirst()))
         case "export":
             try cli_exportCommand(Array(args.dropFirst()))
         case "import":
@@ -671,6 +672,7 @@ struct SummonCLI {
           summon web enable|disable|remove [--purge-image]|status|search <q> [--enrich]|answer <q>
           summon window <leftHalf|rightHalf|maximize|…>
           summon fts consent|enable|disable|index|search|status
+          summon files enable|disable|index|status|search <q> [--limit N] [--fresh]|bench [q…]
           summon export [file] | import <file>
           summon alias set|list|delete
           summon favorite add|list|remove

@@ -31,14 +31,14 @@ extension SummonCLI {
         let knownCommands: Set<String> = [
             "help", "--help", "-h", "settings", "search", "calc", "snippet",
             "clipboard", "quicklink", "actions", "run", "ai", "web", "window",
-            "latency", "fts", "export", "import", "alias", "favorite", "ignore",
+            "latency", "fts", "files", "export", "import", "alias", "favorite", "ignore",
             "guide",
         ]
         guard let first = args.first, knownCommands.contains(first) else { return "unknown" }
         let command = ["--help", "-h"].contains(first) ? "help" : first
         let subcommandFamilies: Set<String> = [
             "settings", "snippet", "clipboard", "quicklink", "ai", "web", "window",
-            "fts", "alias", "favorite", "ignore",
+            "fts", "files", "alias", "favorite", "ignore",
         ]
         guard subcommandFamilies.contains(command), args.count > 1 else { return command }
         let subcommand = String(args[1].prefix(64))

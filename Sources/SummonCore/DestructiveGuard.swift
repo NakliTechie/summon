@@ -10,6 +10,7 @@ public enum DestructiveGuard {
         "web.search.baseURL",
         "web.search.allowNonLoopback",
         "search.fts.enabled",
+        "search.files.index.enabled",
         "launchAtLogin",
     ]
 

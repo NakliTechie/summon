@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for warning in core.startupWarnings {
                 fputs("Summon startup warning: \(warning)\n", stderr)
             }
+            // Opt-in Swift file index (`summon files enable`); Spotlight answers until it is built.
+            core.enableFileIndexIfConfigured(watch: true)
             webSearchSetup = WebSearchSetupController(core: core, scriptPath: bundledSearxngUpPath())
             webLifecycle = WebSearchLifecycleController(core: core)
             let needsFirstRunLoginChoice = shouldOfferFirstRunLoginChoice()
@@ -684,5 +686,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         clipboardHotkey?.unregister()
         agentSocketMonitor?.invalidate()
         agentSocketLifecycle?.stop()
+        if let fileIndex = core?.fileIndexService {
+            fileIndex.stopWatching()
+            try? fileIndex.saveIfDirty()
+        }
     }
 }

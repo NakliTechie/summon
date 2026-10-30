@@ -721,8 +721,10 @@ extension SummonCore {
         ftsConsentStore().load().granted
     }
 
+    /// Live file source: Spotlight, or the Swift file index when it is enabled.
     public func enableLiveSpotlight() {
         search.spotlight = MdfindSpotlightIndex()
+        enableFileIndexIfConfigured(watch: false)
     }
 
     public func setExecutor(_ executor: any ModuleExecuting) {
