@@ -2,6 +2,15 @@
 
 ## Status
 
+**2026-10-30** — `main` = 0.8.2 plus the unreleased 2026-10-30 commits, `make verify` passed per batch (`latency-hard` run alone after post-build load):
+
+- Swift file-name index, layer 1 (opt-in), merged from the 2026-10-11 branch. **The live app pass failed:** in the app, `apply()` holds the service lock across a blocking `open()`, so autosave never runs and Quit hangs. The index must stay off for users until the deadlock fix lands (workplan Chunk A). Lifecycle logging added (`tech.nakli.Summon` / `fileindex`).
+- Every agent write stages (A9/A10); missing-key settings deletes are rejected (B15). Extensions keep the elevated-only rule.
+- Apple Foundation Models answers first; rung names `apple-fm` / `local-server` / `mlx` with a staged-proposal migration (checked on a copy of a real store). Meta-queries get a fixed, true answer before generation; verified live on Apple FM.
+- `searxng-up.sh` no longer re-downloads the ~700 MB container kernel on every cold start; the Apple `container` web lifecycle passed live on this Mac (container 1.6.1).
+- Smart Paste's notice hangs from the notch (pill on other screens); placement read back from the window server on both displays.
+- Script deletions guarded to the paths they create (LOGIC-01); resume-to-form fixture (9 cases, 99 scored fields) for the extractor experiment.
+
 **2026-09-22** — **Smart paste** (entity-and-target-aware clipboard fill) + **Apple-container default**, on `main`, `make verify` green:
 
 - Smart paste, ⌥⌘V: reads the clipboard, enumerates the frontmost app's fields via Accessibility, routes each value to a field, stages an amber proposal, and writes accepted fills back via AX on explicit confirm — no auto-fill. Router is verdict-first (`~/Code/verdict` loopback typed-decision daemon, `POST /v1/systemone`, journaled `.localModel` egress through the declared `VerdictClient`) with a deterministic NSDataDetector floor as the removable-AI fallback. Live benchmark: verdict-fm 8/8 vs deterministic 3/8 on ambiguously-labelled fields; verdict-fm is the default (Laya deprioritized — consistent underperformance, possibly misconfig, a later session).
