@@ -38,12 +38,25 @@ public final class FileIndexService: @unchecked Sendable {
     private var index: FileNameIndex?
     private var watcher: FileIndexWatcher?
     private var dirty = false
+    /// Watcher rescans list folders through this, so one that hangs is skipped.
+    let rescanLister: BoundedLister
 
-    public init(snapshotURL: URL, roots: [String], exclusions: FileIndexExclusions) {
+    public convenience init(snapshotURL: URL, roots: [String], exclusions: FileIndexExclusions) {
+        self.init(snapshotURL: snapshotURL, roots: roots, exclusions: exclusions, listing: DirectoryLister.list)
+    }
+
+    init(
+        snapshotURL: URL,
+        roots: [String],
+        exclusions: FileIndexExclusions,
+        listing: @escaping FileCrawler.Lister,
+        listingTimeout: TimeInterval = 5
+    ) {
         self.snapshotURL = snapshotURL
         // FSEvents reports resolved paths (`/private/var/…`), so roots are resolved too.
         self.roots = roots.map(Self.resolvedPath)
         self.exclusions = exclusions
+        self.rescanLister = BoundedLister(timeout: listingTimeout, listing: listing)
     }
 
     /// Default: the user's home folder, standard exclusions, snapshot in the Summon container.
@@ -161,6 +174,8 @@ public final class FileIndexService: @unchecked Sendable {
         if keepWatching {
             lock.lock()
             self.watcher = watcher
+            // Changes replayed from history arrived before the watcher was stored.
+            if dirty { scheduleAutosaveLocked() }
             lock.unlock()
         } else {
             watcher.stop()
@@ -177,30 +192,26 @@ public final class FileIndexService: @unchecked Sendable {
     }
 
     /// Applies directory-level changes: a shallow rescan of each changed folder,
-    /// or a full subtree recrawl when FSEvents coalesced.
+    /// or a full subtree recrawl when FSEvents coalesced. Three steps, so the lock
+    /// is never held across file-system I/O: resolve each folder (locked, no I/O),
+    /// list and crawl it into a detached tree (unlocked, each listing time-limited),
+    /// then merge (locked). A listing that hangs now costs one abandoned thread and
+    /// a log line, never a stuck save, search or Quit (the 2026-10-30 deadlock).
     func apply(_ changes: [FileIndexChange], lastEventID: UInt64) {
+        var seen = Set<String>()
+        var plans: [RescanPlan] = []
+        for change in changes where seen.insert(change.path).inserted {
+            guard let target = resolveTarget(change.path) else { continue }
+            if let plan = scan(target, recursive: change.recursive) { plans.append(plan) }
+        }
         lock.lock()
         defer { lock.unlock() }
         guard let index else { return }
-        let crawler = FileCrawler(index: index, exclusions: exclusions)
-        var seen = Set<String>()
-        for change in changes where seen.insert(change.path).inserted {
-            rescan(change.path, recursive: change.recursive, index: index, crawler: crawler)
-        }
+        for plan in plans { merge(plan, into: index) }
         if lastEventID > index.eventID { index.eventID = lastEventID }
         dirty = true
-        fileIndexLog.debug("apply: \(seen.count) folders, watching: \(self.watcher != nil), autosave pending: \(self.autosaveScheduled)")
-        if watcher != nil, !autosaveScheduled {
-            fileIndexLog.info("autosave scheduled in \(Self.autosaveDelay, format: .fixed(precision: 0)) s")
-            autosaveScheduled = true
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.autosaveDelay) { [weak self] in
-                guard let self else { return }
-                self.lock.lock()
-                self.autosaveScheduled = false
-                self.lock.unlock()
-                try? self.saveIfDirty()
-            }
-        }
+        fileIndexLog.debug("apply: \(seen.count) folders, \(plans.count) merged, watching: \(self.watcher != nil)")
+        scheduleAutosaveLocked()
     }
 
     /// While watching, changes reach the snapshot within this delay, so a crash
@@ -208,51 +219,118 @@ public final class FileIndexService: @unchecked Sendable {
     static let autosaveDelay: TimeInterval = 300
     private var autosaveScheduled = false
 
-    private func rescan(_ path: String, recursive: Bool, index: FileNameIndex, crawler: FileCrawler) {
-        guard roots.contains(where: { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }) else { return }
+    /// Call with `lock` held.
+    private func scheduleAutosaveLocked() {
+        guard watcher != nil, !autosaveScheduled else { return }
+        fileIndexLog.info("autosave scheduled in \(Self.autosaveDelay, format: .fixed(precision: 0)) s")
+        autosaveScheduled = true
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.autosaveDelay) { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            self.autosaveScheduled = false
+            self.lock.unlock()
+            try? self.saveIfDirty()
+        }
+    }
+
+    /// A changed folder resolved against the index, with what the index held for it.
+    private struct RescanTarget {
+        let path: String
+        let existing: [String: Bool] // child name → is a directory
+    }
+
+    private enum RescanPlan {
+        case gone(path: String)
+        case replace(path: String, tree: FileNameIndex)
+        case update(path: String, mtimes: [String: UInt32], removed: Set<String>, added: FileNameIndex)
+    }
+
+    /// Locked, no I/O: the nearest indexed folder for `path` and its current children.
+    private func resolveTarget(_ path: String) -> RescanTarget? {
+        guard roots.contains(where: { path == $0 || path.hasPrefix($0 == "/" ? "/" : $0 + "/") }) else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        guard let index else { return nil }
         var target = path
         var entry = index.entry(forPath: target)
         // A folder the index has never seen: rescan the nearest indexed ancestor.
         while entry == nil || !index.isDirectory(entry ?? 0) {
-            guard target != "/", let slash = target.lastIndex(of: "/") else { return }
+            guard target != "/", let slash = target.lastIndex(of: "/") else { return nil }
             target = slash == target.startIndex ? "/" : String(target[..<slash])
             entry = index.entry(forPath: target)
         }
-        guard let dir = entry else { return }
-        let scope = exclusions.honourIgnoreFiles ? IgnoreScope.enclosing(directory: target) : nil
-        guard let listed = DirectoryLister.list(target) else {
-            if index.parent[Int(dir)] >= 0 { index.markDeleted(subtree: dir) }
-            return
+        guard let dir = entry else { return nil }
+        var existing: [String: Bool] = [:]
+        for child in index.children(of: dir) { existing[index.name(ofEntry: child)] = index.isDirectory(child) }
+        return RescanTarget(path: target, existing: existing)
+    }
+
+    /// Unlocked: lists the folder and crawls new subtrees into detached trees.
+    /// Nil when the listing timed out, so a hung folder is never read as deleted.
+    private func scan(_ target: RescanTarget, recursive: Bool) -> RescanPlan? {
+        let listed: [CrawledChild]
+        switch rescanLister.list(target.path) {
+        case .timedOut: return nil
+        case .unreadable: return .gone(path: target.path)
+        case .listed(let children): listed = children
         }
-        let filter = crawler.childFilter()
-        let kept = listed.filter { filter.keep($0, in: target, scope: scope) }
-        if recursive {
-            for child in index.children(of: dir) { index.markDeleted(subtree: child) }
-            index.extraChildren[dir] = nil
-            crawler.appendLater(kept, under: dir, parentPath: target, scope: scope)
-            return
+        let scope = exclusions.honourIgnoreFiles ? IgnoreScope.enclosing(directory: target.path) : nil
+        let filter = ChildFilter(exclusions: exclusions)
+        let kept = listed.filter { filter.keep($0, in: target.path, scope: scope) }
+        let lister = rescanLister
+        let crawl = { (children: [CrawledChild]) in
+            FileCrawler.crawlDetached(
+                children, parentPath: target.path, scope: scope, exclusions: self.exclusions,
+                lister: { lister.children($0) }
+            )
         }
-        var existing: [String: Int32] = [:]
-        for child in index.children(of: dir) { existing[index.name(ofEntry: child)] = child }
+        if recursive { return .replace(path: target.path, tree: crawl(kept)) }
+
+        var mtimes: [String: UInt32] = [:]
         var added: [CrawledChild] = []
         for child in kept {
-            if let old = existing.removeValue(forKey: child.name) {
-                if index.isDirectory(old) == child.isDirectory {
-                    index.mtime[Int(old)] = child.mtime
-                    continue
-                }
-                index.markDeleted(subtree: old)
+            if target.existing[child.name] == child.isDirectory {
+                mtimes[child.name] = child.mtime
+            } else {
+                added.append(child)
             }
-            added.append(child)
         }
-        for (_, gone) in existing { index.markDeleted(subtree: gone) }
-        if !added.isEmpty { crawler.appendLater(added, under: dir, parentPath: target, scope: scope) }
+        // Gone, or a file that became a folder (or back): drop the old entry.
+        let removed = Set(target.existing.keys.filter { mtimes[$0] == nil })
+        return .update(path: target.path, mtimes: mtimes, removed: removed, added: crawl(added))
+    }
+
+    /// Locked: applies a plan, re-resolving the folder by path because autosave
+    /// may have compacted the index (new entry numbers) since it was resolved.
+    private func merge(_ plan: RescanPlan, into index: FileNameIndex) {
+        switch plan {
+        case .gone(let path):
+            if let entry = index.entry(forPath: path), index.parent[Int(entry)] >= 0 {
+                index.markDeleted(subtree: entry)
+            }
+        case .replace(let path, let tree):
+            guard let dir = index.entry(forPath: path), index.isDirectory(dir) else { return }
+            for child in index.children(of: dir) { index.markDeleted(subtree: child) }
+            index.extraChildren[dir] = nil
+            index.graft(tree, under: dir)
+        case .update(let path, let mtimes, let removed, let added):
+            guard let dir = index.entry(forPath: path), index.isDirectory(dir) else { return }
+            for child in index.children(of: dir) {
+                let name = index.name(ofEntry: child)
+                if removed.contains(name) {
+                    index.markDeleted(subtree: child)
+                } else if let mtime = mtimes[name] {
+                    index.mtime[Int(child)] = mtime
+                }
+            }
+            index.graft(added, under: dir)
+        }
     }
 
     // MARK: Search / status
 
-    /// Nil when no index is loaded, or while a watcher update holds it (a large
-    /// subtree recrawl): the caller falls back to Spotlight instead of blocking a keystroke.
+    /// Nil when no index is loaded, or while a merge or compaction holds it: the
+    /// caller falls back to Spotlight instead of blocking a keystroke.
     public func search(query: FilterQuery, limit: Int) -> [SearchResult]? {
         guard lock.lock(before: Date().addingTimeInterval(0.05)) else { return nil }
         defer { lock.unlock() }

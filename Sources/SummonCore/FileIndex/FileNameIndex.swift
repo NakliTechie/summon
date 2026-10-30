@@ -156,6 +156,34 @@ final class FileNameIndex: @unchecked Sendable {
         }
     }
 
+    /// Copies a detached tree (`FileCrawler.crawlDetached`) under `target`: its top
+    /// entries join `target` through `extraChildren`, and each copied folder's
+    /// children are laid out contiguously, as compaction would.
+    func graft(_ source: FileNameIndex, under target: Int32) {
+        var queue: [(old: Int32, new: Int32)] = []
+        for i in 0..<source.entryCount where source.parent[i] < 0 && !source.isDeleted(Int32(i)) {
+            let old = Int32(i)
+            let new = appendEntry(parent: target, name: source.name(ofEntry: old), flags: source.flags[i], mtime: source.mtime[i])
+            extraChildren[target, default: []].append(new)
+            if source.isDirectory(old) { queue.append((old, new)) }
+        }
+        var head = 0
+        while head < queue.count {
+            let (old, new) = queue[head]
+            head += 1
+            let kids = source.children(of: old)
+            guard !kids.isEmpty else { continue }
+            firstChild[Int(new)] = Int32(entryCount)
+            childCount[Int(new)] = Int32(kids.count)
+            for kid in kids {
+                let added = appendEntry(
+                    parent: new, name: source.name(ofEntry: kid), flags: source.flags[Int(kid)], mtime: source.mtime[Int(kid)]
+                )
+                if source.isDirectory(kid) { queue.append((kid, added)) }
+            }
+        }
+    }
+
     // MARK: Compaction
 
     /// Rebuilds the contiguous breadth-first layout without tombstones.

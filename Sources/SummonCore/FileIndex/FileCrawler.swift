@@ -176,6 +176,9 @@ struct ChildFilter {
 /// contiguous run, so the layout stays folder-ordered whatever order the
 /// listings finish in.
 final class FileCrawler: @unchecked Sendable {
+    /// Lists one directory; nil when it cannot be read.
+    typealias Lister = @Sendable (String) -> [CrawledChild]?
+
     struct Job {
         let entry: Int32
         let path: String
@@ -184,23 +187,29 @@ final class FileCrawler: @unchecked Sendable {
 
     private let index: FileNameIndex
     private let filter: ChildFilter
+    private let lister: Lister
     private let condition = NSCondition()
     private var jobs: [Job] = []
     private var inFlight = 0
     private(set) var unreadable: [String] = []
 
-    init(index: FileNameIndex, exclusions: FileIndexExclusions) {
+    init(index: FileNameIndex, exclusions: FileIndexExclusions, lister: @escaping Lister = DirectoryLister.list) {
         self.index = index
         self.filter = ChildFilter(exclusions: exclusions)
+        self.lister = lister
     }
 
     /// Crawls fresh roots into an empty index.
-    static func build(roots: [String], exclusions: FileIndexExclusions) -> (FileNameIndex, unreadable: [String]) {
+    static func build(
+        roots: [String],
+        exclusions: FileIndexExclusions,
+        lister: @escaping Lister = DirectoryLister.list
+    ) -> (FileNameIndex, unreadable: [String]) {
         let index = FileNameIndex()
         index.roots = roots
         index.eventID = FileIndexWatcher.currentEventID()
         index.builtAt = Date()
-        let crawler = FileCrawler(index: index, exclusions: exclusions)
+        let crawler = FileCrawler(index: index, exclusions: exclusions, lister: lister)
         var seeds: [Job] = []
         for root in roots {
             var isDir: ObjCBool = false
@@ -234,7 +243,7 @@ final class FileCrawler: @unchecked Sendable {
             inFlight += 1
             condition.unlock()
 
-            let listed = DirectoryLister.list(job.path)
+            let listed = lister(job.path)
             var kept: [CrawledChild] = []
             var scope = job.scope
             if let listed {
@@ -248,10 +257,7 @@ final class FileCrawler: @unchecked Sendable {
                 index.firstChild[Int(job.entry)] = Int32(index.entryCount)
                 index.childCount[Int(job.entry)] = Int32(kept.count)
                 for child in kept {
-                    var flags: UInt8 = 0
-                    if child.isDirectory { flags |= FileNameIndex.directoryFlag }
-                    if child.isSymlink { flags |= FileNameIndex.symlinkFlag }
-                    let entry = index.appendEntry(parent: job.entry, name: child.name, flags: flags, mtime: child.mtime)
+                    let entry = index.appendEntry(parent: job.entry, name: child.name, flags: child.indexFlags, mtime: child.mtime)
                     if child.isDirectory {
                         let childPath = job.path == "/" ? "/" + child.name : job.path + "/" + child.name
                         jobs.append(Job(entry: entry, path: childPath, scope: scope))
@@ -264,23 +270,97 @@ final class FileCrawler: @unchecked Sendable {
         }
     }
 
-    /// Appends children found by the watcher under `parent` (not contiguous;
-    /// linked through `extraChildren` until the next compaction).
-    func appendLater(_ children: [CrawledChild], under parent: Int32, parentPath: String, scope: IgnoreScope?) {
+    /// Crawls `children` of `parentPath` into a detached index whose top entries
+    /// are those children (parent -1), for `FileNameIndex.graft`. The live index is
+    /// not touched, so the watcher can do this I/O without holding its lock.
+    static func crawlDetached(
+        _ children: [CrawledChild],
+        parentPath: String,
+        scope: IgnoreScope?,
+        exclusions: FileIndexExclusions,
+        lister: @escaping Lister
+    ) -> FileNameIndex {
+        let tree = FileNameIndex()
+        let crawler = FileCrawler(index: tree, exclusions: exclusions, lister: lister)
         var seeds: [Job] = []
-        for child in children where filter.keep(child, in: parentPath, scope: scope) {
-            var flags: UInt8 = 0
-            if child.isDirectory { flags |= FileNameIndex.directoryFlag }
-            if child.isSymlink { flags |= FileNameIndex.symlinkFlag }
-            let entry = index.appendEntry(parent: parent, name: child.name, flags: flags, mtime: child.mtime)
-            index.extraChildren[parent, default: []].append(entry)
+        for child in children where crawler.filter.keep(child, in: parentPath, scope: scope) {
+            let entry = tree.appendEntry(parent: -1, name: child.name, flags: child.indexFlags, mtime: child.mtime)
             if child.isDirectory {
                 let childPath = parentPath == "/" ? "/" + child.name : parentPath + "/" + child.name
                 seeds.append(Job(entry: entry, path: childPath, scope: scope))
             }
         }
-        if !seeds.isEmpty { run(seeds) }
+        if !seeds.isEmpty { crawler.run(seeds) }
+        return tree
+    }
+}
+
+extension CrawledChild {
+    var indexFlags: UInt8 {
+        var flags: UInt8 = 0
+        if isDirectory { flags |= FileNameIndex.directoryFlag }
+        if isSymlink { flags |= FileNameIndex.symlinkFlag }
+        return flags
+    }
+}
+
+enum BoundedListing {
+    case listed([CrawledChild])
+    case unreadable
+    case timedOut
+}
+
+/// Runs each directory listing with a time limit. On macOS 26 an `open()` can
+/// block indefinitely (another app's sandbox data, 2026-10-11; the app's live
+/// pass, 2026-10-30). The waiting thread is abandoned, the path is logged and
+/// remembered, and later listings of it return at once.
+final class BoundedLister: @unchecked Sendable {
+    let timeout: TimeInterval
+    private let listing: FileCrawler.Lister
+    private let lock = NSLock()
+    private var blocked = Set<String>()
+
+    init(timeout: TimeInterval, listing: @escaping FileCrawler.Lister) {
+        self.timeout = timeout
+        self.listing = listing
     }
 
-    func childFilter() -> ChildFilter { filter }
+    var blockedPaths: Set<String> {
+        lock.lock()
+        defer { lock.unlock() }
+        return blocked
+    }
+
+    func list(_ path: String) -> BoundedListing {
+        lock.lock()
+        let known = blocked.contains(path)
+        lock.unlock()
+        if known { return .timedOut }
+
+        let done = DispatchSemaphore(value: 0)
+        let box = ListingBox()
+        let listing = self.listing
+        DispatchQueue.global(qos: .utility).async {
+            box.value = listing(path)
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + timeout) == .success else {
+            lock.lock()
+            blocked.insert(path)
+            lock.unlock()
+            fileIndexLog.error("listing blocked over \(self.timeout, format: .fixed(precision: 1)) s, skipped: \(path, privacy: .public)")
+            return .timedOut
+        }
+        return box.value.map { .listed($0) } ?? .unreadable
+    }
+
+    /// The crawler's view: a blocked or unreadable folder has no children.
+    func children(_ path: String) -> [CrawledChild]? {
+        if case .listed(let children) = list(path) { return children }
+        return nil
+    }
+}
+
+private final class ListingBox: @unchecked Sendable {
+    var value: [CrawledChild]?
 }

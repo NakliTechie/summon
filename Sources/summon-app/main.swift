@@ -687,8 +687,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         agentSocketMonitor?.invalidate()
         agentSocketLifecycle?.stop()
         if let fileIndex = core?.fileIndexService {
-            fileIndex.stopWatching()
-            try? fileIndex.saveIfDirty()
+            // Bounded, so nothing in the index can hold Quit (2026-10-30 deadlock);
+            // whatever is not saved replays from FSEvents at the next launch.
+            let saved = DispatchSemaphore(value: 0)
+            DispatchQueue.global(qos: .userInitiated).async {
+                fileIndex.stopWatching()
+                try? fileIndex.saveIfDirty()
+                saved.signal()
+            }
+            if saved.wait(timeout: .now() + 5) == .timedOut {
+                fputs("Summon: file index save did not finish in 5 s; it replays at next launch\n", stderr)
+            }
         }
     }
 }

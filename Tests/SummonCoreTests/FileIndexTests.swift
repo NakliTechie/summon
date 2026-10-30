@@ -254,6 +254,82 @@ final class FileIndexTests: XCTestCase {
         try? FileManager.default.removeItem(at: service.snapshotURL)
     }
 
+    // MARK: A folder whose listing hangs (the 2026-10-30 app deadlock)
+
+    /// A service whose listings of `blockedPath` wait until `release` is signalled.
+    private func makeService(blocking blockedPath: String, release: DispatchSemaphore, timeout: TimeInterval) -> FileIndexService {
+        FileIndexService(
+            snapshotURL: root.appendingPathComponent("../\(root.lastPathComponent).bin").standardizedFileURL,
+            roots: [root.path],
+            exclusions: .standard(home: "/nonexistent-home"),
+            listing: { path in
+                if path == blockedPath { release.wait() }
+                return DirectoryLister.list(path)
+            },
+            listingTimeout: timeout
+        )
+    }
+
+    func testStuckRescanDoesNotHoldSearchSaveOrStop() throws {
+        try makeTree()
+        try touch("notes/stuck/inside.txt")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let service = makeService(blocking: root.path + "/notes/stuck", release: release, timeout: 2)
+        try service.build()
+        try touch("notes/arrived.txt")
+
+        let applied = expectation(description: "rescan finished")
+        DispatchQueue.global().async {
+            service.apply([FileIndexChange(path: self.root.path + "/notes", recursive: true)], lastEventID: 0)
+            applied.fulfill()
+        }
+        Thread.sleep(forTimeInterval: 0.3) // the rescan is now waiting on notes/stuck
+
+        // Before the fix each of these waited on the lock for as long as the listing hung.
+        let start = Date()
+        XCTAssertNotNil(service.search(query: try FilterGrammar.parse("main.rs"), limit: 10))
+        XCTAssertNoThrow(try service.saveIfDirty())
+        service.stopWatching()
+        XCTAssertLessThan(Date().timeIntervalSince(start), 0.5, "search, save and stop returned while the rescan hung")
+
+        wait(for: [applied], timeout: 10)
+        XCTAssertEqual(service.rescanLister.blockedPaths, [root.path + "/notes/stuck"])
+        XCTAssertEqual(relative(try search(service, "arrived")), ["notes/arrived.txt"], "the rest of the folder merged")
+        XCTAssertTrue(try search(service, "inside.txt").isEmpty, "the hung folder is skipped, not guessed")
+        try? FileManager.default.removeItem(at: service.snapshotURL)
+    }
+
+    func testFolderWhoseListingTimesOutIsNotTreatedAsDeleted() throws {
+        try makeTree()
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let service = makeService(blocking: root.path + "/notes", release: release, timeout: 0.3)
+        try service.build()
+
+        service.apply([FileIndexChange(path: root.path + "/notes", recursive: false)], lastEventID: 0)
+
+        XCTAssertEqual(relative(try search(service, "Quarterly")), ["notes/Quarterly Invoice.pdf"])
+        XCTAssertEqual(service.rescanLister.blockedPaths, [root.path + "/notes"])
+        try? FileManager.default.removeItem(at: service.snapshotURL)
+    }
+
+    func testRecursiveRescanReplacesTheSubtree() throws {
+        try makeTree()
+        let service = makeService()
+        try service.build()
+        try FileManager.default.removeItem(at: root.appendingPathComponent("notes"))
+        try touch("notes/rebuilt/deep/fresh.md")
+        try touch("notes/main.rs")
+
+        service.apply([FileIndexChange(path: root.path, recursive: true)], lastEventID: 0)
+
+        XCTAssertEqual(relative(try search(service, "fresh.md")), ["notes/rebuilt/deep/fresh.md"])
+        XCTAssertTrue(try search(service, "Quarterly").isEmpty)
+        XCTAssertTrue(relative(try search(service, "main.rs")).contains("notes/main.rs"))
+        try? FileManager.default.removeItem(at: service.snapshotURL)
+    }
+
     func testIndexedSearchFallsBackUntilLoaded() throws {
         let fallback = FakeSpotlightIndex(files: [SearchResult(id: "file:/x", title: "fallback", kind: .file, path: "/x", score: 1)])
         let adapter = IndexedFileSearch(service: makeService(), fallback: fallback)
