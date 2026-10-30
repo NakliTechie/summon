@@ -3,11 +3,11 @@ import SummonCore
 
 /// Tier-1 local model: a user-run OpenAI-compatible server (Ollama on :11434, LM
 /// Studio on :1234) reachable over loopback. Silent — it detects a running server
-/// and uses it, with no prompt and no config. Preferred over Apple Foundation
-/// Models when present (a running server is the user's deliberate choice). Every
-/// call is journaled as a `.localModel` egress; nothing leaves the machine.
+/// and uses it, with no prompt and no config. The fallback after Apple Foundation
+/// Models (`AILadder.preference`). Every call is journaled as a `.localModel`
+/// egress; nothing leaves the machine.
 public struct LocalModelRung: ModelRung, Sendable {
-    public let id: ModelRungID = .l2LocalRuntime
+    public let id: ModelRungID = .localServer
     public let displayName = "Local model (Ollama / LM Studio)"
 
     private let core: SummonCore
@@ -37,14 +37,17 @@ public struct LocalModelRung: ModelRung, Sendable {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ModelRungError.emptyPrompt }
         guard let resolved = await resolve() else {
-            throw ModelRungError.unavailable(.l2LocalRuntime, "no local model server running")
+            throw ModelRungError.unavailable(.localServer, "no local model server running")
+        }
+        if let fixed = MetaQueryGuard.response(for: trimmed, model: "the local model \(resolved.model)") {
+            return ModelCompletion(text: fixed, rung: .localServer, egressSummary: "")
         }
         let auth = try authorize(resolved.base.appendingPathComponent("chat/completions"))
         do {
             let text = try await transport.chat(
                 baseURL: resolved.base, model: resolved.model, prompt: trimmed, authorization: auth
             )
-            return ModelCompletion(text: PromptLeakGuard.filter(text), rung: .l2LocalRuntime, egressSummary: "")
+            return ModelCompletion(text: PromptLeakGuard.filter(text), rung: .localServer, egressSummary: "")
         } catch {
             throw ModelRungError.generationFailed(error.localizedDescription)
         }

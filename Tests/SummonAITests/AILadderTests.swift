@@ -227,16 +227,16 @@ final class AILadderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: container) }
         let rungs = AILadder.defaultProductionRungs(modelsContainer: container)
         let rows = await AILadder(rungs: rungs).status()
-        XCTAssertTrue(rows.contains { $0.id == .l1Apple })
+        XCTAssertTrue(rows.contains { $0.id == .appleFM })
     }
 
     func testProductionLadderIncludesOnlyImplementedRungs() {
         let container = temporaryModelsContainer()
         defer { try? FileManager.default.removeItem(at: container) }
         let ids = AILadder.defaultProductionRungs(modelsContainer: container).map(\.id)
-        XCTAssertTrue(ids.contains(.l1Apple))
-        XCTAssertTrue(ids.contains(.l0Packaged))
-        XCTAssertFalse(ids.contains(.l2LocalRuntime))
+        XCTAssertTrue(ids.contains(.appleFM))
+        XCTAssertTrue(ids.contains(.mlx))
+        XCTAssertFalse(ids.contains(.localServer))
     }
 
     private func temporaryModelsContainer() -> URL {

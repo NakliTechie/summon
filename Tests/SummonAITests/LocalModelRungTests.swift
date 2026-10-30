@@ -46,7 +46,7 @@ final class LocalModelRungTests: XCTestCase {
         let rung = loopbackRung(FakeTransport(modelIDs: ["m"], reply: "PONG"), core: core)
         let completion = try await rung.complete(prompt: "ping")
         XCTAssertEqual(completion.text, "PONG")
-        XCTAssertEqual(completion.rung, .l2LocalRuntime)
+        XCTAssertEqual(completion.rung, .localServer)
         // The loopback call was journaled as a .localModel egress.
         let journaled = try core.journal.allEntries().contains { entry in
             if case .egressRequested(let purpose, _) = entry.action { return purpose == "user.ai.local" }
@@ -55,13 +55,51 @@ final class LocalModelRungTests: XCTestCase {
         XCTAssertTrue(journaled)
     }
 
-    func testEnsureLocalModelRungInstallsItFirstIdempotently() async throws {
+    func testEnsureLocalModelRungInstallsItAfterAppleIdempotently() async throws {
         let core = try SummonCore.inMemory(appSearchPaths: [])
         let ladder = AILadder()
         ladder.ensureLocalModelRung(core: core)
-        XCTAssertEqual(ladder.rungs.first?.id, .l2LocalRuntime, "local rung is prepended (preferred)")
+        XCTAssertEqual(ladder.rungs.first?.id, .appleFM, "Apple FM stays first")
+        XCTAssertEqual(ladder.rungs.last?.id, .localServer, "local rung is the fallback")
         ladder.ensureLocalModelRung(core: core)
-        XCTAssertEqual(ladder.rungs.filter { $0.id == .l2LocalRuntime }.count, 1, "idempotent")
+        XCTAssertEqual(ladder.rungs.filter { $0.id == .localServer }.count, 1, "idempotent")
+    }
+
+    private struct StubRung: ModelRung, Sendable {
+        let id: ModelRungID
+        let available: Bool
+        var displayName: String { id.rawValue }
+        func availability() async -> RungAvailability {
+            available ? .available : .unavailable(reason: "stub")
+        }
+        func complete(prompt: String) async throws -> ModelCompletion {
+            ModelCompletion(text: id.rawValue, rung: id)
+        }
+    }
+
+    /// Decided 2026-10-30: Apple FM first, because a cold local server can take
+    /// minutes to load its model; the server answers only when Apple FM cannot.
+    func testPreferredRungIsAppleFirstThenLocalServer() async {
+        let both = AILadder(rungs: [
+            StubRung(id: .localServer, available: true),
+            StubRung(id: .appleFM, available: true),
+        ])
+        let first = await both.preferredRung()
+        XCTAssertEqual(first?.id, .appleFM)
+
+        let appleDown = AILadder(rungs: [
+            StubRung(id: .appleFM, available: false),
+            StubRung(id: .localServer, available: true),
+        ])
+        let fallback = await appleDown.preferredRung()
+        XCTAssertEqual(fallback?.id, .localServer)
+    }
+
+    func testRungIDsStoreReadableNames() {
+        XCTAssertEqual(ModelRungID.appleFM.rawValue, "apple-fm")
+        XCTAssertEqual(ModelRungID.localServer.rawValue, "local-server")
+        XCTAssertEqual(ModelRungID.mlx.rawValue, "mlx")
+        XCTAssertNil(ModelRungID(rawValue: "L1"), "legacy names are migrated in the store, not decoded")
     }
 
     /// Live check against a real Ollama / LM Studio on this machine.

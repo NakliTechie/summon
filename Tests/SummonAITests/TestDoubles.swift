@@ -32,7 +32,7 @@ struct FakeModelRung: ModelRung, Sendable {
 }
 
 struct FakeUnavailableL1: ModelRung, Sendable {
-    let id: ModelRungID = .l1Apple
+    let id: ModelRungID = .appleFM
     let displayName = "Apple Foundation Models"
 
     func availability() async -> RungAvailability {
@@ -40,7 +40,7 @@ struct FakeUnavailableL1: ModelRung, Sendable {
     }
 
     func complete(prompt: String) async throws -> ModelCompletion {
-        throw ModelRungError.unavailable(.l1Apple, "deviceNotEligible")
+        throw ModelRungError.unavailable(.appleFM, "deviceNotEligible")
     }
 }
 

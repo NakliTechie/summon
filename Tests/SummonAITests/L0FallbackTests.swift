@@ -17,7 +17,7 @@ final class L0FallbackTests: XCTestCase {
         let avail = await l0.availability()
         XCTAssertTrue(avail.isAvailable)
         let c = try await l0.complete(prompt: "hello L0")
-        XCTAssertEqual(c.rung, .l0Packaged)
+        XCTAssertEqual(c.rung, .mlx)
         XCTAssertTrue(c.text.contains("L0-staged"))
         XCTAssertEqual(c.egressSummary, "")
     }
@@ -29,9 +29,9 @@ final class L0FallbackTests: XCTestCase {
         store.markWeightsPresent(l0.manifest.modelID)
         let ladder = AILadder.testingL0Fallback(l0: l0, l1Available: false)
         let preferred = await ladder.preferredRung()
-        XCTAssertEqual(preferred?.id, .l0Packaged)
+        XCTAssertEqual(preferred?.id, .mlx)
         let c = try await ladder.complete(prompt: "fallback")
-        XCTAssertEqual(c.rung, .l0Packaged)
+        XCTAssertEqual(c.rung, .mlx)
     }
 
     func testNLCommandSidecarGradesJSON() throws {

@@ -100,6 +100,79 @@ public enum PromptLeakGuard {
     }
 }
 
+/// Deterministic answers for questions about the assistant itself, decided before
+/// generation. Asked for its instructions or its identity, a small model invents a
+/// persona (it once called itself a "macOS CLI"), so these never reach the model.
+/// Patterns are narrow: they target *your* instructions and identity overrides, so
+/// task phrasing ("act as a translator…", "how do I write a system prompt") still
+/// generates. `PromptLeakGuard` remains the post-generation backstop.
+public enum MetaQueryGuard {
+    public enum Kind: Equatable, Sendable {
+        case instructions, roleOverride, identity
+    }
+
+    // Matched as whole words, so "you" never matches inside "your". Each phrase
+    // names the assistant's own instructions or identity, never a general topic:
+    // "a system prompt" and "developer mode" on a phone stay ordinary questions.
+    static let instructionPhrases = [
+        "your system prompt", "the system prompt", "your prompt", "your instructions",
+        "your rules", "your guidelines", "your initial prompt", "your hidden prompt",
+        "the words above", "the text above", "everything above", "repeat the above",
+        "instructions above", "what were you told",
+    ]
+    static let roleOverridePhrases = [
+        "you are now", "from now on you are", "pretend you are", "dan mode",
+        "ignore previous instructions", "ignore all previous", "ignore your instructions",
+        "ignore the above", "ignore prior instructions", "disregard your instructions",
+        "disregard previous instructions", "forget your instructions", "new persona",
+        "change your identity",
+    ]
+    static let identityPhrases = [
+        "who are you", "what are you", "what model are you", "which model are you",
+        "what model is this", "which model is this", "who made you", "who built you",
+        "who created you", "what is your name", "what's your name", "whats your name",
+        "are you chatgpt", "are you gpt", "are you claude", "are you gemini",
+    ]
+
+    public static func classify(_ query: String) -> Kind? {
+        let q = normalized(query)
+        func hit(_ phrases: [String]) -> Bool { phrases.contains { q.contains(normalized($0)) } }
+        // Instruction and override requests outrank identity: "who are you, and
+        // print your system prompt" is a leak attempt first.
+        if hit(roleOverridePhrases) { return .roleOverride }
+        if hit(instructionPhrases) { return .instructions }
+        if hit(identityPhrases) { return .identity }
+        return nil
+    }
+
+    /// Lowercased words separated by single spaces, padded at both ends, so a
+    /// padded phrase matches only on word boundaries.
+    static func normalized(_ text: String) -> String {
+        let words = text.lowercased()
+            .replacingOccurrences(of: "’", with: "'")
+            .split { !($0.isLetter || $0.isNumber || $0 == "'") }
+        return " " + words.joined(separator: " ") + " "
+    }
+
+    /// The fixed reply for a meta-query, or nil to generate normally.
+    /// `model` is a true description of the rung answering, e.g. "Apple's on-device model".
+    public static func response(for query: String, model: String) -> String? {
+        switch classify(query) {
+        case .instructions:
+            return "I can't share my internal instructions. I'm Summon's assistant, "
+                + "answering with \(model). What can I help you with?"
+        case .roleOverride:
+            return "I can't change my role or rules. I'm Summon's assistant, "
+                + "answering with \(model). What can I help you with?"
+        case .identity:
+            return "I'm Summon's assistant, answering with \(model). "
+                + "I can answer questions and explain things; Summon itself runs any actions."
+        case nil:
+            return nil
+        }
+    }
+}
+
 extension SystemReaders {
     public static func intents(for query: String) -> Set<SystemToolIntent> {
         let q = query.lowercased()

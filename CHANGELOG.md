@@ -12,6 +12,19 @@ ad-hoc-signed (not yet Apple-notarized).
   folders above a file. It honours `.gitignore`/`.ignore` inside repositories, and every
   other exclusion is listed by `summon files status`. FSEvents keeps it live in the app,
   and a restart replays only what changed. Spotlight stays the default file source.
+- Questions about the assistant itself (its instructions, its identity, or attempts
+  to replace its role) get a fixed, true answer naming the model in use, without
+  calling the model. A small model used to invent a persona for these.
+
+### Changed
+- Apple Foundation Models now answers first; a running Ollama or LM Studio server is
+  the fallback. A cold local server could take over a minute to load its model.
+- Model rungs have readable names: `apple-fm`, `local-server`, `mlx` (were `L1`,
+  `L2`, `L0`). Existing staged proposals are renamed on first launch.
+
+### Fixed
+- `build-app.sh` refuses an output folder that holds an installed Summon.app, and
+  every script deletion is limited to the path it created.
 
 ## 0.8.2 — 2026-10-22
 

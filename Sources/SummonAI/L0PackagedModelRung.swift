@@ -239,7 +239,7 @@ public struct UnavailableL0InferenceEngine: L0InferenceEngine, Sendable {
     public func isReady(weightsURL: URL) -> Bool { false }
 
     public func complete(prompt: String, weightsURL: URL) async throws -> String {
-        throw ModelRungError.unavailable(.l0Packaged, reason)
+        throw ModelRungError.unavailable(.mlx, reason)
     }
 }
 
@@ -257,8 +257,8 @@ public enum MachineMemory {
 }
 
 public struct L0PackagedModelRung: ModelRung, Sendable {
-    public let id: ModelRungID = .l0Packaged
-    public let displayName = "Experimental local MLX (L0)"
+    public let id: ModelRungID = .mlx
+    public let displayName = "Experimental local MLX"
     public let store: any L0WeightStore
     public let engine: any L0InferenceEngine
     public let manifest: L0ModelManifest
@@ -342,15 +342,15 @@ public struct L0PackagedModelRung: ModelRung, Sendable {
         let avail = await availability()
         guard avail.isAvailable else {
             if case .unavailable(let r) = avail {
-                throw ModelRungError.unavailable(.l0Packaged, r)
+                throw ModelRungError.unavailable(.mlx, r)
             }
-            throw ModelRungError.unavailable(.l0Packaged, "unavailable")
+            throw ModelRungError.unavailable(.mlx, "unavailable")
         }
         guard let url = store.weightsURL(for: manifest.modelID) else {
-            throw ModelRungError.unavailable(.l0Packaged, "no weights URL")
+            throw ModelRungError.unavailable(.mlx, "no weights URL")
         }
         let text = try await engine.complete(prompt: trimmed, weightsURL: url)
-        return ModelCompletion(text: text, rung: .l0Packaged, egressSummary: "")
+        return ModelCompletion(text: text, rung: .mlx, egressSummary: "")
     }
 
     public func grantConsent() throws {

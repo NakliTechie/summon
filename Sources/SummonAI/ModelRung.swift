@@ -2,10 +2,12 @@ import Foundation
 
 /// Universal AI rung seam (handoff §12). Floor is macOS 14; L1 is capability-gated.
 /// Apple's FoundationModels APIs are adapters behind this protocol, never the core abstraction.
+/// Stored in staged proposals and shown in `ai status`. Readable names replaced
+/// `L0`/`L1`/`L2` on 2026-10-30; `StagedProposalStore.migrate()` rewrites old rows.
 public enum ModelRungID: String, Sendable, Hashable, Codable, CaseIterable {
-    case l0Packaged = "L0"
-    case l1Apple = "L1"
-    case l2LocalRuntime = "L2"
+    case mlx = "mlx"
+    case appleFM = "apple-fm"
+    case localServer = "local-server"
     case fake = "fake"
 }
 

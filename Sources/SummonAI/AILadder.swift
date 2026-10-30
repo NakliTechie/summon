@@ -27,20 +27,20 @@ public final class AILadder: @unchecked Sendable {
             list.append(L0PackagedModelRung.production(store: store))
         } catch {
             list.append(UnavailableProductionModelRung(
-                id: .l0Packaged,
-                displayName: "Experimental local MLX (L0)",
+                id: .mlx,
+                displayName: "Experimental local MLX",
                 reason: "model storage unavailable: \(error.localizedDescription)"
             ))
         }
         return list
     }
 
-    /// Ensure a Tier-1 local-model rung (Ollama / LM Studio) is present, prepended
-    /// so a running local server is preferred over Apple FM. Needs `core` for the
-    /// loopback egress authorization. Idempotent.
+    /// Ensure a Tier-1 local-model rung (Ollama / LM Studio) is present, as the
+    /// fallback after Apple FM (`preferredRung` decides the order). Needs `core`
+    /// for the loopback egress authorization. Idempotent.
     public func ensureLocalModelRung(core: SummonCore) {
-        guard !rungs.contains(where: { $0.id == .l2LocalRuntime }) else { return }
-        rungs.insert(LocalModelRung(core: core), at: 0)
+        guard !rungs.contains(where: { $0.id == .localServer }) else { return }
+        rungs.append(LocalModelRung(core: core))
     }
 
     public struct StatusRow: Sendable, Hashable, Equatable {
@@ -70,8 +70,13 @@ public final class AILadder: @unchecked Sendable {
         return rows
     }
 
+    /// Apple FM first: built in, no extra process, lowest latency. A running local
+    /// server is the fallback, because a cold server can take minutes to load its
+    /// model (decided 2026-10-30).
+    public static let preference: [ModelRungID] = [.appleFM, .localServer, .mlx, .fake]
+
     public func preferredRung() async -> (any ModelRung)? {
-        let preference: [ModelRungID] = [.l2LocalRuntime, .l1Apple, .l0Packaged, .fake]
+        let preference = Self.preference
         for id in preference {
             if let rung = rungs.first(where: { $0.id == id }) {
                 if (await rung.availability()).isAvailable { return rung }
@@ -82,7 +87,7 @@ public final class AILadder: @unchecked Sendable {
 
     public func complete(prompt: String) async throws -> ModelCompletion {
         guard let rung = await preferredRung() else {
-            throw ModelRungError.unavailable(.l1Apple, "no AI rung available (L0 needs consent+weights)")
+            throw ModelRungError.unavailable(.appleFM, "no AI rung available (the MLX rung needs consent and weights)")
         }
         return try await rung.complete(prompt: prompt)
     }
@@ -311,7 +316,7 @@ public final class SummonAIService: @unchecked Sendable {
         // A clearly-unsupported action command gets a deterministic, honest decline —
         // the model is not asked, so it can't offer to "help" with what Summon can't do.
         if let reason = SummonActionParser.declineReason(prompt) {
-            return AIResponse(kind: .answer(text: reason), rung: .l1Apple, egressSummary: "")
+            return AIResponse(kind: .answer(text: reason), rung: .appleFM, egressSummary: "")
         }
         let completion = try await ladder.complete(prompt: prompt)
         if let core {
@@ -345,12 +350,12 @@ public final class SummonAIService: @unchecked Sendable {
     ) throws -> AIResponse {
         if DestructiveGuard.isDestructive(action) {
             let id = try stageAction(action, prompt: prompt, actor: actor)
-            return AIResponse(kind: .staged(proposalID: id), rung: .l1Apple, egressSummary: "")
+            return AIResponse(kind: .staged(proposalID: id), rung: .appleFM, egressSummary: "")
         }
         guard let core else {
             return AIResponse(
                 kind: .answer(text: "That action isn't available in this build."),
-                rung: .l1Apple, egressSummary: ""
+                rung: .appleFM, egressSummary: ""
             )
         }
         let result = try core.dispatch(action: action, actor: actor)
@@ -358,15 +363,15 @@ public final class SummonAIService: @unchecked Sendable {
         case .applied:
             return AIResponse(
                 kind: .performed(text: Self.performedSummary(action)),
-                rung: .l1Apple, egressSummary: ""
+                rung: .appleFM, egressSummary: ""
             )
         case .rejected(let reason):
             return AIResponse(
                 kind: .answer(text: "Couldn't do that: \(reason)"),
-                rung: .l1Apple, egressSummary: ""
+                rung: .appleFM, egressSummary: ""
             )
         case .staged(let proposalID):
-            return AIResponse(kind: .staged(proposalID: proposalID), rung: .l1Apple, egressSummary: "")
+            return AIResponse(kind: .staged(proposalID: proposalID), rung: .appleFM, egressSummary: "")
         }
     }
 
@@ -375,7 +380,7 @@ public final class SummonAIService: @unchecked Sendable {
     private func stageAction(_ action: CoreAction, prompt: String, actor: ActorTag) throws -> String {
         guard let core else {
             let proposal = StagedAIProposal(
-                rung: .l1Apple, prompt: prompt,
+                rung: .appleFM, prompt: prompt,
                 output: (try? SchemaGate().reviewedText(for: action)) ?? action.name,
                 egressSummary: ""
             )
@@ -515,7 +520,7 @@ public final class SummonAIService: @unchecked Sendable {
         }
         return .answer(
             text: "On-device answer synthesis is unavailable on this Mac — showing the top web results:",
-            rung: .l0Packaged,
+            rung: .mlx,
             sources: hits,
             note: note
         )

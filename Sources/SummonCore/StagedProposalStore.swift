@@ -88,8 +88,20 @@ public struct StagedProposalStore: Sendable {
                 CREATE INDEX IF NOT EXISTS staged_proposals_state_created_idx
                 ON staged_proposals(state, created_at)
                 """)
+            // Rung names became readable on 2026-10-30; rewrite rows from older builds.
+            for (legacy, current) in Self.legacyRungNames {
+                try db.execute(
+                    sql: "UPDATE staged_proposals SET rung = ? WHERE rung = ?",
+                    arguments: [current, legacy]
+                )
+            }
         }
     }
+
+    /// Stored rung names before 2026-10-30 → their readable replacements.
+    static let legacyRungNames: [(legacy: String, current: String)] = [
+        ("L0", "mlx"), ("L1", "apple-fm"), ("L2", "local-server"),
+    ]
 
     /// Expires proposals that were never reviewed within the bounded lifetime.
     @discardableResult

@@ -8,7 +8,7 @@ import FoundationModels
 /// Runtime detection only — never a build split or settings toggle (D3/D5).
 @available(macOS 26.0, *)
 public struct AppleFoundationModelRung: ModelRung, Sendable {
-    public let id: ModelRungID = .l1Apple
+    public let id: ModelRungID = .appleFM
     public let displayName = "Apple Foundation Models"
 
     public init() {}
@@ -65,9 +65,13 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
         case .available:
             break
         case .unavailable(let reason):
-            throw ModelRungError.unavailable(.l1Apple, Self.describe(reason))
+            throw ModelRungError.unavailable(.appleFM, Self.describe(reason))
         @unknown default:
-            throw ModelRungError.unavailable(.l1Apple, "unknown availability")
+            throw ModelRungError.unavailable(.appleFM, "unknown availability")
+        }
+
+        if let fixed = MetaQueryGuard.response(for: trimmed, model: "Apple's on-device model") {
+            return ModelCompletion(text: fixed, rung: .appleFM, egressSummary: "")
         }
 
         let session = LanguageModelSession(
@@ -79,14 +83,14 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
             let response = try await session.respond(to: trimmed)
             return ModelCompletion(
                 text: PromptLeakGuard.filter(response.content),
-                rung: .l1Apple,
+                rung: .appleFM,
                 egressSummary: ""
             )
         } catch {
             throw ModelRungError.generationFailed(error.localizedDescription)
         }
         #else
-        throw ModelRungError.unavailable(.l1Apple, "FoundationModels framework not linked")
+        throw ModelRungError.unavailable(.appleFM, "FoundationModels framework not linked")
         #endif
     }
 
@@ -140,7 +144,7 @@ public struct AppleFoundationModelRung: ModelRung, Sendable {
 
 /// Pre–macOS 26 stand-in so call sites compile on package floor (14).
 public struct UnavailableAppleFoundationModelRung: ModelRung, Sendable {
-    public let id: ModelRungID = .l1Apple
+    public let id: ModelRungID = .appleFM
     public let displayName = "Apple Foundation Models"
 
     public init() {}
@@ -151,7 +155,7 @@ public struct UnavailableAppleFoundationModelRung: ModelRung, Sendable {
 
     public func complete(prompt: String) async throws -> ModelCompletion {
         throw ModelRungError.unavailable(
-            .l1Apple,
+            .appleFM,
             "requires macOS 26+ and Apple Intelligence hardware"
         )
     }

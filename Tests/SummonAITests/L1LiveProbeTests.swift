@@ -27,7 +27,7 @@ final class L1LiveProbeTests: XCTestCase {
             return XCTFail("Enable Apple Intelligence to exercise L1")
         }
         let completion = try await rung.complete(prompt: "Reply with exactly the word: pong")
-        XCTAssertEqual(completion.rung, .l1Apple)
+        XCTAssertEqual(completion.rung, .appleFM)
         XCTAssertFalse(completion.text.isEmpty)
         XCTAssertEqual(completion.egressSummary, "")
     }

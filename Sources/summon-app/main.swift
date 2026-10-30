@@ -520,7 +520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         LauncherAIIntegration(
             handler: { [weak service] prompt in
                 guard let service else {
-                    throw ModelRungError.unavailable(.l0Packaged, "AI service was released")
+                    throw ModelRungError.unavailable(.mlx, "AI service was released")
                 }
                 let response = try await service.respond(prompt: prompt, actor: .user)
                 let rung = response.rung.rawValue
