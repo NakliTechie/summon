@@ -8,8 +8,8 @@ import SummonUI
 /// target app is still frontmost (Summon shows no panel), reads the current
 /// clipboard text, enumerates the target app's fields through Accessibility, asks
 /// the router where each value belongs, and — per the 2026-09-22 decision —
-/// **fills directly** (no blocking dialog), then shows a non-blocking toast with
-/// Undo. The fill is still staged+journaled (transient amber → accepted) for
+/// **fills directly** (no blocking dialog), then shows a non-blocking notice at the
+/// notch (a pill on screens without one) with Undo. The fill is still staged+journaled (transient amber → accepted) for
 /// audit; secure fields are never written; Undo restores each field's prior value.
 ///
 /// The router is verdict-first with a deterministic fallback: verdict when its
@@ -19,7 +19,7 @@ import SummonUI
 final class SmartPasteController {
     private let core: SummonCore
     private let router: any SmartPasteRouter
-    private let toast = SmartPasteToast()
+    private let notice = NotchNotice()
 
     init(core: SummonCore) {
         self.core = core
@@ -57,7 +57,7 @@ final class SmartPasteController {
             // app that was frontmost at ⌥⌘V, do NOT fill — a direct fill must
             // never land in a different app than the one you invoked it on.
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
-                toast.show(message: "Smart Paste cancelled — focus changed", undo: nil, duration: 3)
+                notice.show(message: "Smart Paste cancelled — focus changed", duration: 3)
                 return
             }
 
@@ -68,13 +68,13 @@ final class SmartPasteController {
             try core.staged.upsert(persisted)
             let outcomes = try core.acceptStagedSmartPaste(id: persisted.id, target: target, actor: .user)
 
-            presentToast(outcomes: outcomes, fields: fields, target: target)
+            presentNotice(outcomes: outcomes, fields: fields, target: target)
         } catch {
             fputs("Summon smart paste failed: \(error.localizedDescription)\n", stderr)
         }
     }
 
-    private func presentToast(
+    private func presentNotice(
         outcomes: [SmartPasteFillOutcome],
         fields: [SmartPasteFieldDescriptor],
         target: SmartPasteTarget
@@ -84,7 +84,7 @@ final class SmartPasteController {
         let applied = outcomes.filter(\.applied)
         guard !applied.isEmpty else {
             let failed = outcomes.count
-            toast.show(message: failed > 0 ? "Smart Paste: no field accepted the value" : "Smart Paste: nothing to fill", undo: nil)
+            notice.show(message: failed > 0 ? "Smart Paste: no field accepted the value" : "Smart Paste: nothing to fill")
             return
         }
 
@@ -98,8 +98,8 @@ final class SmartPasteController {
             for outcome in applied {
                 _ = try? target.apply(value: priorByID[outcome.fill.fieldID] ?? "", toFieldID: outcome.fill.fieldID)
             }
-            self?.toast.show(message: "Undone", undo: nil, duration: 2)
+            self?.notice.show(message: "Undone", duration: 2)
         }
-        toast.show(message: message, undo: undo)
+        notice.show(message: message, actionTitle: "Undo", action: undo)
     }
 }
