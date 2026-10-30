@@ -4,7 +4,7 @@
 
 **2026-10-30** — `main` = 0.8.2 plus the unreleased 2026-10-30 commits, `make verify` passed per batch (`latency-hard` run alone after post-build load):
 
-- Swift file-name index, layer 1 (opt-in), merged from the 2026-10-11 branch. **The live app pass failed:** in the app, `apply()` holds the service lock across a blocking `open()`, so autosave never runs and Quit hangs. The index must stay off for users until the deadlock fix lands (workplan Chunk A). Lifecycle logging added (`tech.nakli.Summon` / `fileindex`).
+- Swift file-name index, layer 1 (opt-in), merged from the 2026-10-11 branch. The first live app pass deadlocked (`apply()` held the service lock across a blocking `open()`); fixed in `f6ebb23` (no I/O under the lock, 5 s time limit per rescan listing, bounded Quit). Second live pass on the real home folder passed: autosave, Quit in 1.8–1.9 s with a save, FSEvents replay at relaunch. The blocking folder was `~/Library/Application Support/Claude/Cache/Cache_Data` (skipped and logged). Lifecycle logging under `tech.nakli.Summon` / `fileindex`.
 - Every agent write stages (A9/A10); missing-key settings deletes are rejected (B15). Extensions keep the elevated-only rule.
 - Apple Foundation Models answers first; rung names `apple-fm` / `local-server` / `mlx` with a staged-proposal migration (checked on a copy of a real store). Meta-queries get a fixed, true answer before generation; verified live on Apple FM.
 - `searxng-up.sh` no longer re-downloads the ~700 MB container kernel on every cold start; the Apple `container` web lifecycle passed live on this Mac (container 1.6.1).
