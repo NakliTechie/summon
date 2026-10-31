@@ -26,6 +26,8 @@ The command taps `naklitechie/homebrew-tap` and installs the app in one step. Or
 
 Requires **macOS Sonoma 14+** to run; **on-device AI needs macOS 26+ with Apple Intelligence** (without it, the launcher, clipboard, and search work and the AI rung degrades cleanly). The build is ad-hoc signed, not notarized — if macOS blocks it, right-click → **Open** once (or `xattr -dr com.apple.quarantine "/Applications/Summon.app"`).
 
+Smart Paste and window arrangement need the **Accessibility** permission. Because the build is ad-hoc signed, macOS drops that grant after every `brew upgrade`: open System Settings → Privacy & Security → Accessibility, select Summon, remove it with **−**, then add `/Applications/Summon.app` again with **+**.
+
 Press **⌥Space** to open the launcher; it lives in the menu bar and captures your clipboard in the background. The first launch offers **Keep Ready at Login** (on by default). No config file, no account, no restart. Point another tool at it over the local agent socket:
 
 ```bash
@@ -53,7 +55,7 @@ summon files enable && summon files index    # build once; the app keeps it live
 summon files status                          # entries, snapshot size, everything excluded
 ```
 
-It indexes your home folder and skips, by design: `.git`, `.DS_Store`; `~/.Trash`, `~/Library/Caches`; other apps' sandbox data (`~/Library/Containers`, `Group Containers`, `Daemon Containers`); anything a repository's `.gitignore`, `.ignore` or `.git/info/exclude` excludes. Symlinks are listed, never followed. Folders macOS protects stay out unless Summon has Full Disk Access. Names only; file contents are not indexed.
+It indexes your home folder and skips, by design: `.git`, `.DS_Store`; Chromium and Electron HTTP caches (`Cache_Data`); `~/.Trash`, `~/Library/Caches`; other apps' sandbox data (`~/Library/Containers`, `Group Containers`, `Daemon Containers`); anything a repository's `.gitignore`, `.ignore` or `.git/info/exclude` excludes. Symlinks are listed, never followed. Folders macOS protects stay out unless Summon has Full Disk Access. Names only; file contents are not indexed.
 
 ## Web search and the agent face
 

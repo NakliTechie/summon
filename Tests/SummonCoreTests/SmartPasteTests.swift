@@ -82,6 +82,24 @@ final class SmartPasteTests: XCTestCase {
         XCTAssertTrue(fills.allSatisfy { $0.confidenceKind == .heuristic })
     }
 
+    /// A Contacts card, as its Accessibility tree reads (observed 2026-10-31): each
+    /// row is a static-text type label ("mobile", "home") beside a text field with
+    /// no title or placeholder. "mobile" names a phone; "home" fits a phone, email
+    /// or address alike, so the floor leaves it empty rather than guess.
+    func testContactsTypeLabelsPlaceThePhoneAndLeaveHomeEmpty() async throws {
+        let entities = [
+            SmartPasteEntity(id: "e-email", kind: .email, value: "jane@example.com", raw: "jane@example.com"),
+            SmartPasteEntity(id: "e-phone", kind: .phone, value: "+14155550198", raw: "+1 415 555 0198"),
+        ]
+        let fields = [
+            SmartPasteFieldDescriptor(id: "row-phone", label: "mobile", role: "AXTextField"),
+            SmartPasteFieldDescriptor(id: "row-email", label: "home", role: "AXTextField"),
+        ]
+        let fills = try await DeterministicSmartPasteRouter().route(entities: entities, into: fields)
+        XCTAssertEqual(fills.map(\.fieldID), ["row-phone"])
+        XCTAssertEqual(fills.first?.entityID, "e-phone")
+    }
+
     func testNeverFillsASecureField() async throws {
         let entities = [SmartPasteEntity(id: "e", kind: .email, value: "a@b.com", raw: "a@b.com")]
         let fields = [SmartPasteFieldDescriptor(id: "pw", label: "Email", role: "AXSecureTextField", isSecure: true)]
