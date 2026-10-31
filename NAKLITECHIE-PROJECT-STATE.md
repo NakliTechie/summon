@@ -2,6 +2,13 @@
 
 ## Status
 
+**2026-10-31** — CPU-only batch on `main` (`17efbb2`..`f9dcddd`), `make verify` passed (exit 0; lint 0 violations in 218 files; live-Spotlight p95 451 ms on the first sample):
+
+- Smart Paste extractor experiment: Apple FM filling the form directly 84/99 against 36/99 for the deterministic floor (`93ab18d`); Apple FM is the form filler (decision below).
+- File-index recall against `rg` ground truth (`scripts/file-index-recall.py`) with fff scored beside it (`bench/fff-harness`, tooling only): on `~/Code`, in-scope recall 1.000 on 5 of 6 queries and 0.998 on the sixth.
+- File index skips Chromium/Electron `Cache_Data` and logs each save's lock wait, compaction and write times; `web status` names runtimes found empty; `latency-hard` retries a Spotlight miss after the load settles; the flaky clipboard UI test waits for loaded rows; README re-grant note.
+- Contacts edit cards read through Accessibility: phone and email fields carry only a "mobile"/"home" row label, so the floor fills the phone and leaves "home" empty.
+
 **2026-10-30** — `main` = 0.8.2 plus the unreleased 2026-10-30 commits, `make verify` passed per batch (`latency-hard` run alone after post-build load):
 
 - Swift file-name index, layer 1 (opt-in), merged from the 2026-10-11 branch. The first live app pass deadlocked (`apply()` held the service lock across a blocking `open()`); fixed in `f6ebb23` (no I/O under the lock, 5 s time limit per rescan listing, bounded Quit). Second live pass on the real home folder passed: autosave, Quit in 1.8–1.9 s with a save, FSEvents replay at relaunch. The blocking folder was `~/Library/Application Support/Claude/Cache/Cache_Data` (skipped and logged). Lifecycle logging under `tech.nakli.Summon` / `fileindex`.
