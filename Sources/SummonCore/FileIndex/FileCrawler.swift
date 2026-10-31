@@ -20,7 +20,9 @@ public struct FileIndexExclusions: Sendable, Equatable {
 
     public static func standard(home: String = NSHomeDirectory()) -> FileIndexExclusions {
         FileIndexExclusions(
-            names: [".git", ".DS_Store", ".Spotlight-V100", ".fseventsd", ".DocumentRevisions-V100"],
+            // `Cache_Data` is the Chromium/Electron HTTP cache: thousands of hashed
+            // names, and the app's open() on Claude's copy blocked past the 5 s limit.
+            names: [".git", ".DS_Store", ".Spotlight-V100", ".fseventsd", ".DocumentRevisions-V100", "Cache_Data"],
             paths: [
                 home + "/.Trash",
                 home + "/Library/Caches",

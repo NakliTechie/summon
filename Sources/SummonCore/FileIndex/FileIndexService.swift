@@ -128,7 +128,11 @@ public final class FileIndexService: @unchecked Sendable {
     }
 
     public func saveIfDirty() throws {
+        // Timed in three parts (lock wait, compaction under the lock, write), so a
+        // late save says which one cost it (2026-10-30: one save logged 34 s late).
+        let asked = DispatchTime.now().uptimeNanoseconds
         lock.lock()
+        let locked = DispatchTime.now().uptimeNanoseconds
         guard dirty, let current = index else {
             lock.unlock()
             return
@@ -137,9 +141,17 @@ public final class FileIndexService: @unchecked Sendable {
         index = compacted
         dirty = false
         lock.unlock()
+        let compactedAt = DispatchTime.now().uptimeNanoseconds
         do {
             try compacted.write(to: snapshotURL)
-            fileIndexLog.info("save: \(compacted.entryCount) entries, event id \(compacted.eventID)")
+            let written = DispatchTime.now().uptimeNanoseconds
+            let ms = { (from: UInt64, to: UInt64) in Double(to - from) / 1_000_000 }
+            fileIndexLog.info("""
+                save: \(compacted.entryCount) entries, event id \(compacted.eventID); \
+                lock wait \(ms(asked, locked), format: .fixed(precision: 0)) ms, \
+                compact \(ms(locked, compactedAt), format: .fixed(precision: 0)) ms, \
+                write \(ms(compactedAt, written), format: .fixed(precision: 0)) ms
+                """)
         } catch {
             fileIndexLog.error("save failed: \(error.localizedDescription, privacy: .public)")
             throw error
@@ -224,8 +236,11 @@ public final class FileIndexService: @unchecked Sendable {
         guard watcher != nil, !autosaveScheduled else { return }
         fileIndexLog.info("autosave scheduled in \(Self.autosaveDelay, format: .fixed(precision: 0)) s")
         autosaveScheduled = true
+        let due = Date().addingTimeInterval(Self.autosaveDelay)
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.autosaveDelay) { [weak self] in
             guard let self else { return }
+            // Utility-QoS timers can fire late on a busy or sleeping Mac; log how late.
+            fileIndexLog.info("autosave fired \(Date().timeIntervalSince(due), format: .fixed(precision: 1)) s after due")
             self.lock.lock()
             self.autosaveScheduled = false
             self.lock.unlock()
