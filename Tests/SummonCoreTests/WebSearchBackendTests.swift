@@ -186,6 +186,19 @@ final class WebSearchBackendTests: XCTestCase {
         XCTAssertEqual(runner.count("container", ["inspect"]), 0, "no inspect against a down runtime")
     }
 
+    func testInspectKeepsADownDockerButNamesTheEmptyContainerRuntime() async {
+        let runner = MockRunner()
+        runner.respond = { call in
+            if call.tool == "docker", call.args == ["info"] { return ProcessOutcome(exitCode: 1) }
+            return call.args.first == "inspect" ? ProcessOutcome(exitCode: 1, output: "not found") : ProcessOutcome(exitCode: 0)
+        }
+        let backend = makeBackend(runner: runner, tools: ["docker", "container"])
+        let result = await backend.inspectWithEmptyRuntimes()
+        // `web remove` must still refuse: the container may live in the down Docker.
+        XCTAssertEqual(result.state, .runtimeDown(.docker))
+        XCTAssertEqual(result.empty, [.container])
+    }
+
     func testInspectReportsMissingWhenNoRuntimeHoldsTheContainer() async {
         let runner = MockRunner()
         runner.respond = { call in

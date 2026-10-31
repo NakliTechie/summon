@@ -144,8 +144,16 @@ public struct WebSearchBackend: Sendable {
     /// Apple's `container` is asked first — it is Summon's default runtime — and
     /// Docker is the fallback, matching `searxng-up.sh`'s selection order.
     public func inspect() async -> State {
+        await inspectWithEmptyRuntimes().state
+    }
+
+    /// `inspect()`, plus the running runtimes that answered without the container.
+    /// A down runtime still outranks them, because the container may live there
+    /// (`web remove` refuses on it); `web status` names both so the line reads true.
+    public func inspectWithEmptyRuntimes() async -> (state: State, empty: [Runtime]) {
         var sawRuntimeDown: Runtime?
         var sawAnyRuntime = false
+        var empty: [Runtime] = []
         for runtime in [Runtime.container, .docker] {
             guard let tool = locator.locate(runtime.rawValue) else { continue }
             sawAnyRuntime = true
@@ -154,12 +162,14 @@ public struct WebSearchBackend: Sendable {
                 continue
             }
             let result = await runner.run(tool, ["inspect", Self.containerName], env: toolEnv())
-            guard result.exitCode == 0 else { continue }
-            if let state = Self.parseInspect(runtime: runtime, json: result.output) { return state }
+            if result.exitCode == 0, let state = Self.parseInspect(runtime: runtime, json: result.output) {
+                return (state, empty)
+            }
+            empty.append(runtime)
         }
-        if !sawAnyRuntime { return .noRuntime }
-        if let down = sawRuntimeDown { return .runtimeDown(down) }
-        return .missing
+        if !sawAnyRuntime { return (.noRuntime, empty) }
+        if let down = sawRuntimeDown { return (.runtimeDown(down), empty) }
+        return (.missing, empty)
     }
 
     private func daemonUp(_ runtime: Runtime, tool: String) async -> Bool {

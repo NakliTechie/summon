@@ -58,7 +58,7 @@ extension SummonCLI {
     /// Read-only: the persisted preference beside the observed backend state.
     static func cli_webStatusCommand(core: SummonCore) throws {
         let backend = webBackend(core: core)
-        let state = try awaitOrRun { await backend.inspect() }
+        let (state, empty) = try awaitOrRun { await backend.inspectWithEmptyRuntimes() }
         let recorded = SearXNGDiscovery.discoveredBaseURL() ?? "-"
         let baseURL = core.webConfig.baseURL.isEmpty ? "-" : core.webConfig.baseURL
         // `owned` is the ownership evidence: only this profile's recorded URL lets
@@ -69,6 +69,11 @@ extension SummonCLI {
         default: owned = "-"
         }
         print("enabled=\(core.webConfig.enabled) baseURL=\(baseURL)")
-        print("backend=\(state.summary) recordedURL=\(recorded) owned=\(owned)")
+        var summary = state.summary
+        if case .runtimeDown = state, !empty.isEmpty {
+            // A down runtime is all the state says; name the runtimes already checked.
+            summary = "not set up in " + empty.map(\.rawValue).joined(separator: ", ") + "; " + summary
+        }
+        print("backend=\(summary) recordedURL=\(recorded) owned=\(owned)")
     }
 }
