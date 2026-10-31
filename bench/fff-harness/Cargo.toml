@@ -1,0 +1,12 @@
+[package]
+name = "fff-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Benchmark tooling only: never linked into Summon. fff (MIT) pinned by commit.
+[dependencies]
+fff-search = { git = "https://github.com/dmtrKovalenko/fff", rev = "d1c7dd47130ca670ab71e7466a1a3b4a57d5348d" }
+
+[profile.release]
+debug = false
