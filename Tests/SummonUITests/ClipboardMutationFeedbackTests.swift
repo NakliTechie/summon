@@ -18,7 +18,7 @@ final class ClipboardMutationFeedbackTests: XCTestCase {
         )
         let controller = ClipboardHistoryController(core: core)
         controller.show()
-        pumpMainRunLoop()
+        pumpMainRunLoop(until: { controller.loadedItemCount > 0 })
         defer { controller.hide() }
 
         let delete = try XCTUnwrap(NSEvent.keyEvent(
@@ -59,7 +59,7 @@ final class ClipboardMutationFeedbackTests: XCTestCase {
         )
         let controller = ClipboardHistoryController(core: core)
         controller.show()
-        pumpMainRunLoop()
+        pumpMainRunLoop(until: { controller.loadedItemCount > 0 })
         defer { controller.hide() }
         func digit(_ d: String, _ code: UInt16, command: Bool) throws -> NSEvent {
             try XCTUnwrap(NSEvent.keyEvent(
@@ -182,8 +182,15 @@ final class ClipboardMutationFeedbackTests: XCTestCase {
         return [root] + root.subviews.flatMap { descendants(of: $0) }
     }
 
-    private func pumpMainRunLoop() {
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+    /// `show()` loads rows on a background queue, so a fixed wait races a
+    /// loaded machine; pump until the rows land (5 s limit), then settle focus.
+    private func pumpMainRunLoop(until loaded: () -> Bool) {
+        let deadline = Date().addingTimeInterval(5)
+        while !loaded(), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertTrue(loaded(), "clipboard rows did not load within 5 s")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 }
 

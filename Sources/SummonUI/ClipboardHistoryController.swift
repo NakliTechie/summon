@@ -17,6 +17,8 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
     private let panelWidth: CGFloat = 420
     private let panelHeight: CGFloat = 480
     private var items: [ClipboardItemSummary] = []
+    /// Rows the last reload applied; tests wait on it instead of a fixed delay.
+    var loadedItemCount: Int { items.count }
     private let thumbnailCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 40
