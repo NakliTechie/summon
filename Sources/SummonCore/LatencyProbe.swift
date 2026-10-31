@@ -44,4 +44,22 @@ public enum LatencyProbe {
     public static func p95Passes(sample: LatencySample, budgetMs: Double) -> Bool {
         sample.milliseconds <= budgetMs
     }
+
+    /// The one-minute load average.
+    public static func loadAverage() -> Double {
+        var loads = [Double](repeating: 0, count: 1)
+        return getloadavg(&loads, 1) == 1 ? loads[0] : 0
+    }
+
+    /// Waits until the one-minute load average drops below half the active
+    /// cores, or `limit` seconds pass; returns the load it stopped at.
+    @discardableResult
+    public static func waitForLoadToSettle(limit: TimeInterval = 60) -> Double {
+        let settled = Double(ProcessInfo.processInfo.activeProcessorCount) / 2
+        let deadline = Date().addingTimeInterval(limit)
+        while loadAverage() >= settled, Date() < deadline {
+            Thread.sleep(forTimeInterval: 2)
+        }
+        return loadAverage()
+    }
 }
