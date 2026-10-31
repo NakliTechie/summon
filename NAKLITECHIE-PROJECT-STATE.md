@@ -108,6 +108,7 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 | When | Decision |
 |---|---|
+| 2026-10-31 | **Smart Paste fills forms with Apple Foundation Models directly** (one dynamic schema per form, greedy sampling): 84/99 on the resume-to-form fixture against 36/99 for the deterministic floor, median 2.0 s per form. GLiNER2.5 and cua-s1-forms were not run; a separate decide step stays a later option. Apple FM made up 3 of the 99 values, so the wiring adds a check that every filled value appears in the copied text. |
 | 2026-10-30 | **Re-tier Summon from Tool to Product.** On-device knowledge capture lives **inside Summon**, overriding rev-006's separate-app default; a second job means Product-tier gates from here on. |
 | 2026-10-30 | **Rung names migrate** from the stored `L0`/`L1`/`L2` to readable names, with a one-time settings and journal migration. **Apple Foundation Models first** when a local server is also running; the server is the fallback. Settles the open item left on 2026-08-09. |
 | 2026-10-30 | **Agent door: every agent write stages** for explicit user acceptance (closes A9/A10 inconsistency); deleting a missing settings key is an error (B15). |
