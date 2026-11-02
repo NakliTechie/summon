@@ -10,7 +10,7 @@ final class AIAnswerView: NSView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView(frame: .zero)
-    private let answerText = NSTextView(frame: .zero)
+    let answerText = NSTextView(frame: .zero)
     private var attributed = NSAttributedString()
     private static let bodyFont = NSFont.systemFont(ofSize: 12, weight: .regular)
 
@@ -90,6 +90,47 @@ final class AIAnswerView: NSView {
         ).height
         // Generous buffer so short answers fully fit (no overflow → no scroller).
         return ceil(measured) + 22 /* text insets */ + 36 /* title row + padding */
+    }
+
+    /// What the card really draws, for the usage log: its geometry, the laid-out
+    /// text against the visible area, the window's state, and how many sampled
+    /// pixels differ from the card's background (0 means the text is not drawn).
+    func drawnState() -> [String: String] {
+        var state: [String: String] = [
+            "card": NSStringFromRect(frame), "hidden": String(isHidden), "alpha": String(describing: alphaValue),
+            "chars": String(answerText.textStorage?.length ?? -1),
+            "scroll": NSStringFromRect(scrollView.frame), "scrollOffset": NSStringFromPoint(scrollView.contentView.bounds.origin),
+            "textFrame": NSStringFromRect(answerText.frame), "visible": NSStringFromRect(answerText.visibleRect),
+            "appearance": effectiveAppearance.name.rawValue, "textColor": String(describing: Tokens.System.label),
+        ]
+        if let manager = answerText.layoutManager, let container = answerText.textContainer {
+            manager.ensureLayout(for: container)
+            state["laidOut"] = NSStringFromRect(manager.usedRect(for: container))
+        }
+        if let window {
+            state["windowVisible"] = String(window.isVisible)
+            state["occluded"] = String(!window.occlusionState.contains(.visible))
+            state["windowAlpha"] = String(describing: window.alphaValue)
+        }
+        state["inkedPixels"] = String(inkedPixels())
+        return state
+    }
+
+    /// Sampled pixels in the answer area that differ clearly from its corner pixel.
+    func inkedPixels() -> Int {
+        guard let rep = scrollView.bitmapImageRepForCachingDisplay(in: scrollView.bounds) else { return -1 }
+        scrollView.cacheDisplay(in: scrollView.bounds, to: rep)
+        guard let corner = rep.colorAt(x: 1, y: 1)?.usingColorSpace(.deviceRGB) else { return -1 }
+        var count = 0
+        for y in stride(from: 0, to: rep.pixelsHigh, by: 2) {
+            for x in stride(from: 0, to: rep.pixelsWide, by: 2) {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                let d = abs(c.redComponent - corner.redComponent) + abs(c.greenComponent - corner.greenComponent)
+                    + abs(c.blueComponent - corner.blueComponent) + abs(c.alphaComponent - corner.alphaComponent)
+                if d > 0.3 { count += 1 }
+            }
+        }
+        return count
     }
 
     func clear() {

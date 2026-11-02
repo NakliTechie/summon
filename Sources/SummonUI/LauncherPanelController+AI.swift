@@ -123,6 +123,13 @@ extension LauncherPanelController {
         answerBandHeight = min(maxAnswerBandHeight, max(72, fitted))
         footerError = nil
         applyLayout(animated: true)
+        // After the layout animation settles, log what the card draws.
+        if UsageLog.isEnabled {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self, !self.aiAnswerView.isHidden else { return }
+                UsageLog.record("launcher.answer.drawn", self.aiAnswerView.drawnState())
+            }
+        }
     }
 
     func dismissAIAnswer() {
