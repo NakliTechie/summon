@@ -2,6 +2,11 @@
 
 ## Status
 
+**2026-11-02** — `make verify` passed (exit 0; lint 0 violations in 223 files; live-Spotlight 795 ms on the first sample under load 3.5, 236 ms on the settled retry). Today's build is installed over the 0.8.0 daily driver.
+
+- Smart Paste: Apple FM fills the form first, every value checked against the copied text (`SmartPasteGrounding`), then verdict and the floor fill what it leaves empty. Resume fixture: 86/99 with the check, 84/99 without, 36/99 floor; the check dropped both made-up speaker values and no correct one. Fields now carry their row text and position for the model. Live ⌥⌘V check owed.
+- Local usage log in `~/Library/Logs/Summon/usage.jsonl`: every action with timing, launcher queries, AI and web steps, smart-paste fields and fills (decision below).
+
 **2026-10-31** — CPU-only batch on `main` (`17efbb2`..`f9dcddd`), `make verify` passed (exit 0; lint 0 violations in 218 files; live-Spotlight p95 451 ms on the first sample):
 
 - Smart Paste extractor experiment: Apple FM filling the form directly 84/99 against 36/99 for the deterministic floor (`93ab18d`); Apple FM is the form filler (decision below).
@@ -115,6 +120,7 @@ Inventory: local `plan/pending.md` · `plan/workplan.md` (gitignored).
 
 | When | Decision |
 |---|---|
+| 2026-11-02 | **Log every use locally while dogfooding.** One JSON line per event in `~/Library/Logs/Summon/usage.jsonl` (no egress, so not telemetry; never clipboard contents or a secure field); `UsageLog.isEnabled` goes false for a public release. |
 | 2026-10-31 | **Smart Paste fills forms with Apple Foundation Models directly** (one dynamic schema per form, greedy sampling): 84/99 on the resume-to-form fixture against 36/99 for the deterministic floor, median 2.0 s per form. GLiNER2.5 and cua-s1-forms were not run; a separate decide step stays a later option. Apple FM made up 3 of the 99 values, so the wiring adds a check that every filled value appears in the copied text. |
 | 2026-10-30 | **Re-tier Summon from Tool to Product.** On-device knowledge capture lives **inside Summon**, overriding rev-006's separate-app default; a second job means Product-tier gates from here on. |
 | 2026-10-30 | **Rung names migrate** from the stored `L0`/`L1`/`L2` to readable names, with a one-time settings and journal migration. **Apple Foundation Models first** when a local server is also running; the server is the fallback. Settles the open item left on 2026-08-09. |
