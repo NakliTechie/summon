@@ -64,9 +64,10 @@ extension LauncherPanelController {
                     let message = (error as? CoreError)?.message ?? error.localizedDescription
                     DispatchQueue.main.async {
                         guard self.searchGeneration == generation else { return }
+                        // The rows on screen belong to an older query: clear them so no Enter can run one.
+                        self.session.applyResults(text, [])
                         self.footerError = message
                         self.applyLayout(animated: true)
-                        // The old rows belong to an older query: never confirm one.
                         self.searchLanded(runDeferredEnter: false)
                     }
                 }

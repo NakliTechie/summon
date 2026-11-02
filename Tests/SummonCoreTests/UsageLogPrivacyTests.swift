@@ -19,6 +19,18 @@ final class UsageLogPrivacyTests: XCTestCase {
         let proposal = UsageLog.smartPasteSummary(fills: fills, labels: labels, applied: nil)
         XCTAssertEqual(proposal, "Email | Phone")
         let applied = UsageLog.smartPasteSummary(fills: fills, labels: labels, applied: ["f1"])
-        XCTAssertEqual(applied, "Email=jane@example.com | Phone (not applied)")
+        XCTAssertEqual(applied, "Email (applied) | Phone (not applied)")
+        XCTAssertFalse(applied.contains("jane@example.com"), "no value is ever logged")
+    }
+
+    func testTheLogIsOffUnlessAskedFor() {
+        XCTAssertFalse(UsageLog.enabled(environment: [:], defaultsSetting: false, underTest: false), "off by default")
+        XCTAssertTrue(UsageLog.enabled(environment: [:], defaultsSetting: true, underTest: false), "defaults write turns it on")
+        XCTAssertTrue(UsageLog.enabled(environment: ["SUMMON_USAGE_LOG": "1"], defaultsSetting: false, underTest: false))
+        XCTAssertTrue(UsageLog.enabled(environment: ["SUMMON_USAGE_LOG": "/tmp/x.jsonl"], defaultsSetting: false, underTest: false))
+        let off = ["SUMMON_USAGE_LOG": "0"]
+        XCTAssertFalse(UsageLog.enabled(environment: off, defaultsSetting: true, underTest: false), "0 forces it off")
+        let on = ["SUMMON_USAGE_LOG": "1"]
+        XCTAssertFalse(UsageLog.enabled(environment: on, defaultsSetting: true, underTest: true), "never under XCTest")
     }
 }

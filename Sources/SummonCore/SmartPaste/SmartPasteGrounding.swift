@@ -16,11 +16,14 @@ public enum SmartPasteGrounding {
     public static func isGrounded(_ value: String, in source: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        let text = normalized(source)
-        if stated(trimmed, in: text) { return true }
-        if isNumeric(trimmed), numberStated(trimmed, in: source) { return true }
         let valueDates = dateKeys(in: trimmed, wholeValue: true)
         if !valueDates.isEmpty, !valueDates.isDisjoint(with: dateKeys(in: source, wholeValue: false)) { return true }
+        // A value with no letters is judged by the number rules alone. The text match drops
+        // signs, decimal points and commas, so it would ground "1234" in "1234.56", "-123"
+        // in "123" and "234" in "1,234".
+        if isNumeric(trimmed) { return numberStated(trimmed, in: source) }
+        let text = normalized(source)
+        if stated(trimmed, in: text) { return true }
         let parts = trimmed.split(whereSeparator: { $0 == "," || $0 == ";" })
             .map { $0.trimmingCharacters(in: .whitespaces) }
         if parts.count > 1, parts.allSatisfy({ !$0.isEmpty && stated($0, in: text) }) { return true }
@@ -65,22 +68,37 @@ public enum SmartPasteGrounding {
     private static func numberStated(_ value: String, in source: String) -> Bool {
         let digits = value.filter(\.isASCIIDigit)
         guard !digits.isEmpty else { return false }
-        let groups = source.split(whereSeparator: { !$0.isASCIIDigit }).map(String.init)
-        if groups.contains(digits) { return true }
-        // A thousands-grouped number ("1,234", "12,34,567"): the group sizes are the evidence.
-        for span in matches(of: #"\d{1,3}(?:,\d{2,3})+"#, in: source) where span.filter(\.isASCIIDigit) == digits {
+        // The value written exactly, not inside a longer number ("10:30", "560038").
+        let escaped = NSRegularExpression.escapedPattern(for: value.trimmingCharacters(in: .whitespaces))
+        if !matches(of: #"(?<![\d.,\-])"# + escaped + #"(?![\d]|[.,]\d)"#, in: source).isEmpty { return true }
+        // A number token in the text: plain, Western-grouped "1,234,567.89" or Indian-grouped
+        // "12,34,567", with its sign and decimals. Compared as a number with the commas removed,
+        // so "1234.56" never grounds "123456", "-123" never grounds "123", and "234" is not
+        // read out of "1,234". Invalid grouping ("12,34") never joins.
+        let numeric = (value.trimmingCharacters(in: .whitespaces).hasPrefix("-") ? "-" : "")
+            + value.filter { $0.isASCIIDigit || $0 == "." }
+        let token = #"(?<![\d.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(?![\d])"#
+        if matches(of: token, in: source).contains(where: { $0.replacingOccurrences(of: ",", with: "") == numeric }) {
             return true
         }
-        // A formatted number ("+91 55555 01234", "(415) 555-0198", "1,234"): digits joined by
-        // spaces, dots, dashes or brackets, or a comma with a digit on each side. A comma
-        // followed by a space separates two numbers ("12, 34"), so it never joins them.
-        // Under 7 digits only a single group counts, so no number is built from two.
-        for span in matches(of: #"\d(?:\d|[ \t().\-–/]|,(?=\d))*\d"#, in: source) {
-            let spanDigits = span.filter(\.isASCIIDigit)
-            guard spanDigits.count >= 7 else { continue }
-            if spanDigits == digits { return true }
-            let (short, long) = spanDigits.count < digits.count ? (spanDigits, digits) : (digits, spanDigits)
-            if short.count >= 7, long.hasSuffix(short) { return true }
+        // A formatted number ("+91 55555 01234", "(415) 555-0198", "+44 (0)20 7123 4567"): digits
+        // joined by spaces, dots, dashes or brackets. A comma never joins here ("12, 34", "12,34"),
+        // and under 7 digits only a single group counts, so no number is built from two.
+        // The source may carry a country code the value drops; the value may add one only when
+        // it writes it with "+" and the code does not start with 0 (at most 3 digits either way).
+        // A UK "(0)" trunk is read both ways: "+44 20 …" and "020 …" both match "+44 (0)20 …".
+        let international = value.trimmingCharacters(in: .whitespaces).hasPrefix("+")
+        for span in matches(of: #"\d(?:\d|[ \t\u00A0\u202F().\-–/])*\d"#, in: source) {
+            // Only a "(0)" right after a 1–3 digit country code is a trunk prefix.
+            let trunkless = span.replacingOccurrences(of: #"^(\d{1,3})\s*\(0\)"#, with: "$1", options: .regularExpression)
+            let variants = Set([span, trunkless].map { $0.filter(\.isASCIIDigit) })
+            for spanDigits in variants where spanDigits.count >= 7 {
+                if spanDigits == digits { return true }
+                if spanDigits.count > digits.count, digits.count >= 7,
+                   spanDigits.count - digits.count <= 3, spanDigits.hasSuffix(digits) { return true }
+                if digits.count > spanDigits.count, international, digits.count - spanDigits.count <= 3,
+                   digits.hasSuffix(spanDigits), digits.first != "0" { return true }
+            }
         }
         return false
     }

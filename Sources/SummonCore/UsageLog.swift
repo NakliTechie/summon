@@ -5,19 +5,31 @@ import Foundation
 /// during dogfooding can be read back step by step with timings. Nothing leaves
 /// the Mac: this is a file the user owns, not telemetry.
 ///
-/// On while the owner dogfoods (decided 2026-11-02); `isEnabled` goes false for a
-/// public release. Off under XCTest so test runs never write the user's log.
-/// `SUMMON_USAGE_LOG=0` turns it off; `SUMMON_USAGE_LOG=<path>` writes elsewhere.
+/// Opt-in (see `isEnabled`).
 ///
-/// It records launcher queries, AI and web prompts and answers, and smart-paste
-/// fills. It never records clipboard contents beyond what smart paste wrote into
-/// a field, and never a secure field.
+/// It records launcher queries, AI and web prompts and answers, and the names of
+/// the fields Smart Paste filled. It never records clipboard contents (a clipboard
+/// row logs its kind) and never a value Smart Paste filled, so it cannot hold a
+/// secure field's value either.
 public enum UsageLog {
-    public static let isEnabled: Bool = {
-        let env = ProcessInfo.processInfo.environment
-        if env["XCTestConfigurationFilePath"] != nil || NSClassFromString("XCTestCase") != nil { return false }
-        return env["SUMMON_USAGE_LOG"] != "0"
-    }()
+    /// Off by default. On with `defaults write tech.nakli.Summon UsageLog -bool true`, or with
+    /// `SUMMON_USAGE_LOG=1` (or a file path) in the environment; `SUMMON_USAGE_LOG=0` forces it
+    /// off. Always off under XCTest so test runs never write the owner's log.
+    public static let isEnabled: Bool = enabled(
+        environment: ProcessInfo.processInfo.environment,
+        // Summon's own domain only: `UserDefaults.bool(forKey:)` also reads the global domain.
+        defaultsSetting: UserDefaults.standard.persistentDomain(forName: "tech.nakli.Summon")?["UsageLog"] as? Bool ?? false,
+        underTest: NSClassFromString("XCTestCase") != nil
+    )
+
+    static func enabled(environment: [String: String], defaultsSetting: Bool, underTest: Bool) -> Bool {
+        if underTest || environment["XCTestConfigurationFilePath"] != nil { return false }
+        switch environment["SUMMON_USAGE_LOG"] {
+        case "0": return false
+        case let value? where !value.isEmpty: return true
+        default: return defaultsSetting
+        }
+    }
 
     public static let fileURL: URL = {
         if let path = ProcessInfo.processInfo.environment["SUMMON_USAGE_LOG"], path.count > 1 {
@@ -90,14 +102,14 @@ public enum UsageLog {
         kind == .clipboard ? "(clipboard item)" : title
     }
 
-    /// Smart-paste fills for the log. A proposal names fields only: its values come from
-    /// the copied text and nothing has been written yet. After a fill, only the fields
-    /// that accepted their value are listed with it (a secure field is never filled).
+    /// Smart-paste fills for the log: field names only, never a value. A value comes from the
+    /// copied text, and "applied" can be wrong (the keystroke fallback reports success without
+    /// reading the field back), so no value is written here at all.
     public static func smartPasteSummary(fills: [SmartPasteFill], labels: [String: String], applied: Set<String>?) -> String {
         fills.map { fill in
             let label = labels[fill.fieldID] ?? fill.fieldID
             guard let applied else { return label }
-            return applied.contains(fill.fieldID) ? "\(label)=\(fill.value)" : "\(label) (not applied)"
+            return applied.contains(fill.fieldID) ? "\(label) (applied)" : "\(label) (not applied)"
         }.joined(separator: " | ")
     }
 
@@ -118,18 +130,54 @@ public enum UsageLog {
         let manager = FileManager.default
         let directory = fileURL.deletingLastPathComponent()
         try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
-        if let size = (try? manager.attributesOfItem(atPath: fileURL.path))?[.size] as? UInt64, size > rotateBytes {
-            let old = directory.appendingPathComponent(
-                fileURL.deletingPathExtension().lastPathComponent + ".1." + fileURL.pathExtension
-            )
-            try? manager.removeItem(at: old)
-            try? manager.moveItem(at: fileURL, to: old)
-        }
+        rotateIfLarge(manager: manager, directory: directory)
         // One O_APPEND write per line: the app and the CLI can both log at once, and an
         // append never overwrites another process's line (seek-then-write could). Owner-only.
+        // A shared lock keeps a write out of the window where rotation renames the file.
+        let lock = open(fileURL.path + ".lock", O_RDWR | O_CREAT, 0o600)
+        guard lock >= 0, lockRetrying(lock, LOCK_SH) else {
+            if lock >= 0 { close(lock) }
+            return // a debug log may drop a line; it must not race a rotation
+        }
+        defer { flock(lock, LOCK_UN); close(lock) }
         let descriptor = open(fileURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o600)
         guard descriptor >= 0 else { return }
         defer { close(descriptor) }
-        line.withUnsafeBytes { _ = Darwin.write(descriptor, $0.baseAddress, $0.count) }
+        line.withUnsafeBytes { bytes in
+            guard var next = bytes.baseAddress else { return }
+            var left = bytes.count
+            while left > 0 { // finish a short write; give up on a real error
+                let wrote = Darwin.write(descriptor, next, left)
+                if wrote < 0 { if errno == EINTR { continue } else { return } }
+                left -= wrote
+                next += wrote
+            }
+        }
+    }
+
+    /// Past `rotateBytes` the file moves to `usage.1.jsonl` (one old file kept). The app and
+    /// the CLI can both see a large file, so rotation runs under a lock file and re-checks the
+    /// size inside it: the second process finds a small file and leaves the archive alone.
+    private static func rotateIfLarge(manager: FileManager, directory: URL) {
+        func size() -> UInt64 { (try? manager.attributesOfItem(atPath: fileURL.path))?[.size] as? UInt64 ?? 0 }
+        guard size() > rotateBytes else { return }
+        let lock = open(fileURL.path + ".lock", O_RDWR | O_CREAT, 0o600)
+        guard lock >= 0 else { return }
+        defer { close(lock) }
+        guard lockRetrying(lock, LOCK_EX) else { return }
+        defer { flock(lock, LOCK_UN) }
+        guard size() > rotateBytes else { return }
+        let old = directory.appendingPathComponent(
+            fileURL.deletingPathExtension().lastPathComponent + ".1." + fileURL.pathExtension
+        )
+        rename(fileURL.path, old.path) // replaces an earlier archive atomically
+    }
+
+    /// `flock`, retried when a signal interrupts it.
+    private static func lockRetrying(_ descriptor: Int32, _ operation: Int32) -> Bool {
+        while flock(descriptor, operation) != 0 {
+            guard errno == EINTR else { return false }
+        }
+        return true
     }
 }

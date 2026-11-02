@@ -59,6 +59,31 @@ final class SmartPasteGroundingTests: XCTestCase {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("4155550198", in: "Call (415) 555-0198 today"))
     }
 
+    /// Codex review 2026-11-02 (second pass): a made-up prefix is not a country code, invalid comma
+    /// grouping is two numbers, and the optional trunk zero is notation, not part of the number.
+    func testNumberRulesStayTightAndAcceptCommonNotation() {
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("99999994155550198", in: "Call 4155550198"))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("+14155550198", in: "Call 4155550198"), "a 1-digit country code")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("+919876543210", in: "Call 9876543210"), "a 2-digit country code")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234", in: "Apartment 12,34 Main Road"))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("1234567", in: "Cost 12,34,567 rupees"), "Indian grouping")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("1234567", in: "Cost 1,234,567 dollars"), "Western grouping")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("+44 20 7123 4567", in: "Tel +44 (0)20 7123 4567"), "optional trunk zero")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("020 7123 4567", in: "Tel +44 (0)20 7123 4567"), "UK local form")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("+000 415 555 0198", in: "Call 4155550198"), "a 0 code is made up")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("14155550198", in: "Call 4155550198"), "an added code needs a +")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("1234.56", in: "Cost $1,234.56"), "grouped decimal")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("123456", in: "Cost $1,234.56"), "100 times the amount")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234.56", in: "Total 123456"), "a decimal is not the integer")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234", in: "Total: 1234.56"), "the integer part is not the amount")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("-123", in: "Balance: 123"), "the sign counts")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("234", in: "Total: 1,234"), "not read out of a grouped number")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("33123456789", in: "Tel +33\u{00A0}1\u{00A0}23\u{00A0}45\u{00A0}67\u{00A0}89"),
+                      "non-breaking spaces in a phone")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("10:30", in: "Meet at 10:30 today"), "a time written exactly")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234567", in: "Account 1234 (0) 567"), "a (0) mid-number is not a trunk")
+    }
+
     func testMatchesADateInAnotherFormat() {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("2021-03", in: bio))
         XCTAssertTrue(SmartPasteGrounding.isGrounded("03/2021", in: bio))
