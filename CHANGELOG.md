@@ -3,9 +3,25 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
-## Unreleased
+## 0.9.0 — 2026-11-02
+
+Smart Paste fills forms with Apple Foundation Models, and a round of launcher fixes found by daily use.
 
 ### Added
+- **Smart Paste with Apple Foundation Models.** On ⌥⌘V the on-device model reads the copied
+  text and fills every non-secure field of the form in one pass. A grounding check keeps a
+  value only when the copied text states it (case, spacing, lists, URLs, number separators
+  and date formats are tolerated), so a made-up talk title or handle is dropped, not filled.
+  Fields the model leaves empty go to the verdict service, then the deterministic floor, and
+  the whole paste falls back when the model is off, fails or takes over 15 s. Fields now carry
+  their row text and position, which Contacts needs: its email and phone rows are both labelled
+  "home". On a 9-form resume test set: 86/99 fields right, against 36/99 for the floor.
+- The answer card shows web sources as quiet rows: the page title, the site in grey, and a
+  small › that opens it. Copy and Insert keep the plain title and address lines.
+- An opt-in local usage log, `~/Library/Logs/Summon/usage.jsonl`, for debugging: every action
+  with its timing, launcher queries, AI and web steps, and Smart Paste field names. It never
+  holds clipboard text or a value no field accepted, and never leaves your Mac. Off by default;
+  turn it on with `defaults write tech.nakli.Summon UsageLog -bool true` and restart Summon.
 - Opt-in Swift file-name index (`summon files enable|index|status|search|bench`). It crawls
   the home folder with `getattrlistbulk` and stores each distinct name once. Search is
   substring, subsequence and typo-tolerant (Damerau, bit-parallel), and words can match
@@ -32,6 +48,17 @@ ad-hoc-signed (not yet Apple-notarized).
   and aliases and favorites were refused outright.
 
 ### Fixed
+- The answer card drew blank: its text view had zero width, so the answer was laid out and
+  never painted. The width is now set on every layout.
+- Pressing Enter while a search for a longer query was still running confirmed a row for an
+  older query (typing "How to get to Mars" and Enter opened the Home app). Searches that a
+  later keystroke supersedes are skipped, and Enter waits for the results of what is in the
+  field; a keystroke after Enter withdraws it.
+- The staged-action card's Accept and Reject buttons were cut to "Acc…" and "Rej…", and its
+  action box could draw empty.
+- Apple Foundation Models answers are no longer awaited forever: after 25 s the web answer
+  falls back to the result list. A busy Mac had left the spinner turning for 46 s.
+- Link text on the dark panel uses a lighter blue (the brand blue was about 2:1 there).
 - `build-app.sh` refuses an output folder that holds an installed Summon.app, and
   every script deletion is limited to the path it created.
 - Web search setup on Apple `container` no longer re-downloads the ~700 MB guest
