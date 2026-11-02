@@ -159,6 +159,39 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertTrue(actions.contains("web.search"), "expected the web-search offer; got \(actions)")
     }
 
+    /// 2026-11-02: Enter pressed while a later keystroke's search was still running
+    /// confirmed a row for the older query ("Ho" opened the Home app, not the
+    /// question's web search). Enter must wait for the current results instead.
+    func testEnterWaitsForTheSearchOfWhatIsInTheField() throws {
+        let ran = LockedBox<[String]>([])
+        let integration = LauncherAIIntegration(
+            handler: { _ in .answer(text: "x", rung: "L1", egressSummary: "") },
+            searchHandler: { prompt, _ in
+                ran.append(prompt)
+                return .answer(text: "Fly.", sources: [], rung: "apple-fm")
+            }
+        )
+        let panel = LauncherPanelController(core: try SummonCore.inMemory(), aiIntegration: integration)
+        panel.show(markFirstRunSeen: false)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        defer { panel.hide() }
+
+        // A short, app-matching query lands first.
+        panel.searchField.stringValue = "Ho"
+        panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        // The full question is typed and Enter is pressed before its search lands.
+        panel.searchField.stringValue = "how to get to france from New York?"
+        panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        panel.confirmSelection()
+        XCTAssertTrue(ran.value.isEmpty, "Enter did not act on the stale rows")
+        XCTAssertTrue(panel.aiAnswerView.isHidden, "nothing was confirmed yet")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+
+        XCTAssertFalse(panel.aiAnswerView.isHidden, "the deferred Enter ran the current query's first offer")
+        XCTAssertEqual(panel.aiAnswerView.answer, "x", "it answered the question, not the app row")
+    }
+
     func testSearchPromotesToPrimaryOnceConsentIsSticky() {
         let handler: @Sendable (String) async throws -> LauncherAIResponse = { _ in
             .answer(text: "x", rung: "L1", egressSummary: "")
@@ -234,4 +267,15 @@ final class LauncherAIIntegrationTests: XCTestCase {
             .staged(proposalID: "proposal-1", rung: "L0", egressSummary: "")
         }
     }
+}
+
+private final class LockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+    init(_ value: Value) { stored = value }
+    var value: Value { lock.lock(); defer { lock.unlock() }; return stored }
+}
+
+private extension LockedBox where Value == [String] {
+    func append(_ item: String) { lock.lock(); stored.append(item); lock.unlock() }
 }

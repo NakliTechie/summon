@@ -54,14 +54,26 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     /// The parallel web-augment leg captures the value at launch and discards its
     /// result if the counter has moved (user dismissed or asked something else).
     var answerGeneration: UInt64 = 0
-    private var searchGeneration: UInt64 = 0
+    /// Bumped on every keystroke. Read from `searchQueue` as well as main, so the
+    /// storage sits behind a lock: a search queued behind slower ones checks it
+    /// before computing and skips itself when a newer keystroke has superseded it.
+    let generationLock = NSLock()
+    var storedSearchGeneration: UInt64 = 0
+    var searchGeneration: UInt64 {
+        get { generationLock.lock(); defer { generationLock.unlock() }; return storedSearchGeneration }
+        set { generationLock.lock(); defer { generationLock.unlock() }; storedSearchGeneration = newValue }
+    }
+    /// True from a keystroke until its search lands. Enter in that window waits for
+    /// the results of what is in the field, never confirming a stale row.
+    var searchResultsPending = false
+    var confirmWhenSearchLands = false
     /// Fires the model prewarm once per typing session (reset when the field clears).
-    private var didPrewarm = false
-    private let searchQueue = DispatchQueue(label: "summon.launcher.search", qos: .userInitiated)
+    var didPrewarm = false
+    let searchQueue = DispatchQueue(label: "summon.launcher.search", qos: .userInitiated)
     private let confirmationQueue = DispatchQueue(label: "summon.launcher.confirm", qos: .userInitiated)
-    private var searchDebounceWork: DispatchWorkItem?
+    var searchDebounceWork: DispatchWorkItem?
     private var stagedRefreshMonitor: StagedProposalRefreshMonitor?
-    private let searchDebounceNs: UInt64 = 40_000_000
+    let searchDebounceNs: UInt64 = 40_000_000
     private var eventMonitor: Any?
 
     // swiftlint:disable:next function_body_length
@@ -539,76 +551,6 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         }
     }
 
-    // MARK: - Search
-
-    public func controlTextDidChange(_ obj: Notification) {
-        let text = searchField.stringValue
-        aiAnswerView.clear() // a new query dismisses any shown answer
-        showingSpinner = false
-        orbSpinner.stop()
-        quickActionsShown = false // typing supersedes the quick-action strip
-        searchGeneration &+= 1
-        let generation = searchGeneration
-        searchDebounceWork?.cancel()
-
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            didPrewarm = false
-            loadEmptyResults(firstRun: false)
-            footerError = nil
-            applyLayout(animated: true)
-            return
-        }
-
-        // Preload the model on the first keystroke of a query so the first Enter is
-        // faster — before, the model was only touched after Enter.
-        if !didPrewarm, let ai = aiIntegration {
-            ai.prewarm()
-            didPrewarm = true
-        }
-
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            guard self.searchGeneration == generation else { return }
-            self.searchQueue.async {
-                do {
-                    var list = try self.session.computeResults(for: text)
-                    if list.isEmpty, let ai = self.aiIntegration {
-                        list = ai.offers(for: text)
-                    }
-                    ResultIcon.preload(list)
-                    DispatchQueue.main.async {
-                        guard self.searchGeneration == generation else { return }
-                        self.session.applyResults(text, list)
-                        self.footerError = nil
-                        self.applyLayout(animated: true)
-                    }
-                } catch {
-                    let message = (error as? CoreError)?.message ?? error.localizedDescription
-                    DispatchQueue.main.async {
-                        guard self.searchGeneration == generation else { return }
-                        self.footerError = message
-                        self.applyLayout(animated: true)
-                    }
-                }
-            }
-        }
-        searchDebounceWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(searchDebounceNs) / 1e9, execute: work)
-    }
-
-    private func loadEmptyResults(firstRun: Bool) {
-        // Spotlight-bare empty state: no dumped list. Quick actions live in the
-        // →-revealed chip strip; the starter catalog is retained for other callers.
-        _ = firstRun
-        session.applyResults("", [])
-    }
-
-    private func cancelPendingSearch() {
-        searchGeneration &+= 1
-        searchDebounceWork?.cancel()
-        searchDebounceWork = nil
-    }
-
     // MARK: - Table
 
     public func numberOfRows(in tableView: NSTableView) -> Int {
@@ -685,6 +627,14 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     // MARK: - Keys / actions
 
     @objc func confirmSelection() {
+        if searchResultsPending {
+            // The rows on screen answer an older query; wait for the current one.
+            confirmWhenSearchLands = true
+            footerError = "Searching…"
+            applyLayout(animated: false)
+            UsageLog.record("launcher.confirm.waiting", ["query": searchField.stringValue])
+            return
+        }
         let row = tableView.selectedRow
         if row >= 0 { session.selectIndex(row) }
         do {

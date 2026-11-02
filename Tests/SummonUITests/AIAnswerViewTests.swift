@@ -26,6 +26,23 @@ final class AIAnswerViewTests: XCTestCase {
                       "the laid-out text is inside the visible area")
     }
 
+    /// The live panel showed the text view at width 0 with the text laid out
+    /// and nothing drawn (usage log, 2026-11-02 20:54 IST). Layout must repair it.
+    @MainActor
+    func testLayoutRepairsAZeroWidthTextView() throws {
+        let card = AIAnswerView(frame: NSRect(x: 0, y: 0, width: 648, height: 253))
+        let window = NSWindow(contentRect: card.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView?.addSubview(card)
+        card.layoutSubtreeIfNeeded()
+        card.answerText.setFrameSize(NSSize(width: 0, height: 215))
+        card.display(title: "Answer · apple-fm · web", answer: String(repeating: "You can take a direct flight. ", count: 20))
+        card.needsLayout = true
+        card.layoutSubtreeIfNeeded()
+
+        XCTAssertGreaterThan(card.answerText.frame.width, 300, "the text view spans the card")
+        XCTAssertGreaterThan(card.inkedPixels(), 200, "the answer is drawn")
+    }
+
     func testAWebAnswerIsVisibleInTheLauncher() throws {
         let answer = "Answer: You can take a direct flight from Mumbai to Paris. From Chhatrapati Shivaji "
             + "Maharaj International Airport (BOM) in Mumbai, you will fly out to Charles De Gaulle (CDG) in Paris."

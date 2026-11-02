@@ -35,6 +35,9 @@ final class AIAnswerView: NSView {
         answerText.textContainerInset = NSSize(width: 6, height: 5)
         answerText.isVerticallyResizable = true
         answerText.isHorizontallyResizable = false
+        answerText.autoresizingMask = [.width]
+        answerText.minSize = NSSize(width: 0, height: 0)
+        answerText.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         answerText.textContainer?.widthTracksTextView = true
         answerText.setAccessibilityLabel("AI answer")
         answerText.linkTextAttributes = [
@@ -73,6 +76,17 @@ final class AIAnswerView: NSView {
         insertButton.frame = NSRect(x: width - 118, y: titleY - 3, width: 56, height: 22)
         copyButton.frame = NSRect(x: width - 58, y: titleY - 3, width: 52, height: 22)
         scrollView.frame = NSRect(x: 8, y: 8, width: width - 16, height: max(20, titleY - 12))
+        fitTextViewToScrollView()
+    }
+
+    /// The text view must span the scroll view's content width. The live panel
+    /// showed it at width 0 (2026-11-02: 774 characters laid out, nothing drawn),
+    /// so the width is set here on every layout, not left to autoresizing.
+    private func fitTextViewToScrollView() {
+        let contentWidth = scrollView.contentSize.width
+        guard contentWidth > 0, answerText.frame.width != contentWidth else { return }
+        answerText.setFrameSize(NSSize(width: contentWidth, height: max(answerText.frame.height, scrollView.contentSize.height)))
+        answerText.textContainer?.containerSize = NSSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude)
     }
 
     func display(title: String, answer: String) {
@@ -158,5 +172,6 @@ final class AIAnswerView: NSView {
         }
         attributed = string
         answerText.textStorage?.setAttributedString(string)
+        fitTextViewToScrollView()
     }
 }

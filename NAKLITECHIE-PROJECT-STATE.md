@@ -5,6 +5,7 @@
 **2026-11-02** — `make verify` passed (exit 0; lint 0 violations in 223 files; live-Spotlight 795 ms on the first sample under load 3.5, 236 ms on the settled retry). Today's build is installed over the 0.8.0 daily driver.
 
 - Smart Paste: Apple FM fills the form first, every value checked against the copied text (`SmartPasteGrounding`), then verdict and the floor fill what it leaves empty. Resume fixture: 86/99 with the check, 84/99 without, 36/99 floor; the check dropped both made-up speaker values and no correct one. Fields now carry their row text and position for the model. Live ⌥⌘V check owed.
+- Launcher fixes found from the usage log: the answer card's text view was 0 wide (answers drew blank), and Enter could confirm a stale result while a later keystroke's search ran; both fixed with regression tests that fail without the fix. `make verify` exit 0 afterwards (lint 0 violations in 225 files; live-Spotlight p95 358 ms).
 - Local usage log in `~/Library/Logs/Summon/usage.jsonl`: every action with timing, launcher queries, AI and web steps, smart-paste fields and fills (decision below).
 
 **2026-10-31** — CPU-only batch on `main` (`17efbb2`..`f9dcddd`), `make verify` passed (exit 0; lint 0 violations in 218 files; live-Spotlight p95 451 ms on the first sample):
