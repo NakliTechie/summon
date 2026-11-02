@@ -28,6 +28,7 @@ extension LauncherPanelController {
         let prompt = confirmation.result.payload["prompt"]?.stringValue ?? confirmation.query
         footerError = "Thinking on-device…"
         startSpinner(.thinking)
+        let span = UsageLog.span("launcher.ai", ["prompt": prompt])
 
         let operation = Task.detached(priority: .userInitiated) {
             try await aiIntegration.respond(prompt: prompt)
@@ -37,6 +38,7 @@ extension LauncherPanelController {
             do {
                 let response = try await operation.value
                 self.stopSpinner()
+                span.end(Self.usageFields(response))
                 switch response {
                 case let .answer(text, rung, egress):
                     if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -58,6 +60,7 @@ extension LauncherPanelController {
                     self.presentAIAnswer(text: text, rung: "done", egress: "nothing left this Mac")
                 }
             } catch {
+                span.fail(error)
                 self.stopSpinner()
                 self.footerError = L10n.t(.degradedAI)
                 self.applyLayout(animated: true)
@@ -75,13 +78,21 @@ extension LauncherPanelController {
         let generation = answerGeneration
         showWebSearchStatus("Checking the web…")
         applyLayout(animated: true)
+        let span = UsageLog.span("launcher.web.refine", ["prompt": prompt])
 
         let operation = Task.detached(priority: .userInitiated) {
             try await ai.search(prompt: prompt, allowOnce: false)
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let response = try? await operation.value
+            let response: LauncherWebSearchResponse?
+            do {
+                response = try await operation.value
+                span.end(response.map(Self.usageFields) ?? [:])
+            } catch {
+                span.fail(error)
+                response = nil
+            }
             // The user moved on (dismissed, or asked something else) — drop it.
             guard self.answerGeneration == generation else { return }
             self.showWebSearchStatus(nil)
@@ -148,6 +159,7 @@ extension LauncherPanelController {
         let prompt = confirmation.result.payload["prompt"]?.stringValue ?? confirmation.query
         footerError = "Searching the web…"
         startSpinner(.searching)
+        let span = UsageLog.span("launcher.web", ["prompt": prompt, "allowOnce": String(allowOnce)])
 
         let operation = Task.detached(priority: .userInitiated) {
             try await aiIntegration.search(prompt: prompt, allowOnce: allowOnce)
@@ -157,6 +169,7 @@ extension LauncherPanelController {
             do {
                 let response = try await operation.value
                 self.stopSpinner()
+                span.end(Self.usageFields(response))
                 switch response {
                 case let .answer(text, sources, rung):
                     let body = sources.isEmpty
@@ -173,10 +186,29 @@ extension LauncherPanelController {
                     self.applyLayout(animated: true)
                 }
             } catch {
+                span.fail(error)
                 self.stopSpinner()
                 self.footerError = L10n.t(.degradedAI)
                 self.applyLayout(animated: true)
             }
+        }
+    }
+
+    static func usageFields(_ response: LauncherAIResponse) -> [String: String] {
+        switch response {
+        case let .answer(text, rung, egress): return ["kind": "answer", "rung": rung, "egress": egress, "answer": text]
+        case let .staged(id, rung, egress): return ["kind": "staged", "rung": rung, "egress": egress, "proposal": id]
+        case let .performed(text): return ["kind": "performed", "answer": text]
+        }
+    }
+
+    static func usageFields(_ response: LauncherWebSearchResponse) -> [String: String] {
+        switch response {
+        case let .answer(text, sources, rung):
+            return ["kind": "answer", "rung": rung, "answer": text, "sources": sources.joined(separator: " | ")]
+        case let .needsConsent(host): return ["kind": "needsConsent", "host": host]
+        case .noResults: return ["kind": "noResults"]
+        case .unavailable: return ["kind": "unavailable"]
         }
     }
 

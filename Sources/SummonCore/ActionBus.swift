@@ -65,6 +65,20 @@ public final class ActionBus: @unchecked Sendable {
 
     @discardableResult
     public func dispatch(_ envelope: ActionEnvelope) throws -> ActionResult {
+        let span = UsageLog.span("action", [
+            "action": UsageLog.name(of: envelope.action), "actor": envelope.actor.journalLabel,
+        ])
+        do {
+            let result = try dispatchUnlogged(envelope)
+            span.end(["outcome": String(describing: result.outcome)])
+            return result
+        } catch {
+            span.fail(error)
+            throw error
+        }
+    }
+
+    private func dispatchUnlogged(_ envelope: ActionEnvelope) throws -> ActionResult {
         if Self.isEffect(envelope.action),
            !DestructiveGuard.requiresUserApproval(actor: envelope.actor, action: envelope.action) {
             if Self.requiresPrivacySerialization(envelope.action) {

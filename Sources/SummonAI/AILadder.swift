@@ -79,7 +79,10 @@ public final class AILadder: @unchecked Sendable {
         let preference = Self.preference
         for id in preference {
             if let rung = rungs.first(where: { $0.id == id }) {
-                if (await rung.availability()).isAvailable { return rung }
+                let span = UsageLog.span("ai.availability", ["rung": id.rawValue])
+                let available = (await rung.availability()).isAvailable
+                span.end(["available": String(available)])
+                if available { return rung }
             }
         }
         return nil
@@ -87,9 +90,18 @@ public final class AILadder: @unchecked Sendable {
 
     public func complete(prompt: String) async throws -> ModelCompletion {
         guard let rung = await preferredRung() else {
+            UsageLog.record("ai.complete.norung")
             throw ModelRungError.unavailable(.appleFM, "no AI rung available (the MLX rung needs consent and weights)")
         }
-        return try await rung.complete(prompt: prompt)
+        let span = UsageLog.span("ai.complete", ["rung": rung.id.rawValue, "prompt": prompt])
+        do {
+            let completion = try await rung.complete(prompt: prompt)
+            span.end(["answer": completion.text])
+            return completion
+        } catch {
+            span.fail(error)
+            throw error
+        }
     }
 
     /// Best-effort, unguaranteed preload of the preferred rung's model (e.g. on
@@ -498,14 +510,24 @@ public final class SummonAIService: @unchecked Sendable {
         let searchQuery = WebEnrich.searchQuery(from: query)
         let hits: [WebHit]
         var note: String?
+        let searchSpan = UsageLog.span("web.search", ["host": host, "query": searchQuery])
         do {
             hits = try await provider.search(query: searchQuery, limit: 5, authorization: authorization)
+            searchSpan.end(["hits": String(hits.count)])
         } catch let primaryError {
+            searchSpan.fail(primaryError)
             // A configured SearXNG that is down or misconfigured must never dead-end
             // web search — fall back to the keyless floor, and say so: the caller
             // must be able to tell a fallback answer from the configured provider's.
             guard host != fallbackProvider.host.lowercased() else { throw primaryError }
-            hits = try await fallbackSearch(query: searchQuery, actor: actor)
+            let fallbackSpan = UsageLog.span("web.search.fallback", ["host": fallbackProvider.host])
+            do {
+                hits = try await fallbackSearch(query: searchQuery, actor: actor)
+                fallbackSpan.end(["hits": String(hits.count)])
+            } catch {
+                fallbackSpan.fail(error)
+                throw error
+            }
             note = "configured web search provider \(provider.host) failed "
                 + "(\(primaryError.localizedDescription)); answered from \(fallbackProvider.host) instead"
         }

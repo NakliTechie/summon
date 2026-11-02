@@ -290,6 +290,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         query initialQuery: String = "",
         markFirstRunSeen: Bool = true
     ) {
+        UsageLog.record("launcher.show", initialQuery.isEmpty ? [:] : ["query": initialQuery])
         cancelPendingSearch()
         let firstRun = (try? session.core.settings.get(LauncherStarterCatalog.firstRunSeenKey))?.boolValue != true
         searchField.stringValue = initialQuery
@@ -332,6 +333,7 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
     }
 
     public func hide() {
+        UsageLog.record("launcher.hide", ["query": searchField.stringValue, "spinner": String(showingSpinner)])
         answerGeneration &+= 1
         resignHideWork?.cancel()
         cancelPendingSearch()
@@ -687,6 +689,10 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
         if row >= 0 { session.selectIndex(row) }
         do {
             let confirmation = try session.prepareConfirmation()
+            UsageLog.record("launcher.confirm", [
+                "query": confirmation.query, "action": confirmation.actionName,
+                "title": confirmation.result.title, "row": String(row),
+            ])
             switch confirmation.actionName {
             case "ai.ask": runAI(confirmation); return
             case "web.search": runWebSearch(confirmation); return

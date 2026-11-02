@@ -28,6 +28,8 @@ Requires **macOS Sonoma 14+** to run; **on-device AI needs macOS 26+ with Apple 
 
 Smart Paste and window arrangement need the **Accessibility** permission. Because the build is ad-hoc signed, macOS drops that grant after every `brew upgrade`: open System Settings → Privacy & Security → Accessibility, select Summon, remove it with **−**, then add `/Applications/Summon.app` again with **+**.
 
+Pre-release builds keep a local debug log of what you ask and what Summon does, in `~/Library/Logs/Summon/usage.jsonl`. It never leaves your Mac; delete it whenever you like. Start Summon with `SUMMON_USAGE_LOG=0` in its environment to turn it off.
+
 Press **⌥Space** to open the launcher; it lives in the menu bar and captures your clipboard in the background. The first launch offers **Keep Ready at Login** (on by default). No config file, no account, no restart. Point another tool at it over the local agent socket:
 
 ```bash

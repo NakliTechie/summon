@@ -43,9 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var aiService: SummonAIService?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UsageLog.record("app.launch", ["version": SummonVersion.string, "pid": String(getpid())])
         do {
             core = try SummonCore()
             for warning in core.startupWarnings {
+                UsageLog.record("app.startupWarning", ["warning": warning])
                 fputs("Summon startup warning: \(warning)\n", stderr)
             }
             // Opt-in Swift file index (`summon files enable`); Spotlight answers until it is built.
@@ -538,11 +540,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // SearXNG when configured, or recorded AND verifiably running on that
                 // port right now; else the keyless Wikipedia floor (with a note).
                 let verified: (provider: any AuthorizedWebSearchProvider, note: String?)
+                let providerSpan = UsageLog.span("web.provider")
                 if let backend = await MainActor.run(body: { self?.webLifecycle?.backend }) {
                     verified = await backend.verifiedProvider(webConfig: core.webConfig)
                 } else {
                     verified = (WebSearchProviderResolver.resolve(webConfig: core.webConfig), nil)
                 }
+                providerSpan.end(["host": verified.provider.host, "note": verified.note ?? ""])
                 let provider = verified.provider
                 guard allowOnce || service.webSearchConsentGranted() else {
                     return .needsConsent(host: provider.host.isEmpty ? "en.wikipedia.org" : provider.host)

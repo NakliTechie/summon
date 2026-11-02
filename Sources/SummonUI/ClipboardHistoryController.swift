@@ -192,6 +192,7 @@ public final class ClipboardHistoryController: NSObject, NSSearchFieldDelegate, 
     private let focusRestorer = FrontmostAppRestorer()
 
     public func show() {
+        UsageLog.record("clipboard.show")
         searchField.stringValue = ""
         selectedIndex = 0
         reloadItems()
