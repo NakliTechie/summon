@@ -52,14 +52,16 @@ public final class AccessibilityFieldTarget: SmartPasteTarget {
                 guard descriptors.count < 256 else { return } // a form has tens of fields, not thousands
                 let id = "field-\(descriptors.count)"
                 let isSecure = subrole == (kAXSecureTextFieldSubrole as String)
+                let fieldLabel = label(of: element)
                 descriptors.append(
                     SmartPasteFieldDescriptor(
                         id: id,
-                        label: label(of: element),
+                        label: fieldLabel,
                         placeholder: string(element, kAXPlaceholderValueAttribute),
                         role: subrole ?? role,
                         isSecure: isSecure,
-                        currentValue: string(element, kAXValueAttribute)
+                        currentValue: isSecure ? nil : string(element, kAXValueAttribute),
+                        context: context(of: element, excluding: fieldLabel)
                     )
                 )
                 map[id] = element
@@ -209,6 +211,40 @@ public final class AccessibilityFieldTarget: SmartPasteTarget {
         guard error == .success, let value else { return nil }
         if let s = value as? String { return s }
         return nil
+    }
+
+    /// Static text in the field's row (its parent) and the row's group (the
+    /// grandparent's direct children): a section heading or a sibling label
+    /// that says what an ambiguous label ("home") is for. Bounded and cheap.
+    private func context(of element: AXUIElement, excluding fieldLabel: String?) -> String? {
+        var texts: [String] = []
+        var current = element
+        for _ in 0..<2 {
+            guard let parent = axElement(current, kAXParentAttribute) else { break }
+            for child in children(of: parent).prefix(24) where !CFEqual(child, current) {
+                guard string(child, kAXRoleAttribute) == (kAXStaticTextRole as String),
+                      let text = string(child, kAXValueAttribute)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !text.isEmpty, text.count <= 60, text != fieldLabel, !texts.contains(text) else { continue }
+                texts.append(text)
+            }
+            current = parent
+        }
+        return texts.isEmpty ? nil : texts.prefix(4).joined(separator: " · ")
+    }
+
+    private func axElement(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return unsafeBitCast(value, to: AXUIElement.self)
+    }
+
+    private func children(of element: AXUIElement) -> [AXUIElement] {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value) == .success else {
+            return []
+        }
+        return value as? [AXUIElement] ?? []
     }
 
     /// A field's label: its AXTitle, else the value of its linked title element,

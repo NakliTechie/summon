@@ -12,9 +12,10 @@ import SummonUI
 /// notch (a pill on screens without one) with Undo. The fill is still staged+journaled (transient amber → accepted) for
 /// audit; secure fields are never written; Undo restores each field's prior value.
 ///
-/// The router is verdict-first with a deterministic fallback: verdict when its
-/// loopback daemon is up (egress journaled by `CoreAuthorizedVerdictTransport`),
-/// the deterministic floor otherwise, so smart paste works with verdict off.
+/// The router is Apple FM first (it fills the form from the copied text, every
+/// value checked against that text), then verdict when its loopback daemon is up
+/// (egress journaled by `CoreAuthorizedVerdictTransport`), then the deterministic
+/// floor, so smart paste works with Apple Intelligence and verdict both off.
 @MainActor
 final class SmartPasteController {
     private let core: SummonCore
@@ -23,10 +24,20 @@ final class SmartPasteController {
 
     init(core: SummonCore) {
         self.core = core
-        self.router = VerdictSmartPasteRouter(
+        let verdict = VerdictSmartPasteRouter(
             transport: CoreAuthorizedVerdictTransport(core: core),
             fallback: DeterministicSmartPasteRouter()
         )
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            self.router = AppleFMSmartPasteRouter(
+                generate: { try await AppleFMFormFill.generate(sourceText: $0, fields: $1) },
+                fallback: verdict
+            )
+            return
+        }
+        #endif
+        self.router = verdict
     }
 
     func run() {
@@ -46,17 +57,27 @@ final class SmartPasteController {
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let target = AccessibilityFieldTarget(pid: app.processIdentifier)
+        let span = UsageLog.span("smartpaste", [
+            "app": app.bundleIdentifier ?? app.localizedName ?? "?", "sourceChars": String(text.count),
+        ])
         do {
             let fields = try target.fields()
+            UsageLog.record("smartpaste.fields", ["fields": fields.map(Self.usageLine).joined(separator: " | ")])
             let proposal = try await SmartPasteService().propose(
                 sourceText: text, fields: fields, router: router
             )
+            let labels = SmartPasteService.fieldLabels(for: fields)
+            span.end([
+                "by": proposal.generatedBy,
+                "fills": proposal.fills.map { "\(labels[$0.fieldID] ?? $0.fieldID)=\($0.value)" }.joined(separator: " | "),
+            ])
             guard !proposal.isEmpty else { return }
 
             // Routing can take a beat (a verdict round-trip). If focus left the
             // app that was frontmost at ⌥⌘V, do NOT fill — a direct fill must
             // never land in a different app than the one you invoked it on.
             guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else {
+                UsageLog.record("smartpaste.cancelled", ["reason": "focus changed"])
                 notice.show(message: "Smart Paste cancelled — focus changed", duration: 3)
                 return
             }
@@ -67,11 +88,23 @@ final class SmartPasteController {
             let persisted = try SmartPasteService.persisted(from: proposal)
             try core.staged.upsert(persisted)
             let outcomes = try core.acceptStagedSmartPaste(id: persisted.id, target: target, actor: .user)
+            UsageLog.record("smartpaste.applied", [
+                "applied": String(outcomes.filter(\.applied).count), "skipped": String(outcomes.filter { !$0.applied }.count),
+            ])
 
             presentNotice(outcomes: outcomes, fields: fields, target: target)
         } catch {
+            span.fail(error)
             fputs("Summon smart paste failed: \(error.localizedDescription)\n", stderr)
         }
+    }
+
+    /// One field for the usage log: id, label, nearby text. Never a field's value.
+    private static func usageLine(_ field: SmartPasteFieldDescriptor) -> String {
+        var line = "\(field.id):\(field.label ?? field.placeholder ?? "-")"
+        if let context = field.context { line += " [\(context)]" }
+        if field.isSecure { line += " (secure)" }
+        return line
     }
 
     private func presentNotice(

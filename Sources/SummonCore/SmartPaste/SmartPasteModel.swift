@@ -75,6 +75,10 @@ public struct SmartPasteFieldDescriptor: Sendable, Hashable, Codable, Identifiab
     public let isSecure: Bool
     /// The field's current value, if any (a non-empty field is deprioritized).
     public let currentValue: String?
+    /// Other text in the field's row or group (a section heading, a sibling
+    /// label), for a model to read when the label alone is ambiguous: Contacts
+    /// labels an email row and a phone row alike "home". Never matched by the floor.
+    public let context: String?
 
     public init(
         id: String,
@@ -82,7 +86,8 @@ public struct SmartPasteFieldDescriptor: Sendable, Hashable, Codable, Identifiab
         placeholder: String? = nil,
         role: String? = nil,
         isSecure: Bool = false,
-        currentValue: String? = nil
+        currentValue: String? = nil,
+        context: String? = nil
     ) {
         self.id = id
         self.label = label
@@ -90,6 +95,7 @@ public struct SmartPasteFieldDescriptor: Sendable, Hashable, Codable, Identifiab
         self.role = role
         self.isSecure = isSecure
         self.currentValue = currentValue
+        self.context = context
     }
 
     /// The tokens a matcher searches: label, placeholder, and role, lowercased
@@ -178,4 +184,23 @@ public protocol SmartPasteRouter: Sendable {
         entities: [SmartPasteEntity],
         into fields: [SmartPasteFieldDescriptor]
     ) async throws -> [SmartPasteFill]
+
+    /// Route with the copied text in hand. A router that reads the text itself
+    /// (Apple FM filling the form directly) implements this; the rest route the
+    /// extracted entities only.
+    func route(
+        sourceText: String,
+        entities: [SmartPasteEntity],
+        into fields: [SmartPasteFieldDescriptor]
+    ) async throws -> [SmartPasteFill]
+}
+
+public extension SmartPasteRouter {
+    func route(
+        sourceText: String,
+        entities: [SmartPasteEntity],
+        into fields: [SmartPasteFieldDescriptor]
+    ) async throws -> [SmartPasteFill] {
+        try await route(entities: entities, into: fields)
+    }
 }

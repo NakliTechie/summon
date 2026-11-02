@@ -30,14 +30,16 @@ public struct SmartPasteService: Sendable {
         router: SmartPasteRouter
     ) async throws -> SmartPasteProposal {
         let entities = extractor.extract(from: sourceText)
-        let fills = entities.isEmpty || fields.isEmpty
+        // No early exit on zero entities: a router that reads the text (Apple FM)
+        // can still fill a name or a title the detectors do not type.
+        let fills = fields.isEmpty
             ? []
-            : try await router.route(entities: entities, into: fields)
+            : try await router.route(sourceText: sourceText, entities: entities, into: fields)
         return SmartPasteProposal(
             sourceText: sourceText,
             entities: entities,
             fills: fills,
-            generatedBy: fills.isEmpty ? "none" : provenance(of: router)
+            generatedBy: fills.isEmpty ? "none" : provenance(of: router, fills: fills)
         )
     }
 
@@ -71,8 +73,12 @@ public struct SmartPasteService: Sendable {
         )
     }
 
-    private func provenance(of router: SmartPasteRouter) -> String {
+    /// What actually placed the fills: a router that falls back reports the
+    /// floor, so provenance follows the fills' confidence kinds, not the type.
+    private func provenance(of router: SmartPasteRouter, fills: [SmartPasteFill]) -> String {
         if router is DeterministicSmartPasteRouter { return "deterministic" }
+        let kinds = Set(fills.map(\.confidenceKind))
+        if kinds == [.heuristic] { return "deterministic" }
         return String(describing: type(of: router))
     }
 

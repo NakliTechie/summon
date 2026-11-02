@@ -1,4 +1,5 @@
 import Foundation
+@testable import SummonAI
 import SummonCore
 import XCTest
 
@@ -8,9 +9,9 @@ import FoundationModels
 
 /// The Smart Paste extractor experiment over `Fixtures/smartpaste-resume-forms.json`.
 ///
-/// Two legs: the deterministic floor (`EntityExtractor` + the deterministic
-/// router) and Apple Foundation Models filling the form directly (one dynamic
-/// schema per form). Each leg writes `fills-<leg>.json` into one folder, and
+/// Three legs: the deterministic floor (`EntityExtractor` + the deterministic
+/// router), and Apple Foundation Models filling the form directly (one dynamic
+/// schema per form) before and after the grounding guard. Each leg writes `fills-<leg>.json` into one folder, and
 /// `testScoreEveryLeg` scores every such file with `ResumeFormFixture.score`,
 /// so another extractor can join by writing its own file in the same shape.
 ///
@@ -36,7 +37,7 @@ final class ResumeExtractorEvalTests: XCTestCase {
         guard case .available = SystemLanguageModel.default.availability else {
             throw XCTSkip("Apple Foundation Models is unavailable on this Mac")
         }
-        try write(try await FMLegs.directFill(fixture), to: dir)
+        for leg in try await FMLegs.directFill(fixture) { try write(leg, to: dir) }
         #endif
     }
 
@@ -129,54 +130,31 @@ final class ResumeExtractorEvalTests: XCTestCase {
 }
 
 #if canImport(FoundationModels)
-/// The Apple Foundation Models leg. Greedy sampling, so a rerun reads the same.
+/// The Apple Foundation Models legs, run through the shipping generation
+/// (`AppleFMFormFill`): `fm-direct` is the model's raw answer, `fm-guarded` the
+/// same answer after `SmartPasteGrounding` drops what the text does not state.
 @available(macOS 26.0, *)
 enum FMLegs {
-    static let fillInstructions = """
-        You fill in a form from the text the user copied. For each form field, copy the value \
-        exactly as the text states it. When the text does not state a value for a field, return \
-        an empty string for that field. Never invent, guess, or write new text, and never work a \
-        value out from today's date.
-        """
-
-    /// One generation per case: the form's fields become a dynamic schema, so the
-    /// model returns a value per field id. Secure fields are left out, as in the product.
-    static func directFill(_ fixture: ResumeFormFixture) async throws -> ResumeExtractorEvalTests.LegFills {
-        var cases: [String: [String: String]] = [:]
+    static func directFill(_ fixture: ResumeFormFixture) async throws -> [ResumeExtractorEvalTests.LegFills] {
+        var raw: [String: [String: String]] = [:]
+        var guarded: [String: [String: String]] = [:]
         var latency: [String: Double] = [:]
         for testCase in fixture.cases {
             guard let source = fixture.source(testCase.source), let form = fixture.form(testCase.form) else { continue }
-            let fields = form.fields.filter { $0.secure != true }
-            let root = DynamicGenerationSchema(
-                name: "FormFill",
-                description: "The value for each form field, or an empty string when the text does not state it.",
-                properties: fields.map {
-                    DynamicGenerationSchema.Property(
-                        name: $0.id, description: "Form field labelled \"\($0.label)\"",
-                        schema: DynamicGenerationSchema(type: String.self)
-                    )
-                }
-            )
-            let schema = try GenerationSchema(root: root, dependencies: [])
-            let session = LanguageModelSession(model: .default, instructions: fillInstructions)
+            let fields = form.fields.filter { $0.secure != true }.map {
+                SmartPasteFieldDescriptor(id: $0.id, label: $0.label)
+            }
             let started = Date()
-            let response = try await session.respond(
-                to: "Copied text:\n\(source.text)", schema: schema, options: GenerationOptions(sampling: .greedy)
-            )
+            let answer = try await AppleFMFormFill.generate(sourceText: source.text, fields: fields)
             latency[testCase.id] = Date().timeIntervalSince(started) * 1000
-            cases[testCase.id] = strings(in: response.content.jsonString)
+            raw[testCase.id] = answer
+            let kept = AppleFMSmartPasteRouter.groundedFills(answer, fields: fields, sourceText: source.text, entities: [])
+            guarded[testCase.id] = Dictionary(kept.fills.map { ($0.fieldID, $0.value) }, uniquingKeysWith: { first, _ in first })
         }
-        return .init(leg: "fm-direct", cases: cases, latencyMs: latency)
-    }
-
-    static func strings(in json: String) -> [String: String] {
-        guard let object = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return [:] }
-        var result: [String: String] = [:]
-        for (key, value) in object {
-            let text = (value as? String) ?? (value as? NSNumber)?.stringValue ?? ""
-            if !text.trimmingCharacters(in: .whitespaces).isEmpty { result[key] = text }
-        }
-        return result
+        return [
+            .init(leg: "fm-direct", cases: raw, latencyMs: latency),
+            .init(leg: "fm-guarded", cases: guarded, latencyMs: latency),
+        ]
     }
 }
 
