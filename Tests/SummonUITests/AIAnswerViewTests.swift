@@ -40,7 +40,7 @@ final class AIAnswerViewTests: XCTestCase {
         card.layoutSubtreeIfNeeded()
 
         XCTAssertGreaterThan(card.answerText.frame.width, 300, "the text view spans the card")
-        XCTAssertGreaterThan(card.inkedPixels(), 200, "the answer is drawn")
+        XCTAssertGreaterThan(card.answerInkedPixels(), 200, "the answer is drawn")
     }
 
     func testAWebAnswerIsVisibleInTheLauncher() throws {
@@ -78,9 +78,36 @@ final class AIAnswerViewTests: XCTestCase {
                       "the laid-out text is inside the visible area")
         for name in [NSAppearance.Name.darkAqua, .aqua] {
             card.window?.appearance = NSAppearance(named: name)
-            XCTAssertGreaterThan(card.inkedPixels(), 200, "the answer is drawn in \(name.rawValue)")
+            XCTAssertGreaterThan(card.answerInkedPixels(), 200, "the answer is drawn in \(name.rawValue)")
         }
         XCTAssertGreaterThan(Int(card.drawnState()["chars"] ?? "0") ?? 0, 100)
         panel.hide()
+    }
+
+    /// Sources show as quiet rows (title, dim site, accent ›) that open on click;
+    /// Copy and Insert keep the plain "title — url" lines.
+    @MainActor
+    func testSourcesShowAsRowsAndCopyKeepsTheURLs() throws {
+        let card = AIAnswerView(frame: NSRect(x: 0, y: 0, width: 648, height: 253))
+        let window = NSWindow(contentRect: card.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView?.addSubview(card)
+        card.display(title: "Answer", answer: "Fly.", sources: [
+            "Cheap flights from Japan to France | Skyscanner — https://www.skyscanner.co.in/routes/jp/fr/japan-to-france.html",
+            "Japan to France - 7 ways to travel — https://www.rome2rio.com/s/Japan/France",
+        ])
+        card.layoutSubtreeIfNeeded()
+
+        let shown = card.answerText.string
+        XCTAssertTrue(shown.contains("Cheap flights from Japan to France | Skyscanner  skyscanner.co.in ›"), shown)
+        XCTAssertFalse(shown.contains("https://"), "the row shows the site, not the raw URL")
+        XCTAssertTrue(card.answer.contains("· Japan to France - 7 ways to travel — https://www.rome2rio.com/s/Japan/France"))
+        XCTAssertTrue(card.answer.contains("Sources:"))
+        let storage = try XCTUnwrap(card.answerText.textStorage)
+        let index = (shown as NSString).range(of: "rome2rio.com").location
+        XCTAssertEqual(
+            storage.attribute(AnswerTextView.sourceURL, at: index, effectiveRange: nil) as? String,
+            "https://www.rome2rio.com/s/Japan/France"
+        )
+        XCTAssertNil(AIAnswerView.parse("No url here"))
     }
 }

@@ -75,6 +75,8 @@ public final class AILadder: @unchecked Sendable {
     /// model (decided 2026-10-30).
     public static let preference: [ModelRungID] = [.appleFM, .localServer, .mlx, .fake]
 
+    public static let appleFMDeadlineSeconds = 25.0
+
     public func preferredRung() async -> (any ModelRung)? {
         let preference = Self.preference
         for id in preference {
@@ -95,7 +97,17 @@ public final class AILadder: @unchecked Sendable {
         }
         let span = UsageLog.span("ai.complete", ["rung": rung.id.rawValue, "prompt": prompt])
         do {
-            let completion = try await rung.complete(prompt: prompt)
+            // Apple FM shares the system's model service, so a busy Mac can leave a call
+            // waiting for a minute or more (2026-11-02: 46 s with the spinner turning).
+            // Stop waiting at the limit; a local server has its own request timeout.
+            let completion = rung.id == .appleFM
+                ? try await withDeadline(
+                    seconds: Self.appleFMDeadlineSeconds,
+                    timeout: ModelRungError.generationFailed(
+                        "Apple Foundation Models did not answer within \(Int(Self.appleFMDeadlineSeconds)) s"
+                    )
+                ) { try await rung.complete(prompt: prompt) }
+                : try await rung.complete(prompt: prompt)
             span.end(["answer": completion.text])
             return completion
         } catch {

@@ -60,7 +60,10 @@ public struct AppleFMSmartPasteRouter: SmartPasteRouter {
         let span = UsageLog.span("smartpaste.fm", ["fields": String(eligible.count)])
         let raw: [String: String]
         do {
-            raw = try await withTimeout(timeoutSeconds) { [generate] in try await generate(sourceText, eligible) }
+            raw = try await withDeadline(
+                seconds: timeoutSeconds,
+                timeout: ModelRungError.generationFailed("Apple Foundation Models took longer than \(Int(timeoutSeconds)) s")
+            ) { [generate] in try await generate(sourceText, eligible) }
         } catch {
             span.fail(error)
             return try await fallback.route(sourceText: sourceText, entities: entities, into: fields)
@@ -111,24 +114,6 @@ public struct AppleFMSmartPasteRouter: SmartPasteRouter {
             ))
         }
         return (fills, dropped)
-    }
-
-    private func withTimeout<T: Sendable>(
-        _ seconds: Double,
-        _ operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw ModelRungError.generationFailed("Apple Foundation Models took longer than \(Int(seconds)) s")
-            }
-            defer { group.cancelAll() }
-            guard let first = try await group.next() else {
-                throw ModelRungError.generationFailed("no form-fill result")
-            }
-            return first
-        }
     }
 }
 

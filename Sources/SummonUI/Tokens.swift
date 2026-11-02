@@ -96,6 +96,15 @@ public enum Tokens {
         public static var separator: NSColor { .separatorColor }
         /// Corporate blue is the brand accent in every appearance.
         public static var accent: NSColor { Color.accent.nsColor }
+        /// The accent as text or a glyph: corporate blue on light surfaces, a lighter
+        /// blue on dark ones. `#1F5FA6` on the dark panel is about 2:1; this is above 5:1.
+        public static var accentText: NSColor {
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor(srgbRed: 0x6F / 255.0, green: 0xA8 / 255.0, blue: 0xF0 / 255.0, alpha: 1)
+                    : Color.accent.nsColor
+            }
+        }
         public static var danger: NSColor { .systemRed }
         public static var ok: NSColor { .systemGreen }
         /// Propose-don't-dispose only (not decorative). Amber in every appearance.

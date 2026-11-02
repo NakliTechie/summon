@@ -7,11 +7,11 @@ final class StagedReviewView: NSView {
     private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let exactRunLabel = NSTextField(labelWithString: "Runs exactly this text")
     private let scrollView = NSScrollView(frame: .zero)
-    private let editor = NSTextView(frame: .zero)
+    let editor = NSTextView(frame: .zero)
 
     var reviewedText: String {
         get { editor.string }
-        set { editor.string = newValue }
+        set { editor.string = newValue; scrollView.fitDocumentTextViewToWidth() }
     }
 
     override init(frame frameRect: NSRect) {
@@ -42,6 +42,9 @@ final class StagedReviewView: NSView {
         editor.textContainerInset = NSSize(width: 6, height: 5)
         editor.isVerticallyResizable = true
         editor.isHorizontallyResizable = false
+        editor.autoresizingMask = [.width]
+        editor.minSize = NSSize(width: 0, height: 0)
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         editor.textContainer?.widthTracksTextView = true
         editor.setAccessibilityLabel("Exact staged action")
 
@@ -66,11 +69,13 @@ final class StagedReviewView: NSView {
     override func layout() {
         super.layout()
         let width = bounds.width
-        titleLabel.frame = NSRect(x: 8, y: 116, width: width - 140, height: 24)
-        acceptButton.frame = NSRect(x: width - 110, y: 116, width: 52, height: 22)
-        rejectButton.frame = NSRect(x: width - 54, y: 116, width: 48, height: 22)
+        // Wide enough for "Accept" and "Reject" at the small control size (52 and 48 cut them to "Acc…").
+        rejectButton.frame = NSRect(x: width - 8 - 68, y: 116, width: 68, height: 22)
+        acceptButton.frame = NSRect(x: rejectButton.frame.minX - 4 - 68, y: 116, width: 68, height: 22)
+        titleLabel.frame = NSRect(x: 8, y: 116, width: max(40, acceptButton.frame.minX - 16), height: 24)
         exactRunLabel.frame = NSRect(x: 8, y: 98, width: width - 16, height: 16)
         scrollView.frame = NSRect(x: 8, y: 8, width: width - 16, height: 86)
+        scrollView.fitDocumentTextViewToWidth()
     }
 
     func display(title: String, reviewedText: String) {

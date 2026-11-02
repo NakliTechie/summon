@@ -102,22 +102,20 @@ extension LauncherPanelController {
                 self.applyLayout(animated: true)
                 return
             }
-            let body = sources.isEmpty
-                ? webText
-                : webText + "\n\nSources:\n" + sources.map { "· \($0)" }.joined(separator: "\n")
             self.presentAIAnswer(
-                text: body,
+                text: webText,
                 rung: "\(localRung) → \(rung) · web-grounded",
-                egress: "query sent to the web"
+                egress: "query sent to the web",
+                sources: sources
             )
         }
     }
 
     /// Show a read-only answer. It replaces the offer row and carries no Accept gate.
-    func presentAIAnswer(text: String, rung: String, egress: String) {
+    func presentAIAnswer(text: String, rung: String, egress: String, sources: [String] = []) {
         let egressNote = egress.isEmpty ? "nothing left this Mac" : egress
         session.applyResults(searchField.stringValue, [])
-        aiAnswerView.display(title: "Answer · \(rung) · \(egressNote)", answer: text)
+        aiAnswerView.display(title: "Answer · \(rung) · \(egressNote)", answer: text, sources: sources)
         // Grow the card to fit the answer (capped; scrolls beyond the cap).
         let fitted = aiAnswerView.fittingHeight(forWidth: panelWidth - 32)
         answerBandHeight = min(maxAnswerBandHeight, max(72, fitted))
@@ -179,10 +177,7 @@ extension LauncherPanelController {
                 span.end(Self.usageFields(response))
                 switch response {
                 case let .answer(text, sources, rung):
-                    let body = sources.isEmpty
-                        ? text
-                        : text + "\n\nSources:\n" + sources.map { "· \($0)" }.joined(separator: "\n")
-                    self.presentAIAnswer(text: body, rung: "\(rung) · web", egress: "query sent to the web")
+                    self.presentAIAnswer(text: text, rung: "\(rung) · web", egress: "query sent to the web", sources: sources)
                 case let .needsConsent(host):
                     self.promptWebConsent(host: host, confirmation: confirmation)
                 case .noResults:

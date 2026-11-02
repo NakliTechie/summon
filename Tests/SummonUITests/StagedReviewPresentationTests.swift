@@ -65,6 +65,27 @@ final class StagedReviewPresentationTests: XCTestCase {
             .contains("Runs exactly this text"))
     }
 
+    /// 2026-11-02 (live panel): the action box drew empty (text view width 0) and
+    /// the buttons read "Acc…" and "Rej…". Both are checked at the real band width.
+    @MainActor
+    func testStagedCardDrawsItsTextAndFitsItsButtons() throws {
+        let view = StagedReviewView(frame: NSRect(x: 0, y: 0, width: 648, height: 148))
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView?.addSubview(view)
+        view.layoutSubtreeIfNeeded()
+        view.editor.setFrameSize(NSSize(width: 0, height: 86))
+        view.display(title: "Staged (agent) — edit the exact action before accepting",
+                     reviewedText: "{\"action\":\"trash.empty\",\"actor\":\"agent\"}")
+        view.needsLayout = true
+        view.layoutSubtreeIfNeeded()
+
+        XCTAssertGreaterThan(view.editor.frame.width, 300, "the action box spans the card")
+        XCTAssertGreaterThan(view.editor.enclosingScrollView?.inkedPixels() ?? 0, 100, "the action text is drawn")
+        for button in [view.acceptButton, view.rejectButton] {
+            XCTAssertGreaterThanOrEqual(button.frame.width, button.fittingSize.width, "\(button.title) fits its button")
+        }
+    }
+
     func testLauncherFooterIncludesCanonicalVersion() throws {
         let controller = LauncherPanelController(core: try SummonCore.inMemory())
         controller.show(query: "version fixture")
