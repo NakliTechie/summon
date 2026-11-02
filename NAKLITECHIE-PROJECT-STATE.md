@@ -2,6 +2,8 @@
 
 ## Status
 
+**2026-11-02, later** — **0.9.0 released** (`c3aa2cd`, tag `v0.9.0`, GitHub release with `Summon-0.9.0.zip`, tap `19d001d`) and installed on the M4 Pro from the tap. Six Codex review rounds; the last four edge cases are queued for 0.9.1. The usage log ships off by default (opt-in defaults key `UsageLog`).
+
 **2026-11-02** — `make verify` passed (exit 0; lint 0 violations in 223 files; live-Spotlight 795 ms on the first sample under load 3.5, 236 ms on the settled retry). Today's build is installed over the 0.8.0 daily driver.
 
 - Smart Paste: Apple FM fills the form first, every value checked against the copied text (`SmartPasteGrounding`), then verdict and the floor fill what it leaves empty. Resume fixture: 86/99 with the check, 84/99 without, 36/99 floor; the check dropped both made-up speaker values and no correct one. Fields now carry their row text and position for the model. Live ⌥⌘V check owed.
