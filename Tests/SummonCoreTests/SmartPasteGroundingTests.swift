@@ -48,6 +48,17 @@ final class SmartPasteGroundingTests: XCTestCase {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("$120,000", in: "Base salary 120000 USD"))
     }
 
+    /// Codex review 2026-11-02: digits from two numbers must not join into a third.
+    func testNeverBuildsANumberFromTwoSeparateOnes() {
+        let address = "Apartment 12, 34 Main Road, Pune 411001"
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234", in: address))
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("12 34", in: "Flat 12 and 34 Main Road"), "an unstated pair of numbers")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("12", in: address))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("411001", in: address))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("1234", in: "Total 1,234 USD"), "a thousands comma joins")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("4155550198", in: "Call (415) 555-0198 today"))
+    }
+
     func testMatchesADateInAnotherFormat() {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("2021-03", in: bio))
         XCTAssertTrue(SmartPasteGrounding.isGrounded("03/2021", in: bio))

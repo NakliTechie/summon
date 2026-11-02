@@ -13,6 +13,7 @@ extension LauncherPanelController {
         quickActionsShown = false // typing supersedes the quick-action strip
         searchGeneration &+= 1
         let generation = searchGeneration
+        confirmWhenSearchLands = false // a keystroke after Enter withdraws that Enter
         searchDebounceWork?.cancel()
 
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -49,7 +50,8 @@ extension LauncherPanelController {
                         list = ai.offers(for: text)
                     }
                     ResultIcon.preload(list)
-                    span.end(["count": String(list.count), "top": list.first?.title ?? ""])
+                    let top = list.first.map { UsageLog.loggableTitle($0.title, kind: $0.kind) } ?? ""
+                    span.end(["count": String(list.count), "top": top])
                     DispatchQueue.main.async {
                         guard self.searchGeneration == generation else { return }
                         self.session.applyResults(text, list)
@@ -64,7 +66,8 @@ extension LauncherPanelController {
                         guard self.searchGeneration == generation else { return }
                         self.footerError = message
                         self.applyLayout(animated: true)
-                        self.searchLanded()
+                        // The old rows belong to an older query: never confirm one.
+                        self.searchLanded(runDeferredEnter: false)
                     }
                 }
             }
@@ -89,10 +92,14 @@ extension LauncherPanelController {
     }
 
     /// The results for what is in the field are on screen; run an Enter that waited for them.
-    func searchLanded() {
+    func searchLanded(runDeferredEnter: Bool = true) {
         searchResultsPending = false
         guard confirmWhenSearchLands else { return }
         confirmWhenSearchLands = false
+        guard runDeferredEnter else {
+            UsageLog.record("launcher.confirm.dropped", ["reason": "search failed"])
+            return
+        }
         UsageLog.record("launcher.confirm.deferred", ["query": searchField.stringValue])
         confirmSelection()
     }

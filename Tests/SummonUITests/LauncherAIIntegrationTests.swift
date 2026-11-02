@@ -192,6 +192,29 @@ final class LauncherAIIntegrationTests: XCTestCase {
         XCTAssertEqual(panel.aiAnswerView.answer, "x", "it answered the question, not the app row")
     }
 
+    /// Codex review 2026-11-02: Enter, then more typing, must not run the first result of the
+    /// later query without another Enter.
+    func testATypedKeyAfterEnterWithdrawsTheWaitingEnter() throws {
+        let integration = LauncherAIIntegration(
+            handler: { _ in .answer(text: "x", rung: "L1", egressSummary: "") },
+            searchHandler: { _, _ in .noResults }
+        )
+        let panel = LauncherPanelController(core: try SummonCore.inMemory(), aiIntegration: integration)
+        panel.show(markFirstRunSeen: false)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        defer { panel.hide() }
+
+        panel.searchField.stringValue = "how to get to france from New York?"
+        panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        panel.confirmSelection() // waits for the search
+        panel.searchField.stringValue = "how to get to italy from New York?"
+        panel.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+
+        XCTAssertTrue(panel.aiAnswerView.isHidden, "no Enter was pressed after the second query")
+        XCTAssertFalse(panel.session.results.isEmpty, "its offers are showing, waiting for Enter")
+    }
+
     func testSearchPromotesToPrimaryOnceConsentIsSticky() {
         let handler: @Sendable (String) async throws -> LauncherAIResponse = { _ in
             .answer(text: "x", rung: "L1", egressSummary: "")

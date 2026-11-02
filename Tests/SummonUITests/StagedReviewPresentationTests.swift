@@ -80,7 +80,11 @@ final class StagedReviewPresentationTests: XCTestCase {
         view.layoutSubtreeIfNeeded()
 
         XCTAssertGreaterThan(view.editor.frame.width, 300, "the action box spans the card")
-        XCTAssertGreaterThan(view.editor.enclosingScrollView?.inkedPixels() ?? 0, 100, "the action text is drawn")
+        let manager = try XCTUnwrap(view.editor.layoutManager)
+        let container = try XCTUnwrap(view.editor.textContainer)
+        manager.ensureLayout(for: container)
+        XCTAssertGreaterThan(manager.usedRect(for: container).width, 100, "the action text is laid out in the editor")
+        XCTAssertGreaterThan(container.size.width, 300, "its container spans the card")
         for button in [view.acceptButton, view.rejectButton] {
             XCTAssertGreaterThanOrEqual(button.frame.width, button.fittingSize.width, "\(button.title) fits its button")
         }

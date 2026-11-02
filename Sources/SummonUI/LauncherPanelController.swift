@@ -641,7 +641,8 @@ public final class LauncherPanelController: NSObject, NSTextFieldDelegate, NSTab
             let confirmation = try session.prepareConfirmation()
             UsageLog.record("launcher.confirm", [
                 "query": confirmation.query, "action": confirmation.actionName,
-                "title": confirmation.result.title, "row": String(row),
+                "title": UsageLog.loggableTitle(confirmation.result.title, kind: confirmation.result.kind),
+                "row": String(row),
             ])
             switch confirmation.actionName {
             case "ai.ask": runAI(confirmation); return

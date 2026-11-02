@@ -67,8 +67,17 @@ public enum SmartPasteGrounding {
         guard !digits.isEmpty else { return false }
         let groups = source.split(whereSeparator: { !$0.isASCIIDigit }).map(String.init)
         if groups.contains(digits) { return true }
-        for span in matches(of: #"\d[\d \t().,\-–/]*\d"#, in: source) {
+        // A thousands-grouped number ("1,234", "12,34,567"): the group sizes are the evidence.
+        for span in matches(of: #"\d{1,3}(?:,\d{2,3})+"#, in: source) where span.filter(\.isASCIIDigit) == digits {
+            return true
+        }
+        // A formatted number ("+91 55555 01234", "(415) 555-0198", "1,234"): digits joined by
+        // spaces, dots, dashes or brackets, or a comma with a digit on each side. A comma
+        // followed by a space separates two numbers ("12, 34"), so it never joins them.
+        // Under 7 digits only a single group counts, so no number is built from two.
+        for span in matches(of: #"\d(?:\d|[ \t().\-–/]|,(?=\d))*\d"#, in: source) {
             let spanDigits = span.filter(\.isASCIIDigit)
+            guard spanDigits.count >= 7 else { continue }
             if spanDigits == digits { return true }
             let (short, long) = spanDigits.count < digits.count ? (spanDigits, digits) : (digits, spanDigits)
             if short.count >= 7, long.hasSuffix(short) { return true }

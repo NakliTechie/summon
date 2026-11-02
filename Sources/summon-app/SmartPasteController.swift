@@ -69,7 +69,7 @@ final class SmartPasteController {
             let labels = SmartPasteService.fieldLabels(for: fields)
             span.end([
                 "by": proposal.generatedBy,
-                "fills": proposal.fills.map { "\(labels[$0.fieldID] ?? $0.fieldID)=\($0.value)" }.joined(separator: " | "),
+                "fills": UsageLog.smartPasteSummary(fills: proposal.fills, labels: labels, applied: nil),
             ])
             guard !proposal.isEmpty else { return }
 
@@ -90,6 +90,9 @@ final class SmartPasteController {
             let outcomes = try core.acceptStagedSmartPaste(id: persisted.id, target: target, actor: .user)
             UsageLog.record("smartpaste.applied", [
                 "applied": String(outcomes.filter(\.applied).count), "skipped": String(outcomes.filter { !$0.applied }.count),
+                "fills": UsageLog.smartPasteSummary(
+                    fills: proposal.fills, labels: labels, applied: Set(outcomes.filter(\.applied).map(\.fill.fieldID))
+                ),
             ])
 
             presentNotice(outcomes: outcomes, fields: fields, target: target)
@@ -102,7 +105,7 @@ final class SmartPasteController {
     /// One field for the usage log: id, label, nearby text. Never a field's value.
     private static func usageLine(_ field: SmartPasteFieldDescriptor) -> String {
         var line = "\(field.id):\(field.label ?? field.placeholder ?? "-")"
-        if let context = field.context { line += " [\(context)]" }
+        if field.context != nil { line += " [row text]" }
         if field.isSecure { line += " (secure)" }
         return line
     }

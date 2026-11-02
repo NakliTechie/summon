@@ -33,6 +33,12 @@ public enum UsageLog {
     static let maxFieldLength = 4_000
 
     private static let queue = DispatchQueue(label: "tech.nakli.Summon.usagelog")
+
+    /// Lines are written on a background queue; a short-lived process (the CLI) would
+    /// exit before they land, so the queue drains once at exit.
+    private static let flushAtExit: Void = {
+        atexit { UsageLog.queue.sync {} }
+    }()
     private static let process = ProcessInfo.processInfo.processName
     private static let timestamp: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -44,6 +50,7 @@ public enum UsageLog {
     /// Append one event. Never throws and never blocks the caller on disk.
     public static func record(_ event: String, _ fields: [String: String] = [:]) {
         guard isEnabled else { return }
+        _ = flushAtExit
         let now = Date()
         queue.async { write(event: event, fields: fields, at: now) }
     }
@@ -77,6 +84,23 @@ public enum UsageLog {
         }
     }
 
+    /// A result's title for the log. A clipboard row's title is clipboard text, which
+    /// the log must not hold, so it logs the kind instead.
+    public static func loggableTitle(_ title: String, kind: SearchResult.Kind) -> String {
+        kind == .clipboard ? "(clipboard item)" : title
+    }
+
+    /// Smart-paste fills for the log. A proposal names fields only: its values come from
+    /// the copied text and nothing has been written yet. After a fill, only the fields
+    /// that accepted their value are listed with it (a secure field is never filled).
+    public static func smartPasteSummary(fills: [SmartPasteFill], labels: [String: String], applied: Set<String>?) -> String {
+        fills.map { fill in
+            let label = labels[fill.fieldID] ?? fill.fieldID
+            guard let applied else { return label }
+            return applied.contains(fill.fieldID) ? "\(label)=\(fill.value)" : "\(label) (not applied)"
+        }.joined(separator: " | ")
+    }
+
     /// The case name of an action, without its payload (which can hold user text).
     public static func name(of action: CoreAction) -> String {
         String(String(describing: action).prefix { $0 != "(" })
@@ -101,12 +125,11 @@ public enum UsageLog {
             try? manager.removeItem(at: old)
             try? manager.moveItem(at: fileURL, to: old)
         }
-        if !manager.fileExists(atPath: fileURL.path) {
-            manager.createFile(atPath: fileURL.path, contents: nil)
-        }
-        guard let handle = try? FileHandle(forWritingTo: fileURL) else { return }
-        defer { try? handle.close() }
-        _ = try? handle.seekToEnd()
-        try? handle.write(contentsOf: line)
+        // One O_APPEND write per line: the app and the CLI can both log at once, and an
+        // append never overwrites another process's line (seek-then-write could). Owner-only.
+        let descriptor = open(fileURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o600)
+        guard descriptor >= 0 else { return }
+        defer { close(descriptor) }
+        line.withUnsafeBytes { _ = Darwin.write(descriptor, $0.baseAddress, $0.count) }
     }
 }

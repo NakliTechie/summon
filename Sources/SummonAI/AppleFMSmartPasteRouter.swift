@@ -71,11 +71,12 @@ public struct AppleFMSmartPasteRouter: SmartPasteRouter {
         let (fills, dropped) = Self.groundedFills(raw, fields: eligible, sourceText: sourceText, entities: entities)
         span.end([
             "filled": String(fills.count),
-            "dropped": dropped.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " | "),
+            "dropped": dropped.keys.sorted().joined(separator: " | "),
         ])
 
-        // The model's empty fields go to the fallback, minus any value the model
-        // already placed, so one value never lands in two fields.
+        // The model's empty fields go to the fallback, minus any value the model already
+        // placed. The model itself may put one value in two fields (a name in both
+        // "Billing name" and "Cardholder name", "Confirm email"): that is legitimate.
         let filledIDs = Set(fills.map(\.fieldID))
         let placed = Set(fills.map { SmartPasteGrounding.normalized($0.value) })
         let rest = eligible.filter { !filledIDs.contains($0.id) }
