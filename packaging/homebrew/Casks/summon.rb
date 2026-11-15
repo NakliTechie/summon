@@ -14,7 +14,7 @@
 
 cask "summon" do
   version "0.9.3"
-  sha256 "fa1c41eabd89f7d9d8c4379b7c54e04b7071a794f624444eabbac51075c1d26a"
+  sha256 "3653a806452955d9ef77ab138550d012f37f0529b582c19b3661be0c512e6a0f"
 
   url "https://github.com/NakliTechie/summon/releases/download/v#{version}/Summon-#{version}.zip"
   name "Summon"
