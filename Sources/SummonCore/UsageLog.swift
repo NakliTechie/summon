@@ -41,6 +41,10 @@ public enum UsageLog {
 
     /// Past this size the file moves to `usage.1.jsonl` (one old file kept).
     static let rotateBytes: UInt64 = 20_000_000
+    /// Lines older than this are deleted from both files: on the first write after launch,
+    /// then once a day while the process runs.
+    static let keepDays = 30
+    nonisolated(unsafe) private static var lastPrune: Date? // read and written on `queue` only
     /// Long text (an answer, a prompt) is cut to this many characters.
     static let maxFieldLength = 4_000
 
@@ -131,11 +135,16 @@ public enum UsageLog {
         let directory = fileURL.deletingLastPathComponent()
         try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
         rotateIfLarge(manager: manager, directory: directory)
+        if lastPrune.map({ date.timeIntervalSince($0) > 86_400 }) ?? true {
+            lastPrune = date
+            pruneOld(now: date)
+        }
         // One O_APPEND write per line: the app and the CLI can both log at once, and an
         // append never overwrites another process's line (seek-then-write could). Owner-only.
-        // A shared lock keeps a write out of the window where rotation renames the file.
+        // The exclusive lock keeps the write out of a rotation or prune, and keeps a retried
+        // short write from interleaving with another process's line.
         let lock = open(fileURL.path + ".lock", O_RDWR | O_CREAT, 0o600)
-        guard lock >= 0, lockRetrying(lock, LOCK_SH) else {
+        guard lock >= 0, lockRetrying(lock, LOCK_EX) else {
             if lock >= 0 { close(lock) }
             return // a debug log may drop a line; it must not race a rotation
         }
@@ -148,7 +157,12 @@ public enum UsageLog {
             var left = bytes.count
             while left > 0 { // finish a short write; give up on a real error
                 let wrote = Darwin.write(descriptor, next, left)
-                if wrote < 0 { if errno == EINTR { continue } else { return } }
+                if wrote < 0 {
+                    if errno == EINTR { continue }
+                    // End a part-written line so the next line starts clean.
+                    if left < bytes.count { _ = Darwin.write(descriptor, "\n", 1) }
+                    return
+                }
                 left -= wrote
                 next += wrote
             }
@@ -171,6 +185,49 @@ public enum UsageLog {
             fileURL.deletingPathExtension().lastPathComponent + ".1." + fileURL.pathExtension
         )
         rename(fileURL.path, old.path) // replaces an earlier archive atomically
+    }
+
+    /// Delete lines older than `keepDays` from the log and its archive, under the lock.
+    private static func pruneOld(now: Date) {
+        let lock = open(fileURL.path + ".lock", O_RDWR | O_CREAT, 0o600)
+        guard lock >= 0 else { return }
+        defer { close(lock) }
+        guard lockRetrying(lock, LOCK_EX) else { return }
+        defer { flock(lock, LOCK_UN) }
+        let cutoff = now.addingTimeInterval(-Double(keepDays) * 86_400)
+        let archive = fileURL.deletingLastPathComponent().appendingPathComponent(
+            fileURL.deletingPathExtension().lastPathComponent + ".1." + fileURL.pathExtension
+        )
+        for url in [fileURL, archive] { prune(fileAt: url, olderThan: cutoff) }
+    }
+
+    /// Keep only the lines of `url` whose time `t` is at or after `cutoff`. A line with no
+    /// readable time (a torn write) goes too. The file is replaced atomically, owner-only,
+    /// and deleted when nothing is left. Callers hold the lock.
+    static func prune(fileAt url: URL, olderThan cutoff: Date) {
+        guard let data = try? Data(contentsOf: url) else { return }
+        let lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
+        let kept = lines.filter { line in
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let stamp = object["t"] as? String,
+                  let time = timestamp.date(from: stamp) else { return false }
+            return time >= cutoff
+        }
+        guard kept.count < lines.count else { return }
+        guard !kept.isEmpty else {
+            unlink(url.path)
+            return
+        }
+        var output = Data()
+        for line in kept {
+            output.append(contentsOf: line)
+            output.append(0x0A)
+        }
+        let temporary = url.path + ".prune"
+        guard FileManager.default.createFile(atPath: temporary, contents: output, attributes: [.posixPermissions: 0o600]) else {
+            return
+        }
+        if rename(temporary, url.path) != 0 { unlink(temporary) }
     }
 
     /// `flock`, retried when a signal interrupts it.

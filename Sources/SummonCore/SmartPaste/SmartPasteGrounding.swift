@@ -65,7 +65,10 @@ public enum SmartPasteGrounding {
         !value.contains(where: \.isLetter) && value.contains(where: \.isNumber)
     }
 
-    private static func numberStated(_ value: String, in source: String) -> Bool {
+    private static func numberStated(_ rawValue: String, in rawSource: String) -> Bool {
+        // A Unicode minus (U+2212) is a minus sign: "−123" is not "123", and "123" is not read out of "−123".
+        let value = rawValue.replacingOccurrences(of: "\u{2212}", with: "-")
+        let source = rawSource.replacingOccurrences(of: "\u{2212}", with: "-")
         let digits = value.filter(\.isASCIIDigit)
         guard !digits.isEmpty else { return false }
         // The value written exactly, not inside a longer number ("10:30", "560038").
@@ -75,10 +78,12 @@ public enum SmartPasteGrounding {
         // "12,34,567", with its sign and decimals. Compared as a number with the commas removed,
         // so "1234.56" never grounds "123456", "-123" never grounds "123", and "234" is not
         // read out of "1,234". Invalid grouping ("12,34") never joins.
+        // Only a value shaped like one number takes this path: "1/2" or "10:30" is not the number 12 or 1030.
         let numeric = (value.trimmingCharacters(in: .whitespaces).hasPrefix("-") ? "-" : "")
             + value.filter { $0.isASCIIDigit || $0 == "." }
         let token = #"(?<![\d.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(?![\d])"#
-        if matches(of: token, in: source).contains(where: { $0.replacingOccurrences(of: ",", with: "") == numeric }) {
+        if isSingleNumber(value),
+           matches(of: token, in: source).contains(where: { $0.replacingOccurrences(of: ",", with: "") == numeric }) {
             return true
         }
         // A formatted number ("+91 55555 01234", "(415) 555-0198", "+44 (0)20 7123 4567"): digits
@@ -86,21 +91,40 @@ public enum SmartPasteGrounding {
         // and under 7 digits only a single group counts, so no number is built from two.
         // The source may carry a country code the value drops; the value may add one only when
         // it writes it with "+" and the code does not start with 0 (at most 3 digits either way).
-        // A UK "(0)" trunk is read both ways: "+44 20 …" and "020 …" both match "+44 (0)20 …".
+        // A UK "(0)" trunk is read on either side: "+44 20 …" and "020 …" both match "+44 (0)20 …",
+        // and "+44 (0)20 …" matches "+44 20 …".
         let international = value.trimmingCharacters(in: .whitespaces).hasPrefix("+")
+        let valueDigits = Set([value, withoutTrunk(value)].map { $0.filter(\.isASCIIDigit) })
         for span in matches(of: #"\d(?:\d|[ \t\u00A0\u202F().\-–/])*\d"#, in: source) {
-            // Only a "(0)" right after a 1–3 digit country code is a trunk prefix.
-            let trunkless = span.replacingOccurrences(of: #"^(\d{1,3})\s*\(0\)"#, with: "$1", options: .regularExpression)
-            let variants = Set([span, trunkless].map { $0.filter(\.isASCIIDigit) })
+            let variants = Set([span, withoutTrunk(span)].map { $0.filter(\.isASCIIDigit) })
             for spanDigits in variants where spanDigits.count >= 7 {
-                if spanDigits == digits { return true }
-                if spanDigits.count > digits.count, digits.count >= 7,
-                   spanDigits.count - digits.count <= 3, spanDigits.hasSuffix(digits) { return true }
-                if digits.count > spanDigits.count, international, digits.count - spanDigits.count <= 3,
-                   digits.hasSuffix(spanDigits), digits.first != "0" { return true }
+                for digits in valueDigits where numberMatches(digits, spanDigits, international: international) {
+                    return true
+                }
             }
         }
         return false
+    }
+
+    /// Same digits, or one side carries a country code of at most 3 digits the other drops.
+    private static func numberMatches(_ digits: String, _ spanDigits: String, international: Bool) -> Bool {
+        if spanDigits == digits { return true }
+        if spanDigits.count > digits.count, digits.count >= 7,
+           spanDigits.count - digits.count <= 3, spanDigits.hasSuffix(digits) { return true }
+        return digits.count > spanDigits.count && international && digits.count - spanDigits.count <= 3
+            && digits.hasSuffix(spanDigits) && digits.first != "0"
+    }
+
+    /// Only a "(0)" right after a 1–3 digit country code is a trunk prefix.
+    private static func withoutTrunk(_ text: String) -> String {
+        text.replacingOccurrences(of: #"^(\+?\s*\d{1,3})\s*\(0\)"#, with: "$1", options: .regularExpression)
+    }
+
+    /// One amount or count: an optional sign and currency sign or percent around digits with
+    /// commas and one decimal point. Not a fraction, time, range or phone.
+    private static func isSingleNumber(_ value: String) -> Bool {
+        value.range(of: #"^\s*-?\s*\p{Sc}?\s*-?\d[\d,]*(?:\.\d+)?\s*(?:\p{Sc}|%)?\s*$"#,
+                    options: .regularExpression) != nil
     }
 
     // MARK: Dates

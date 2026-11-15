@@ -84,7 +84,8 @@ final class WebSearchBackendTests: XCTestCase {
         recordedURL: String? = "http://127.0.0.1:8123/",
         health: @escaping @Sendable (String) async -> Bool = { _ in true },
         readinessPolls: Int = 3,
-        onSleep: @escaping @Sendable () -> Void = {}
+        onSleep: @escaping @Sendable () -> Void = {},
+        environment: [String: String] = [:]
     ) -> WebSearchBackend {
         WebSearchBackend(
             runner: runner,
@@ -94,7 +95,9 @@ final class WebSearchBackendTests: XCTestCase {
             recordedURL: { recordedURL },
             healthCheck: health,
             readinessPolls: readinessPolls,
-            sleep: { slept.value.append($0); onSleep() }
+            sleep: { slept.value.append($0); onSleep() },
+            environment: environment,
+            accountHome: "/Users/owner"
         )
     }
 
@@ -424,6 +427,29 @@ final class WebSearchBackendTests: XCTestCase {
         XCTAssertEqual(cleared.value, 1)
         XCTAssertEqual(state.value, "missing")
         XCTAssertTrue(outcome.detail.contains("image kept"))
+    }
+
+    /// 2026-10-30: a test run with a scratch store and the real HOME removed the live backend.
+    func testRemoveRefusesAScratchStoreRunWithTheRealHome() async {
+        let cleared = Box(0)
+        let runner = containerWorld(state: Box("running"))
+        let backend = makeBackend(runner: runner, tools: ["container"], cleared: cleared,
+                                  environment: ["SUMMON_CONTAINER_DIR": "/tmp/scratch/container", "HOME": "/Users/owner"])
+        let outcome = await backend.remove(purgeImage: false)
+        XCTAssertFalse(outcome.ok)
+        XCTAssertTrue(outcome.detail.contains("Set HOME to the scratch folder"), outcome.detail)
+        XCTAssertEqual(runner.count("container", ["rm"]), 0)
+        XCTAssertEqual(cleared.value, 0, "the recorded URL stays")
+    }
+
+    func testScratchStoreGuardAllowsAScratchHomeAndTheNormalApp() {
+        let guarded = { WebSearchBackend.isScratchStoreWithRealHome(environment: $0, accountHome: "/Users/owner") }
+        XCTAssertTrue(guarded(["SUMMON_CONTAINER_DIR": "/tmp/s/container", "HOME": "/Users/owner/"]))
+        XCTAssertFalse(guarded(["SUMMON_CONTAINER_DIR": "/tmp/s/container", "HOME": "/tmp/s"]), "cli-e2e sets both")
+        XCTAssertFalse(guarded(["HOME": "/Users/owner"]), "the app sets no scratch store")
+        XCTAssertFalse(guarded(["SUMMON_CONTAINER_DIR": "", "HOME": "/Users/owner"]))
+        XCTAssertFalse(WebSearchBackend.isScratchStoreWithRealHome(
+            environment: ["SUMMON_CONTAINER_DIR": "/tmp/s"], accountHome: nil))
     }
 
     func testRemoveWithPurgeImageUsesTheRuntimeImageCommand() async {

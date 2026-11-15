@@ -84,6 +84,20 @@ final class SmartPasteGroundingTests: XCTestCase {
         XCTAssertFalse(SmartPasteGrounding.isGrounded("1234567", in: "Account 1234 (0) 567"), "a (0) mid-number is not a trunk")
     }
 
+    /// Codex review 2026-11-02 (sixth pass), fixed for 0.9.1.
+    func testFractionsUnicodeMinusAndAWrittenTrunk() {
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1/2", in: "Unit 12, Main Road"), "a fraction is not the number 12")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("12-34", in: "Order 1234"), "a range is not one number")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("1/2", in: "Add 1/2 cup"), "a fraction written exactly")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("\u{2212}123", in: "Balance: 123"), "a Unicode minus counts")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("123", in: "Balance: \u{2212}123"), "not read out of a negative")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("-123", in: "Balance: \u{2212}123"), "either minus sign")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("\u{2212}123", in: "Balance: -123"))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("+44 (0)20 7123 4567", in: "Tel +44 20 7123 4567"), "a trunk the value adds")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("50%", in: "Discount 50 percent"))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("₹1,20,000", in: "CTC 120000"), "a currency sign before Indian grouping")
+    }
+
     func testMatchesADateInAnotherFormat() {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("2021-03", in: bio))
         XCTAssertTrue(SmartPasteGrounding.isGrounded("03/2021", in: bio))

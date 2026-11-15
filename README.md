@@ -28,7 +28,7 @@ Requires **macOS Sonoma 14+** to run; **on-device AI needs macOS 26+ with Apple 
 
 Smart Paste and window arrangement need the **Accessibility** permission. Because the build is ad-hoc signed, macOS drops that grant after every `brew upgrade`: open System Settings → Privacy & Security → Accessibility, select Summon, remove it with **−**, then add `/Applications/Summon.app` again with **+**.
 
-Summon can keep a local debug log of what you ask and what it does, in `~/Library/Logs/Summon/usage.jsonl`. It is off by default, never holds clipboard text, and never leaves your Mac. Turn it on with `defaults write tech.nakli.Summon UsageLog -bool true` and restart Summon; delete the file whenever you like.
+Summon can keep a local debug log of what you ask and what it does, in `~/Library/Logs/Summon/usage.jsonl`. It is off by default, never holds clipboard text, and never leaves your Mac. Turn it on with `defaults write tech.nakli.Summon UsageLog -bool true` and restart Summon. Summon deletes lines older than 30 days, and you can delete the file whenever you like.
 
 Press **⌥Space** to open the launcher; it lives in the menu bar and captures your clipboard in the background. The first launch offers **Keep Ready at Login** (on by default). No config file, no account, no restart. Point another tool at it over the local agent socket:
 

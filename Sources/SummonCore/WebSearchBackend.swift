@@ -95,6 +95,8 @@ public struct WebSearchBackend: Sendable {
     private let sleep: @Sendable (Duration) async -> Void
     /// Polls (1 s apart) for a started container to publish its port and answer.
     private let readinessPolls: Int
+    private let environment: [String: String]
+    private let accountHome: String?
 
     public init(
         runner: any ProcessRunning,
@@ -104,7 +106,9 @@ public struct WebSearchBackend: Sendable {
         recordedURL: @escaping @Sendable () -> String?,
         healthCheck: @escaping @Sendable (String) async -> Bool,
         readinessPolls: Int = 30,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        accountHome: String? = WebSearchBackend.accountHomeDirectory()
     ) {
         self.runner = runner
         self.locator = locator
@@ -114,6 +118,24 @@ public struct WebSearchBackend: Sendable {
         self.healthCheck = healthCheck
         self.readinessPolls = readinessPolls
         self.sleep = sleep
+        self.environment = environment
+        self.accountHome = accountHome
+    }
+
+    /// The account's own home folder from the user database, whatever `HOME` says.
+    public static func accountHomeDirectory() -> String? {
+        guard let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir else { return nil }
+        return String(cString: directory)
+    }
+
+    /// A scratch store (`SUMMON_CONTAINER_DIR`) run with the real `HOME` reads the real recorded
+    /// URL, so it looks like the owner of the real `summon-searxng`. On 2026-10-30 a test run set
+    /// up that way removed the live backend. A scratch run must set `HOME` to scratch as well.
+    static func isScratchStoreWithRealHome(environment: [String: String], accountHome: String?) -> Bool {
+        guard let store = environment["SUMMON_CONTAINER_DIR"], !store.isEmpty, let accountHome else { return false }
+        let home = environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
+        func resolved(_ path: String) -> String { URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path }
+        return resolved(home) == resolved(accountHome)
     }
 
     /// Real subprocesses, real tool lookup, real discovery file. The health check
@@ -388,6 +410,13 @@ public struct WebSearchBackend: Sendable {
     /// Uses the runtime's own removal commands; never deletes runtime storage
     /// directories directly.
     public func remove(purgeImage: Bool) async -> Outcome {
+        if Self.isScratchStoreWithRealHome(environment: environment, accountHome: accountHome) {
+            return Outcome(
+                ok: false,
+                detail: "SUMMON_CONTAINER_DIR points at a scratch store but HOME is your real home folder, so this "
+                    + "run would remove your real \(Self.containerName); refusing. Set HOME to the scratch folder too."
+            )
+        }
         let state = await inspect()
         var runtime: Runtime?
         switch state {
