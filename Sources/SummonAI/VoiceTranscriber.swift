@@ -21,6 +21,9 @@ public final class VoiceTranscriber: @unchecked Sendable {
     private var analyzer: SpeechAnalyzer?
     private var input: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
+    /// The setup `start` runs. `finish` waits for it, so once `finish` returns nothing of this
+    /// session is still starting: no microphone, no analyzer, no results task left behind.
+    private var setupTask: Task<Void, Never>?
     private var finalized = ""
     private var volatile = ""
     /// Set by `finish` (or a speech error); a `start` still waiting on permission or speech files
@@ -47,8 +50,19 @@ public final class VoiceTranscriber: @unchecked Sendable {
         }
     }
 
-    /// Starts listening. `onUpdate` runs on the main actor with the text heard so far.
+    /// Starts listening. `onUpdate` runs on the main actor with the text heard so far. Does
+    /// nothing after `finish`, or when called a second time.
     public func start(onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
+        let setup: Task<Void, Never>? = lock.withLock {
+            guard setupTask == nil, !stopRequested else { return nil }
+            let task = Task { await self.setUp(onUpdate: onUpdate) }
+            setupTask = task
+            return task
+        }
+        await setup?.value
+    }
+
+    private func setUp(onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
         let span = UsageLog.span("voice.start")
         guard await Self.microphoneAllowed() else {
             span.end(["outcome": "microphone denied"])
@@ -73,7 +87,7 @@ public final class VoiceTranscriber: @unchecked Sendable {
                 self.finalized = ""
                 self.volatile = ""
             }
-            resultsTask = Task { [weak self] in
+            let results = Task { [weak self] in
                 do {
                     for try await result in transcriber.results {
                         guard let self else { return }
@@ -89,6 +103,7 @@ public final class VoiceTranscriber: @unchecked Sendable {
                     await onUpdate(.failed("Speech stopped: \(error.localizedDescription)"))
                 }
             }
+            lock.withLock { resultsTask = results }
             try await analyzer.start(inputSequence: stream)
             guard !lock.withLock({ stopRequested }) else {
                 continuation.finish()
@@ -118,6 +133,8 @@ public final class VoiceTranscriber: @unchecked Sendable {
         } catch {
             span.fail(error)
             stopMicrophone()
+            // Ending the input does not end the analysis, so cancel it rather than leave it running.
+            await lock.withLock { self.analyzer }?.cancelAndFinishNow()
             await onUpdate(.failed("Voice input is unavailable: \(error.localizedDescription)"))
         }
     }
@@ -128,9 +145,10 @@ public final class VoiceTranscriber: @unchecked Sendable {
     public func finish() async -> String {
         let span = UsageLog.span("voice.finish")
         requestStop()
-        let analyzer = lock.withLock { self.analyzer }
+        await lock.withLock { setupTask }?.value
+        let (analyzer, results) = lock.withLock { (self.analyzer, self.resultsTask) }
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
-        await resultsTask?.value
+        await results?.value
         let heard = lock.withLock { (finalized + volatile).trimmingCharacters(in: .whitespacesAndNewlines) }
         lock.withLock { self.analyzer = nil }
         span.end(["chars": String(heard.count)])

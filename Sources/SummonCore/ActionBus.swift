@@ -451,6 +451,13 @@ public final class ActionBus: @unchecked Sendable {
         guard key != "search.fts.enabled" else {
             throw CoreError.store("use fts.setEnabled for FTS configuration")
         }
+        // Deleting a shortcut override puts back its default; refuse when another shortcut holds it.
+        if let shortcut = SummonShortcut.allCases.first(where: { $0.settingsKey == key }), let fallback = shortcut.defaultBinding {
+            let current = ShortcutSettings { try? settings.get($0, in: db)?.stringValue }
+            if let problem = current.problem(with: fallback, for: shortcut) {
+                throw CoreError.store("Cannot reset: \(problem)")
+            }
+        }
         try settings.delete(key, in: db)
     }
 

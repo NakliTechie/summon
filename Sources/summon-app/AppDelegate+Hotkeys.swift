@@ -44,6 +44,9 @@ extension AppDelegate {
         var taken: [HotkeyBinding: SummonShortcut] = [:]
         let pairs: [(SummonShortcut, GlobalHotkey?)] = [(.launcher, hotkey), (.clipboardHistory, clipboardHotkey),
                                                         (.smartPaste, smartPasteHotkey), (.voice, voiceHotkey)]
+        // Release every old key first: a swap (launcher ⇄ clipboard) would otherwise find the
+        // other shortcut's old key still held and fail.
+        for (_, key) in pairs { key?.unregister() }
         for (shortcut, key) in pairs {
             guard let key else { continue }
             guard let binding = settings.active[shortcut], shortcut != .voice || voiceSupported else {

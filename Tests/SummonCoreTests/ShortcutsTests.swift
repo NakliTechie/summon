@@ -98,6 +98,18 @@ final class ShortcutsTests: XCTestCase {
         XCTAssertEqual(try target.settings.get("shortcut.clipboardHistory")?.stringValue, "49:2048")
     }
 
+    /// Codex review of 73c1a4b: `summon settings delete shortcut.launcher` put the launcher back on
+    /// ⌥Space while clipboard history held it; the Settings Reset button refused the same change.
+    func testDeletingAnOverrideIsRefusedWhenItsDefaultIsTaken() throws {
+        let core = try SummonCore.inMemory()
+        _ = try core.dispatch(action: .settingsSet(key: "shortcut.launcher", value: .string("40:4096")), actor: .user)
+        _ = try core.dispatch(action: .settingsSet(key: "shortcut.clipboardHistory", value: .string("49:2048")), actor: .user)
+        let outcome = try core.dispatch(action: .settingsDelete(key: "shortcut.launcher"), actor: .user).outcome
+        XCTAssertEqual(outcome, .rejected(reason: "Store error: Cannot reset: ⌥Space is already the clipboard history shortcut"))
+        XCTAssertEqual(try core.dispatch(action: .settingsDelete(key: "shortcut.clipboardHistory"), actor: .user).outcome, .applied)
+        XCTAssertEqual(try core.dispatch(action: .settingsDelete(key: "shortcut.launcher"), actor: .user).outcome, .applied)
+    }
+
     func testAStoredWindowLayoutKeyFallsBack() {
         let settings = ShortcutSettings { $0 == "shortcut.smartPaste" ? "123:6144" : nil }
         XCTAssertEqual(settings.bindings[.smartPaste], SummonShortcut.smartPaste.defaultBinding)

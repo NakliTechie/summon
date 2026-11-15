@@ -134,8 +134,7 @@ public final class GlobalHotkey: @unchecked Sendable {
             do {
                 try Self.installSharedHandlerIfNeeded_locked()
             } catch {
-                Self.callbacks.removeValue(forKey: dispatchID)
-                Self.releaseCallbacks.removeValue(forKey: dispatchID)
+                Self.removeCallbacks_locked(dispatchID)
                 throw error
             }
         }
@@ -151,8 +150,7 @@ public final class GlobalHotkey: @unchecked Sendable {
         )
         guard reg == noErr else {
             Self.lock.lock()
-            Self.callbacks.removeValue(forKey: dispatchID)
-            Self.releaseCallbacks.removeValue(forKey: dispatchID)
+            Self.removeCallbacks_locked(dispatchID)
             Self.lock.unlock()
             if reg == OSStatus(eventHotKeyExistsErr) { throw CoreError.io("another app already uses these keys") }
             throw CoreError.io("RegisterEventHotKey failed: \(reg) (key=\(keyCode) mods=\(modifiers))")
@@ -166,13 +164,18 @@ public final class GlobalHotkey: @unchecked Sendable {
             self.hotKeyRef = nil
         }
         Self.lock.lock()
-        Self.callbacks.removeValue(forKey: dispatchID)
-        Self.releaseCallbacks.removeValue(forKey: dispatchID)
-        if Self.callbacks.isEmpty, let handlerRef = Self.handlerRef {
-            RemoveEventHandler(handlerRef)
-            Self.handlerRef = nil
-        }
+        Self.removeCallbacks_locked(dispatchID)
         Self.lock.unlock()
+    }
+
+    /// Drops one registration's callbacks, and the shared handler once no registration is left.
+    private static func removeCallbacks_locked(_ dispatchID: UInt32) {
+        callbacks.removeValue(forKey: dispatchID)
+        releaseCallbacks.removeValue(forKey: dispatchID)
+        if callbacks.isEmpty, let handlerRef {
+            RemoveEventHandler(handlerRef)
+            self.handlerRef = nil
+        }
     }
 
     private static func installSharedHandlerIfNeeded_locked() throws {
