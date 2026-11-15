@@ -11,12 +11,15 @@ public struct ShortcutHost {
     public var apply: () -> [SummonShortcut: String]
     public var current: () -> [SummonShortcut: String]
     public var suspend: (Bool) -> Void
+    /// The languages voice can listen in (from Apple's recognizers, which SummonUI cannot import).
+    public var languages: @Sendable () async -> [VoiceLanguage.Choice]
 
     public init(apply: @escaping () -> [SummonShortcut: String], current: @escaping () -> [SummonShortcut: String] = { [:] },
-                suspend: @escaping (Bool) -> Void) {
+                suspend: @escaping (Bool) -> Void, languages: @escaping @Sendable () async -> [VoiceLanguage.Choice] = { [] }) {
         self.apply = apply
         self.current = current
         self.suspend = suspend
+        self.languages = languages
     }
 }
 
@@ -101,6 +104,7 @@ public final class ShortcutsSettingsView: NSStackView {
     private(set) var recorders: [SummonShortcut: ShortcutRecorderButton] = [:]
     private(set) var statuses: [SummonShortcut: NSTextField] = [:]
     private(set) var voiceModePopup: NSPopUpButton?
+    private(set) var voiceLanguagePopup: NSPopUpButton?
 
     /// Voice needs macOS 26 (Apple's on-device speech), so its row appears only there.
     public static var availableShortcuts: [SummonShortcut] {
@@ -165,6 +169,7 @@ public final class ShortcutsSettingsView: NSStackView {
             let modeRow = NSStackView(views: [indent, popup])
             modeRow.spacing = 8
             lines.append(modeRow)
+            lines.append(makeLanguageRow())
         }
         lines.append(status)
         let column = NSStackView(views: lines)
@@ -172,6 +177,51 @@ public final class ShortcutsSettingsView: NSStackView {
         column.alignment = .leading
         column.spacing = 2
         return column
+    }
+
+    /// "Listen in": Automatic, then every language Apple's recognizers offer, filled in when the
+    /// list arrives (it is read from macOS asynchronously).
+    private func makeLanguageRow() -> NSView {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.target = self
+        popup.action = #selector(voiceLanguageChanged(_:))
+        popup.setAccessibilityLabel("Language voice listens in")
+        voiceLanguagePopup = popup
+        showLanguages([])
+        let languages = host.languages
+        Task { @MainActor [weak self] in
+            let choices = await languages()
+            self?.showLanguages(choices)
+        }
+        let label = NSTextField(labelWithString: "Listen in")
+        label.alignment = .right
+        label.widthAnchor.constraint(equalToConstant: 130).isActive = true
+        let row = NSStackView(views: [label, popup])
+        row.spacing = 8
+        return row
+    }
+
+    func showLanguages(_ choices: [VoiceLanguage.Choice]) {
+        guard let popup = voiceLanguagePopup else { return }
+        let stored = (try? core.settings.get(VoiceLanguage.settingsKey))?.stringValue ?? VoiceLanguage.automatic
+        var items = [VoiceLanguage.Choice(id: VoiceLanguage.automatic, name: "Automatic (this Mac's language)")]
+        items += choices.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        if !items.contains(where: { $0.id == stored }) { items.append(VoiceLanguage.Choice(id: stored, name: stored)) }
+        popup.removeAllItems()
+        for item in items {
+            popup.addItem(withTitle: item.name)
+            popup.lastItem?.representedObject = item.id
+        }
+        popup.selectItem(at: items.firstIndex { $0.id == stored } ?? 0)
+    }
+
+    @objc private func voiceLanguageChanged(_ sender: NSPopUpButton) {
+        guard let id = sender.selectedItem?.representedObject as? String else { return }
+        let action: CoreAction = id == VoiceLanguage.automatic
+            ? .settingsDelete(key: VoiceLanguage.settingsKey)
+            : .settingsSet(key: VoiceLanguage.settingsKey, value: .string(id))
+        if case .settingsDelete = action, (try? core.settings.get(VoiceLanguage.settingsKey)) == nil { return }
+        save(action, for: .voice)
     }
 
     /// Shows the stored shortcuts and the messages from the last registration.

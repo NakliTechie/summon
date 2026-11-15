@@ -51,6 +51,24 @@ extension ShortcutRecorderTests {
         XCTAssertEqual(view.statuses[.launcher]?.isHidden, true)
     }
 
+    /// Voice language (Chirag 2026-11-15: Hindi); "Automatic" stores nothing.
+    @MainActor
+    func testTheLanguageListSavesTheChoice() throws {
+        let core = try SummonCore.inMemory()
+        let view = ShortcutsSettingsView(core: core, host: ShortcutHost(apply: { [:] }, suspend: { _ in }),
+                                         shortcuts: SummonShortcut.allCases)
+        view.showLanguages([VoiceLanguage.Choice(id: "hi_IN", name: "Hindi (India)"),
+                            VoiceLanguage.Choice(id: "en_IN", name: "English (India)")])
+        let popup = try XCTUnwrap(view.voiceLanguagePopup)
+        XCTAssertEqual(popup.itemTitles, ["Automatic (this Mac's language)", "English (India)", "Hindi (India)"])
+        popup.selectItem(withTitle: "Hindi (India)")
+        popup.sendAction(popup.action, to: popup.target)
+        XCTAssertEqual(try core.settings.get(VoiceLanguage.settingsKey)?.stringValue, "hi_IN")
+        popup.selectItem(at: 0)
+        popup.sendAction(popup.action, to: popup.target)
+        XCTAssertNil(try core.settings.get(VoiceLanguage.settingsKey))
+    }
+
     func testCoreKnowsEveryWindowLayoutKey() {
         let window = Set(WindowShortcut.defaults.map { HotkeyBinding(keyCode: $0.keyCode, modifiers: $0.modifiers) })
         XCTAssertEqual(window, HotkeyBinding.windowLayoutKeys)

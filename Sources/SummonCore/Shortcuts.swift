@@ -123,6 +123,25 @@ public enum VoiceShortcutMode: String, CaseIterable, Sendable {
     public var usesOwnShortcut: Bool { self == .hold || self == .toggle }
 }
 
+/// The language voice listens in, stored under `voice.language` as a locale identifier
+/// ("hi_IN") or "auto" (the Mac's own language when Apple's English recognizer covers it, else
+/// US English). An unsupported value falls back to automatic.
+public enum VoiceLanguage {
+    public static let settingsKey = "voice.language"
+    public static let automatic = "auto"
+
+    /// One entry in the Settings list.
+    public struct Choice: Sendable, Equatable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+}
+
 /// Reads and checks the stored shortcuts. Writes go through `CoreAction.settingsSet`.
 public struct ShortcutSettings: Sendable {
     public let bindings: [SummonShortcut: HotkeyBinding]

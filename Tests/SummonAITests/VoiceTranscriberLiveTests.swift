@@ -29,4 +29,29 @@ final class VoiceTranscriberLiveTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(recall, 0.7, heard)
         }
     }
+
+    /// Hindi goes to `DictationTranscriber` (Apple's `SpeechTranscriber` has no Hindi). The first
+    /// run downloads the Hindi speech files. Audio comes from the built-in Hindi voice, Lekha.
+    func testTranscribesHindi() async throws {
+        guard ProcessInfo.processInfo.environment["SUMMON_RUN_VOICE_LIVE"] == "1" else {
+            throw XCTSkip("set SUMMON_RUN_VOICE_LIVE=1 to run")
+        }
+        guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
+        let locale = await VoiceTranscriber.locale(setting: "hi_IN")
+        XCTAssertEqual(locale.language.languageCode?.identifier, "hi")
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("voice-hi-\(UUID().uuidString).aiff")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let phrase = "भारत की राजधानी क्या है"
+        let say = Process()
+        say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+        say.arguments = ["-v", "Lekha", "-o", file.path, phrase]
+        try say.run()
+        say.waitUntilExit()
+        let heard = try await VoiceTranscriber.transcribe(file: file, locale: locale)
+        let words = Set(phrase.split(separator: " ").map(String.init))
+        let got = Set(heard.components(separatedBy: CharacterSet.letters.union(.nonBaseCharacters).inverted).filter { !$0.isEmpty })
+        let recall = Double(words.intersection(got).count) / Double(words.count)
+        print("voice-live \(locale.identifier): \"\(phrase)\" → \"\(heard)\" recall \(recall)")
+        XCTAssertGreaterThanOrEqual(recall, 0.6, heard)
+    }
 }

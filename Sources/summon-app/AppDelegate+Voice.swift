@@ -71,11 +71,15 @@ extension AppDelegate {
         let generation = voiceGeneration
         voiceSession = transcriber
         panel.setListening(true)
+        let language = (try? core.settings.get(VoiceLanguage.settingsKey))?.stringValue
         Task { @MainActor [weak self] in
-            await transcriber.start { update in
+            await transcriber.start(language: language) { update in
                 guard let self, self.voiceSession === transcriber else { return }
                 switch update {
-                case .listening: self.startVoiceLimit(generation)
+                case .preparing(let message): self.panel.showVoicePreparing(message)
+                case .listening:
+                    self.panel.setListening(true)
+                    self.startVoiceLimit(generation)
                 case .text(let heard): self.panel.showVoiceText(heard)
                 case .failed(let reason): self.failVoice(transcriber, reason: reason)
                 }

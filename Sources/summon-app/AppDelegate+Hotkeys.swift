@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import Foundation
 import SummonCore
+import SummonAI
 import SummonUI
 
 /// App shortcuts come from Settings (`shortcut.<name>`, defaults ⌥Space, ⌥⇧C, ⌥⌘V). Changing one
@@ -116,7 +117,14 @@ extension AppDelegate {
         ShortcutHost(
             apply: { [weak self] in self?.registerAppShortcuts() ?? [:] },
             current: { [weak self] in self?.shortcutErrors ?? [:] },
-            suspend: { [weak self] suspended in self?.suspendAppShortcuts(suspended) }
+            suspend: { [weak self] suspended in self?.suspendAppShortcuts(suspended) },
+            languages: {
+                guard #available(macOS 26.0, *) else { return [] }
+                return await VoiceTranscriber.languages().map { locale in
+                    let name = Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
+                    return VoiceLanguage.Choice(id: locale.identifier, name: name)
+                }
+            }
         )
     }
 }

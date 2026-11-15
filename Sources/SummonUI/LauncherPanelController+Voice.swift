@@ -22,6 +22,16 @@ extension LauncherPanelController {
         UsageLog.record(listening ? "launcher.voice.listening" : "launcher.voice.stopped")
     }
 
+    /// Says what voice is waiting for before the microphone opens (a first-use language download).
+    public func showVoicePreparing(_ message: String) {
+        let font = searchField.placeholderAttributedString?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        searchField.placeholderAttributedString = NSAttributedString(string: message, attributes: [
+            .foregroundColor: Tokens.System.secondaryLabel,
+            .font: font ?? NSFont.systemFont(ofSize: 22),
+        ])
+        UsageLog.record("launcher.voice.preparing")
+    }
+
     /// Puts the words heard so far in the field and searches them.
     public func showVoiceText(_ text: String) {
         guard text != searchField.stringValue else { return }

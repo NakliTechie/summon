@@ -3,6 +3,15 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## Unreleased (0.9.4)
+
+### Added
+- **Voice in Hindi and other languages.** Settings › General › Listen in picks the language voice
+  listens in: Automatic (as before), or any language Apple's recognizers offer, Hindi among them.
+  English uses Apple's speech transcriber; other languages use Apple's dictation transcriber. The
+  first use of a language shows "Getting the … speech files from Apple" while macOS fetches them,
+  and the 60 s listening limit starts only after that.
+
 ## 0.9.3 — 2026-11-15
 
 Voice and shortcut fixes from four rounds of code review, and test runs that tidy up after themselves.

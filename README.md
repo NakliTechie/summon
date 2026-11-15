@@ -75,7 +75,7 @@ Tab  or  ⌘K                     act on the selected result
 ⌃⌥ + arrows / U I J K / ⏎ C     arrange the focused window
 ```
 
-Settings › General changes the launcher, clipboard and Smart Paste shortcuts, and how voice starts. Voice uses Apple's on-device speech recognition; audio stays on your Mac, and the microphone is open only while you hold the key.
+Settings › General changes the launcher, clipboard and Smart Paste shortcuts, how voice starts, and the language it listens in (English, Hindi and the other languages Apple's dictation offers; macOS fetches a language's speech files on first use). Voice uses Apple's on-device speech recognition; audio stays on your Mac, and the microphone is open only while you hold the key.
 
 ## Verify it yourself
 

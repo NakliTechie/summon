@@ -3,15 +3,18 @@ import Foundation
 import Speech
 import SummonCore
 
-/// Speech to text on this Mac with Apple's `SpeechAnalyzer` and `SpeechTranscriber` (macOS 26).
-/// No audio leaves the Mac and Summon downloads no model: macOS installs the language files
-/// (`AssetInventory`), and on 2026-11-15 Indian English (`en_IN`) was already installed here.
+/// Speech to text on this Mac with Apple's `SpeechAnalyzer` (macOS 26). English uses
+/// `SpeechTranscriber`; the other languages (Hindi among 54 on 2026-11-15) use
+/// `DictationTranscriber`, which `SpeechTranscriber` does not cover. No audio leaves the Mac and
+/// Summon downloads no model: macOS installs the language files (`AssetInventory`) on first use.
 ///
 /// The microphone is open only between `start` and `finish`; there is no wake word.
 @available(macOS 26.0, *)
 public final class VoiceTranscriber: @unchecked Sendable {
     /// What the launcher shows while you talk: `text` is everything heard so far.
     public enum Update: Sendable, Equatable {
+        /// macOS is fetching the language's speech files (first use of that language).
+        case preparing(String)
         case listening
         case text(String)
         case failed(String)
@@ -41,6 +44,24 @@ public final class VoiceTranscriber: @unchecked Sendable {
         await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) ?? Locale(identifier: "en_US")
     }
 
+    /// The locale for the `voice.language` setting: a locale identifier either recognizer
+    /// supports, or the automatic choice for "auto", a missing setting or an unsupported one.
+    public static func locale(setting: String?) async -> Locale {
+        if let setting, setting != VoiceLanguage.automatic {
+            let wanted = Locale(identifier: setting)
+            if let found = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) { return found }
+            if let found = await DictationTranscriber.supportedLocale(equivalentTo: wanted) { return found }
+        }
+        return await locale()
+    }
+
+    /// Every language either recognizer can transcribe, for the Settings list.
+    public static func languages() async -> [Locale] {
+        var seen = Set<String>()
+        let all = await SpeechTranscriber.supportedLocales + DictationTranscriber.supportedLocales
+        return all.filter { seen.insert($0.identifier).inserted }
+    }
+
     /// Ask for the microphone. macOS shows its prompt once; after that this answers at once.
     public static func microphoneAllowed() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -50,19 +71,20 @@ public final class VoiceTranscriber: @unchecked Sendable {
         }
     }
 
-    /// Starts listening. `onUpdate` runs on the main actor with the text heard so far. Does
-    /// nothing after `finish`, or when called a second time.
-    public func start(onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
+    /// Starts listening in `language` (a `voice.language` setting value; nil is automatic).
+    /// `onUpdate` runs on the main actor with the text heard so far. Does nothing after
+    /// `finish`, or when called a second time.
+    public func start(language: String? = nil, onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
         let setup: Task<Void, Never>? = lock.withLock {
             guard setupTask == nil, !stopRequested else { return nil }
-            let task = Task { await self.setUp(onUpdate: onUpdate) }
+            let task = Task { await self.setUp(language: language, onUpdate: onUpdate) }
             setupTask = task
             return task
         }
         await setup?.value
     }
 
-    private func setUp(onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
+    private func setUp(language: String?, onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
         let span = UsageLog.span("voice.start")
         guard await Self.microphoneAllowed() else {
             span.end(["outcome": "microphone denied"])
@@ -74,10 +96,14 @@ public final class VoiceTranscriber: @unchecked Sendable {
             return
         }
         do {
-            let locale = await Self.locale()
-            let transcriber = try await Self.makeTranscriber(locale: locale)
-            let analyzer = SpeechAnalyzer(modules: [transcriber])
-            guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            let locale = await Self.locale(setting: language)
+            let recognizer = await Self.makeRecognizer(locale: locale)
+            try await Self.install(recognizer.module) {
+                let name = Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
+                await onUpdate(.preparing("Getting the \(name) speech files from Apple… (first use only)"))
+            }
+            let analyzer = SpeechAnalyzer(modules: [recognizer.module])
+            guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [recognizer.module]) else {
                 throw CoreError.io("no audio format for speech in \(locale.identifier)")
             }
             let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
@@ -89,9 +115,9 @@ public final class VoiceTranscriber: @unchecked Sendable {
             }
             let results = Task { [weak self] in
                 do {
-                    for try await result in transcriber.results {
+                    for try await result in recognizer.results {
                         guard let self else { return }
-                        let text = String(result.text.characters)
+                        let text = result.text
                         let heard: String = self.lock.withLock {
                             if result.isFinal { self.finalized += text; self.volatile = "" } else { self.volatile = text }
                             return (self.finalized + self.volatile).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -155,25 +181,64 @@ public final class VoiceTranscriber: @unchecked Sendable {
         return heard
     }
 
-    /// A transcriber with live (volatile) results; macOS fetches its language files once if needed.
-    static func makeTranscriber(locale: Locale) async throws -> SpeechTranscriber {
-        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [],
-                                            reportingOptions: [.volatileResults], attributeOptions: [])
-        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-            try await request.downloadAndInstall()
-        }
-        return transcriber
+    /// One recognizer and its results as plain text. `SpeechTranscriber` when it covers the
+    /// locale (English), else `DictationTranscriber`; both give live (volatile) results.
+    struct Recognizer {
+        let module: any SpeechModule
+        let results: AsyncThrowingStream<(text: String, isFinal: Bool), Error>
     }
 
-    /// Transcribes an audio file with the same transcriber setup, for the live test
+    static func makeRecognizer(locale: Locale) async -> Recognizer {
+        if await SpeechTranscriber.supportedLocales.contains(where: { $0.identifier == locale.identifier }) {
+            let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [],
+                                                reportingOptions: [.volatileResults], attributeOptions: [])
+            return Recognizer(module: transcriber, results: relay(transcriber.results) { (String($0.text.characters), $0.isFinal) })
+        }
+        let dictation = DictationTranscriber(locale: locale, contentHints: [.shortForm], transcriptionOptions: [.punctuation],
+                                             reportingOptions: [.volatileResults], attributeOptions: [])
+        return Recognizer(module: dictation, results: relay(dictation.results) { (String($0.text.characters), $0.isFinal) })
+    }
+
+    private static func relay<S: AsyncSequence & Sendable>(
+        _ results: S, _ read: @escaping @Sendable (S.Element) -> (text: String, isFinal: Bool)
+    ) -> AsyncThrowingStream<(text: String, isFinal: Bool), Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await result in results { continuation.yield(read(result)) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Installs the language's speech files when macOS does not have them yet, calling
+    /// `beforeDownload` first so the launcher can say why it is waiting.
+    static func install(_ module: any SpeechModule, beforeDownload: () async -> Void = {}) async throws {
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+            await beforeDownload()
+            try await request.downloadAndInstall()
+        }
+    }
+
+    /// Transcribes an audio file with the same recognizer setup, for the live test
     /// (`SUMMON_RUN_VOICE_LIVE=1`), which cannot use the microphone without a person.
     static func transcribe(file url: URL, locale: Locale) async throws -> String {
-        let transcriber = try await makeTranscriber(locale: locale)
-        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let recognizer = await makeRecognizer(locale: locale)
+        try await install(recognizer.module)
+        let analyzer = SpeechAnalyzer(modules: [recognizer.module])
+        // As in a live session: final text plus the latest partial text, because on 2026-11-15
+        // `DictationTranscriber` (Hindi) marked none of its results final, even at the end of input.
         let collect = Task { () throws -> String in
-            var heard = ""
-            for try await result in transcriber.results where result.isFinal { heard += String(result.text.characters) }
-            return heard
+            var finalized = ""
+            var latest = ""
+            for try await result in recognizer.results {
+                if result.isFinal { finalized += result.text; latest = "" } else { latest = result.text }
+            }
+            return finalized + latest
         }
         let audio = try AVAudioFile(forReading: url)
         if let last = try await analyzer.analyzeSequence(from: audio) {
