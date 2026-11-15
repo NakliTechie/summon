@@ -67,4 +67,38 @@ final class ShortcutsTests: XCTestCase {
         XCTAssertEqual(ShortcutCatalog.launcher, "⌃K")
         XCTAssertTrue(GuideContent.lines.contains { $0.body.contains("⌃K") }, "the guide follows the setting")
     }
+
+    /// Codex review of b239fac: `summon settings set shortcut.launcher '0:512'` stored ⇧A, which
+    /// the recorder refuses, so typing a capital A would have opened the launcher after a restart.
+    func testEveryWritePathRefusesAShortcutTheRecorderRefuses() throws {
+        let core = try SummonCore.inMemory()
+        func outcome(_ key: String, _ value: String) throws -> ActionResult.Outcome {
+            try core.dispatch(action: .settingsSet(key: key, value: .string(value)), actor: .user).outcome
+        }
+        for (key, value) in [("shortcut.launcher", "0:512"), ("shortcut.launcher", "space"),
+                             ("shortcut.launcher", "8:2560"), ("shortcut.voice.mode", "shout")] {
+            guard case .rejected = try outcome(key, value) else { return XCTFail("\(key)=\(value) was stored") }
+        }
+        XCTAssertNil(try core.settings.get("shortcut.launcher"))
+        XCTAssertEqual(try outcome("shortcut.launcher", "40:4096"), .applied)
+        XCTAssertEqual(try outcome("shortcut.voice.mode", "toggle"), .applied)
+        XCTAssertEqual(try core.settings.get("shortcut.launcher")?.stringValue, "40:4096")
+        XCTAssertNil(ShortcutSettings.refusal(key: "search.defaultAction", value: .string("open"), read: { _ in nil }))
+    }
+
+    func testAStoredShortcutThatTypingWouldTriggerFallsBack() {
+        let settings = ShortcutSettings { $0 == "shortcut.launcher" ? "0:512" : nil }
+        XCTAssertEqual(settings.bindings[.launcher], SummonShortcut.launcher.defaultBinding)
+    }
+
+    /// A core made without a container removes its own consent folder; about 9,200 had piled up.
+    func testAnInMemoryCoreRemovesItsTemporaryFolder() throws {
+        var folder: URL?
+        try autoreleasepool {
+            let core = try SummonCore.inMemory()
+            folder = core.ftsConsentContainer
+            XCTAssertTrue(FileManager.default.fileExists(atPath: core.ftsConsentContainer.path))
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(folder).path))
+    }
 }

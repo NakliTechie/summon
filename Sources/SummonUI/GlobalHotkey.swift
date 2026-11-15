@@ -88,6 +88,10 @@ public final class GlobalHotkey: @unchecked Sendable {
     private var hotKeyRef: EventHotKeyRef?
     private let signature: OSType
     private let id: UInt32
+    /// Bumped by every register and unregister. A press or release the event handler queued
+    /// for an older registration finds a newer number and is dropped, so turning a shortcut off
+    /// also cancels its events already on the way. Read and written on the main thread only.
+    private var generation = 0
 
     private static let lock = NSLock()
     private static var callbacks: [UInt32: () -> Void] = [:]
@@ -103,23 +107,29 @@ public final class GlobalHotkey: @unchecked Sendable {
         unregister()
     }
 
-    /// `keyCode` Carbon virtual key (49 = Space).
-    public func register(keyCode: UInt32 = 49, modifiers: UInt32 = UInt32(optionKey)) throws {
+    /// `keyCode` Carbon virtual key (49 = Space). With `exclusive`, registration fails when any
+    /// other app already holds the keys (`eventHotKeyExistsErr`), so a clash is reported instead
+    /// of both apps answering, and non-exclusive holders stop receiving the keys.
+    public func register(keyCode: UInt32 = 49, modifiers: UInt32 = UInt32(optionKey), exclusive: Bool = false) throws {
         unregister()
+        let current = generation
 
         Self.lock.lock()
         do {
             defer { Self.lock.unlock() }
             Self.callbacks[id] = { [weak self] in
-                self?.onPressed?()
+                guard let self, self.generation == current else { return }
+                self.onPressed?()
             }
             Self.releaseCallbacks[id] = { [weak self] in
-                self?.onReleased?()
+                guard let self, self.generation == current else { return }
+                self.onReleased?()
             }
             do {
                 try Self.installSharedHandlerIfNeeded_locked()
             } catch {
                 Self.callbacks.removeValue(forKey: id)
+                Self.releaseCallbacks.removeValue(forKey: id)
                 throw error
             }
         }
@@ -130,7 +140,7 @@ public final class GlobalHotkey: @unchecked Sendable {
             modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
-            0,
+            exclusive ? OptionBits(kEventHotKeyExclusive) : 0,
             &hotKeyRef
         )
         guard reg == noErr else {
@@ -138,11 +148,13 @@ public final class GlobalHotkey: @unchecked Sendable {
             Self.callbacks.removeValue(forKey: id)
             Self.releaseCallbacks.removeValue(forKey: id)
             Self.lock.unlock()
+            if reg == OSStatus(eventHotKeyExistsErr) { throw CoreError.io("another app already uses these keys") }
             throw CoreError.io("RegisterEventHotKey failed: \(reg) (key=\(keyCode) mods=\(modifiers))")
         }
     }
 
     public func unregister() {
+        generation += 1
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil

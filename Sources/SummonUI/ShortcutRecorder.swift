@@ -3,15 +3,19 @@ import Foundation
 import SummonCore
 
 /// What the shortcut settings need from the app: re-register from the stored settings (returning
-/// a message for each shortcut that failed), and pause every global shortcut while one is being
+/// a message for each shortcut that failed), the messages from the last registration (startup
+/// included, so a failure shows when Settings opens), and pause every global shortcut while one is being
 /// recorded. A registered Carbon hotkey takes its keys before the window sees them, so ⌥Space
 /// could not be typed into the recorder while the launcher holds it.
 public struct ShortcutHost {
     public var apply: () -> [SummonShortcut: String]
+    public var current: () -> [SummonShortcut: String]
     public var suspend: (Bool) -> Void
 
-    public init(apply: @escaping () -> [SummonShortcut: String], suspend: @escaping (Bool) -> Void) {
+    public init(apply: @escaping () -> [SummonShortcut: String], current: @escaping () -> [SummonShortcut: String] = { [:] },
+                suspend: @escaping (Bool) -> Void) {
         self.apply = apply
+        self.current = current
         self.suspend = suspend
     }
 }
@@ -113,7 +117,13 @@ public final class ShortcutsSettingsView: NSStackView {
         alignment = .leading
         spacing = 6
         for shortcut in shortcuts { addArrangedSubview(makeRow(shortcut)) }
-        refresh(errors: [:])
+        refresh(errors: host.current())
+    }
+
+    /// Ends any recording in progress. The Preferences window calls this as it closes, because the
+    /// closed window is kept, so its views never leave it and `viewDidMoveToWindow` does not fire.
+    public func stopRecording() {
+        recorders.values.forEach { $0.stopRecording() }
     }
 
     @available(*, unavailable)
@@ -197,7 +207,9 @@ public final class ShortcutsSettingsView: NSStackView {
 
     private func save(_ action: CoreAction, for shortcut: SummonShortcut) {
         do {
-            _ = try core.dispatch(action: action, actor: .user)
+            if case .rejected(let reason) = try core.dispatch(action: action, actor: .user).outcome {
+                return refresh(errors: [shortcut: reason])
+            }
             refresh(errors: host.apply())
         } catch {
             refresh(errors: [shortcut: error.localizedDescription])

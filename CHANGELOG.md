@@ -3,6 +3,27 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## Unreleased (0.9.3)
+
+### Fixed
+- **Voice always closes the microphone.** Letting go of the key while voice was starting, or a
+  speech error after the microphone opened, could leave it open with nothing left to close it.
+  Start and stop now take turns, and every way a session ends goes through the same stop.
+- A stopping voice session no longer clears or overwrites a newer one (press-to-start mode).
+- The 60 s listening limit counts from when the microphone opens, not from the key press, so the
+  first-use permission prompt does not use up recording time.
+- Holding ⌥Space while the launcher is already open now starts voice; a tap still closes it.
+- Closing Settings while a shortcut was being recorded left every global shortcut off until restart.
+- Recording a shortcut while holding the voice key stops voice first, and a key press queued for a
+  shortcut that was just turned off is dropped.
+- `summon settings set` refuses the same shortcuts the Settings recorder refuses (a key without
+  ⌘, ⌥ or ⌃, a clash, a malformed value or an unknown voice mode). A bad stored value falls back
+  to the default.
+- Summon claims its shortcuts exclusively, so a key another app already holds is reported in its
+  Settings row instead of both apps answering. Startup registration errors now show when Settings
+  opens.
+- Test runs no longer leave an empty `summon-fts-*` folder in the temp directory per run.
+
 ## 0.9.2 — 2026-11-15
 
 Voice into the launcher, shortcuts you can change, and web answers that name their source.

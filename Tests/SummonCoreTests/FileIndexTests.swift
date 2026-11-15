@@ -14,7 +14,10 @@ final class FileIndexTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        if let root { try? FileManager.default.removeItem(at: root) }
+        guard let root else { return }
+        try? FileManager.default.removeItem(at: root)
+        // Some tests write their index snapshot next to the folder, as `<folder>.bin`.
+        try? FileManager.default.removeItem(at: root.appendingPathComponent("../\(root.lastPathComponent).bin").standardizedFileURL)
     }
 
     // MARK: Fixture

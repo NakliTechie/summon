@@ -25,6 +25,7 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     private let webLifecycle: WebSearchLifecycleController?
     private let shortcutHost: ShortcutHost?
     private var shortcutsView: ShortcutsSettingsView?
+    private var closeObserver: NSObjectProtocol?
 
     public init(
         core: SummonCore,
@@ -64,6 +65,11 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
 
         configureActions()
         refresh()
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.shortcutsView?.stopRecording() }
+        }
     }
 
     @available(*, unavailable)
@@ -124,7 +130,7 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     }
 
     private func refresh() {
-        shortcutsView?.refresh(errors: [:])
+        shortcutsView?.refresh(errors: shortcutHost?.current() ?? [:])
         loginToggle.state = LoginItemService.isEnabled ? .on : .off
         ftsToggle.state = core.search.ftsEnabled ? .on : .off
         webToggle.state = core.webConfig.enabled ? .on : .off

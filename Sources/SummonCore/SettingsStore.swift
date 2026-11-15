@@ -10,20 +10,22 @@ public struct SettingsStore: Sendable {
     }
 
     public func get(_ key: String) throws -> JSONValue? {
-        try dbQueue.read { db in
-            guard let row = try Row.fetchOne(
-                db,
-                sql: "SELECT value_json FROM settings WHERE key = ?",
-                arguments: [key]
-            ) else {
-                return nil
-            }
-            let raw: String = row["value_json"]
-            guard let data = raw.data(using: .utf8) else {
-                throw CoreError.store("settings value not UTF-8 for key \(key)")
-            }
-            return try JSONDecoder().decode(JSONValue.self, from: data)
+        try dbQueue.read { db in try get(key, in: db) }
+    }
+
+    func get(_ key: String, in db: Database) throws -> JSONValue? {
+        guard let row = try Row.fetchOne(
+            db,
+            sql: "SELECT value_json FROM settings WHERE key = ?",
+            arguments: [key]
+        ) else {
+            return nil
         }
+        let raw: String = row["value_json"]
+        guard let data = raw.data(using: .utf8) else {
+            throw CoreError.store("settings value not UTF-8 for key \(key)")
+        }
+        return try JSONDecoder().decode(JSONValue.self, from: data)
     }
 
     public func set(_ key: String, value: JSONValue) throws {

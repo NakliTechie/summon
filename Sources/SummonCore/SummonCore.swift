@@ -22,7 +22,7 @@ public final class SummonCore: @unchecked Sendable {
     public var search: SearchService
     public var webConfig: WebSearchConfig = .default
     /// In-memory cores keep consent under a private temp dir (not shared).
-    private let ftsConsentContainer: URL
+    let ftsConsentContainer: URL
     /// Migration / startup issues (empty when all optional tables migrated cleanly).
     public private(set) var startupWarnings: [String] = []
 
@@ -68,8 +68,7 @@ public final class SummonCore: @unchecked Sendable {
         if let containerURL {
             self.ftsConsentContainer = containerURL
         } else {
-            let tmp = FileManager.default.temporaryDirectory
-                .appendingPathComponent("summon-fts-\(UUID().uuidString)", isDirectory: true)
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("summon-fts-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
             self.ftsConsentContainer = tmp
         }
@@ -161,6 +160,9 @@ public final class SummonCore: @unchecked Sendable {
 
         configureActionBus(stagedStore: stagedStore, consentStore: consentStore)
     }
+
+    /// A core without a container removes the consent folder it made (9,200 had piled up by 2026-11-15).
+    deinit { if containerURL == nil { try? FileManager.default.removeItem(at: ftsConsentContainer) } }
 
     private func configureActionBus(
         stagedStore: StagedProposalStore,

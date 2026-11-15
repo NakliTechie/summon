@@ -127,11 +127,12 @@ public struct ShortcutSettings: Sendable {
         self.voiceMode = voiceMode
     }
 
-    /// Stored values over defaults. A stored value that does not parse falls back to the default.
+    /// Stored values over defaults. A stored value that does not parse, or that typing would
+    /// trigger, falls back to the default.
     public init(read: (String) -> String?) {
         var bindings: [SummonShortcut: HotkeyBinding] = [:]
         for shortcut in SummonShortcut.allCases {
-            if let stored = read(shortcut.settingsKey).flatMap(HotkeyBinding.init(storage:)) {
+            if let stored = read(shortcut.settingsKey).flatMap(HotkeyBinding.init(storage:)), stored.isUsableGlobally {
                 bindings[shortcut] = stored
             } else if let fallback = shortcut.defaultBinding {
                 bindings[shortcut] = fallback
@@ -158,5 +159,23 @@ public struct ShortcutSettings: Sendable {
             return "\(binding.label) is already the \(clash.key.title.lowercased()) shortcut"
         }
         return nil
+    }
+
+    /// Why a write to a shortcut setting is refused, or nil to allow it. Every write path (the
+    /// Settings recorder, `summon settings set`, an import) goes through the action bus, which
+    /// calls this, so a stored shortcut is always one the recorder would accept.
+    public static func refusal(key: String, value: JSONValue, read: (String) -> String?) -> String? {
+        if key == VoiceShortcutMode.settingsKey {
+            guard let raw = value.stringValue, VoiceShortcutMode(rawValue: raw) != nil else {
+                let modes = VoiceShortcutMode.allCases.map(\.rawValue).joined(separator: ", ")
+                return "\(key) must be one of: \(modes)"
+            }
+            return nil
+        }
+        guard let shortcut = SummonShortcut.allCases.first(where: { $0.settingsKey == key }) else { return nil }
+        guard let binding = value.stringValue.flatMap(HotkeyBinding.init(storage:)) else {
+            return "\(key) must be \"keyCode:modifiers\", for example \"49:2048\" for ⌥Space"
+        }
+        return ShortcutSettings(read: read).problem(with: binding, for: shortcut)
     }
 }

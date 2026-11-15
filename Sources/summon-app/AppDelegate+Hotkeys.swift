@@ -29,7 +29,7 @@ extension AppDelegate {
             // GlobalHotkey calls back on the main queue.
             MainActor.assumeIsolated { self?.smartPasteController.run() }
         }
-        _ = registerAppShortcuts()
+        registerAppShortcuts()
     }
 
     /// Registers every app shortcut from Settings and returns a message for each one that failed.
@@ -52,19 +52,20 @@ extension AppDelegate {
                 continue
             }
             do {
-                try key.register(keyCode: binding.keyCode, modifiers: binding.modifiers)
+                try key.register(keyCode: binding.keyCode, modifiers: binding.modifiers, exclusive: true)
                 labels[shortcut] = binding.label
             } catch {
                 let fallback = HotkeyBinding(keyCode: 49, modifiers: HotkeyBinding.option | HotkeyBinding.control)
                 if shortcut == .launcher, binding == shortcut.defaultBinding,
-                   (try? key.register(keyCode: fallback.keyCode, modifiers: fallback.modifiers)) != nil {
+                   (try? key.register(keyCode: fallback.keyCode, modifiers: fallback.modifiers, exclusive: true)) != nil {
                     labels[shortcut] = fallback.label
                     continue
                 }
-                errors[shortcut] = "\(binding.label) could not be registered; another app may use it"
+                errors[shortcut] = "\(binding.label) could not be registered: \(error.localizedDescription)"
                 fputs("Summon: \(shortcut.title) shortcut \(binding.label) not registered: \(error)\n", stderr)
             }
         }
+        shortcutErrors = errors
         ShortcutCatalog.setActiveLabels(labels)
         primaryHotkeyLabel = labels[.launcher] ?? settings.bindings[.launcher]?.label ?? "none"
         primaryHotkeyError = errors[.launcher]
@@ -79,8 +80,13 @@ extension AppDelegate {
     }
 
     /// While a shortcut is being recorded every global shortcut is off, so its keys reach the recorder.
+    /// A held shortcut's release never arrives once it is unregistered, so voice stops first.
     func suspendAppShortcuts(_ suspended: Bool) {
         if suspended {
+            holdToTalkWork?.cancel()
+            holdToTalkWork = nil
+            launcherTapHides = false
+            stopVoice()
             for key in [hotkey, clipboardHotkey, smartPasteHotkey, voiceHotkey] { key?.unregister() }
             windowHotkeys.forEach { $0.unregister() }
         } else {
@@ -92,6 +98,7 @@ extension AppDelegate {
     var shortcutHost: ShortcutHost {
         ShortcutHost(
             apply: { [weak self] in self?.registerAppShortcuts() ?? [:] },
+            current: { [weak self] in self?.shortcutErrors ?? [:] },
             suspend: { [weak self] suspended in self?.suspendAppShortcuts(suspended) }
         )
     }

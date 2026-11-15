@@ -36,6 +36,37 @@ final class ShortcutRecorderTests: XCTestCase {
     }
 }
 
+extension ShortcutRecorderTests {
+    /// Codex review of b239fac: startup registration errors were dropped, and opening Settings
+    /// cleared every row's message.
+    @MainActor
+    func testSettingsShowTheLastRegistrationErrors() throws {
+        let core = try SummonCore.inMemory()
+        let view = ShortcutsSettingsView(core: core, host: ShortcutHost(
+            apply: { [:] }, current: { [.smartPaste: "⌥⌘V could not be registered: another app already uses these keys"] },
+            suspend: { _ in }
+        ))
+        XCTAssertEqual(view.statuses[.smartPaste]?.isHidden, false)
+        XCTAssertTrue(view.statuses[.smartPaste]?.stringValue.contains("another app") == true)
+        XCTAssertEqual(view.statuses[.launcher]?.isHidden, true)
+    }
+
+    /// Codex review of b239fac: closing Preferences mid-recording left every global shortcut off,
+    /// because the closed window is kept and the recorder never left it.
+    @MainActor
+    func testStoppingRecordingTurnsTheShortcutsBackOn() throws {
+        let core = try SummonCore.inMemory()
+        var suspended: [Bool] = []
+        let view = ShortcutsSettingsView(core: core, host: ShortcutHost(apply: { [:] }, suspend: { suspended.append($0) }))
+        let recorder = try XCTUnwrap(view.recorders[.launcher])
+        recorder.performClick(nil)
+        XCTAssertTrue(recorder.isRecording)
+        view.stopRecording()
+        XCTAssertFalse(recorder.isRecording)
+        XCTAssertEqual(suspended, [true, false])
+    }
+}
+
 final class LauncherVoiceTests: XCTestCase {
     @MainActor
     func testVoiceTextFillsTheFieldAndListeningShowsInThePlaceholder() throws {

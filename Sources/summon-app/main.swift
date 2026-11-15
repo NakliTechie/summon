@@ -31,6 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var voiceSession: AnyObject?
     var holdToTalkWork: DispatchWorkItem?
     var voiceLimitWork: DispatchWorkItem?
+    /// Counts voice sessions; a finishing session updates the launcher only while it is the latest.
+    var voiceGeneration = 0
+    /// A launcher press while it was open: hide it on release unless the press becomes hold-to-talk.
+    var launcherTapHides = false
+    /// The messages from the last shortcut registration, shown when Settings opens.
+    var shortcutErrors: [SummonShortcut: String] = [:]
     var windowHotkeys: [GlobalHotkey] = []
     var windowShortcutRegistrationErrors: [String] = []
     var windowShortcutLastError: String?

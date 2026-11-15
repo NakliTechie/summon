@@ -17,12 +17,20 @@ extension AppDelegate {
         return false
     }
 
+    /// While the launcher is open a press may be a tap (close it) or a hold (talk), so the choice
+    /// waits for the release or for `holdDelay`, whichever comes first. A closed launcher opens at
+    /// once, as before.
     func launcherPressed() {
-        let wasShowing = panel.isShowing
+        let holdable = voiceSupported && shortcutSettings.voiceMode == .holdLauncher && voiceSession == nil
         clipboardHistory.hide()
-        panel.toggle()
-        guard !wasShowing, voiceSupported, shortcutSettings.voiceMode == .holdLauncher else { return }
-        let work = DispatchWorkItem { [weak self] in self?.startVoice() }
+        launcherTapHides = holdable && panel.isShowing
+        if !launcherTapHides { panel.toggle() }
+        guard holdable else { return }
+        holdToTalkWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.launcherTapHides = false
+            self?.startVoice()
+        }
         holdToTalkWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.holdDelay, execute: work)
     }
@@ -30,6 +38,10 @@ extension AppDelegate {
     func launcherReleased() {
         holdToTalkWork?.cancel()
         holdToTalkWork = nil
+        if launcherTapHides {
+            launcherTapHides = false
+            panel.hide()
+        }
         if shortcutSettings.voiceMode == .holdLauncher { stopVoice() }
     }
 
@@ -46,6 +58,8 @@ extension AppDelegate {
         if shortcutSettings.voiceMode == .hold { stopVoice() }
     }
 
+    /// Each session gets a generation number. Its updates, its time limit and its final text apply
+    /// only while it is still the latest session, so a stopping session never touches a newer one.
     func startVoice() {
         guard #available(macOS 26.0, *), voiceSession == nil else { return }
         if !panel.isShowing {
@@ -53,23 +67,32 @@ extension AppDelegate {
             panel.show()
         }
         let transcriber = VoiceTranscriber()
+        voiceGeneration += 1
+        let generation = voiceGeneration
         voiceSession = transcriber
         panel.setListening(true)
-        let limit = DispatchWorkItem { [weak self] in self?.stopVoice() }
-        voiceLimitWork = limit
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.maxListening, execute: limit)
         Task { @MainActor [weak self] in
             await transcriber.start { update in
                 guard let self, self.voiceSession === transcriber else { return }
                 switch update {
-                case .listening: break
+                case .listening: self.startVoiceLimit(generation)
                 case .text(let heard): self.panel.showVoiceText(heard)
-                case .failed(let reason):
-                    self.voiceSession = nil
-                    self.panel.showVoiceProblem(reason)
+                case .failed(let reason): self.failVoice(transcriber, reason: reason)
                 }
             }
         }
+    }
+
+    /// The limit counts from when the microphone opens, not from the press, so time spent on the
+    /// first-use permission prompt or a speech-file download is not taken from the recording.
+    private func startVoiceLimit(_ generation: Int) {
+        voiceLimitWork?.cancel()
+        let limit = DispatchWorkItem { [weak self] in
+            guard let self, self.voiceGeneration == generation else { return }
+            self.stopVoice()
+        }
+        voiceLimitWork = limit
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.maxListening, execute: limit)
     }
 
     func stopVoice() {
@@ -77,11 +100,22 @@ extension AppDelegate {
         voiceLimitWork = nil
         guard #available(macOS 26.0, *), let transcriber = voiceSession as? VoiceTranscriber else { return }
         voiceSession = nil
+        let generation = voiceGeneration
         Task { @MainActor [weak self] in
             let heard = await transcriber.finish()
-            guard let self else { return }
+            guard let self, self.voiceGeneration == generation else { return }
             self.panel.setListening(false)
             if !heard.isEmpty { self.panel.showVoiceText(heard) }
         }
+    }
+
+    /// A failed session still closes the microphone, through the same `finish` as a normal stop.
+    @available(macOS 26.0, *)
+    private func failVoice(_ transcriber: VoiceTranscriber, reason: String) {
+        voiceLimitWork?.cancel()
+        voiceLimitWork = nil
+        voiceSession = nil
+        panel.showVoiceProblem(reason)
+        Task { await transcriber.finish() }
     }
 }

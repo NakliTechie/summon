@@ -24,7 +24,10 @@ public final class VoiceTranscriber: @unchecked Sendable {
     private var finalized = ""
     private var volatile = ""
     /// Set by `finish`; a `start` still waiting on permission or speech files then opens no microphone.
+    /// `start` checks it and opens the microphone under `lock`, and `finish` sets it and closes the
+    /// microphone under `lock`, so a release at any moment leaves the microphone closed.
     private var stopRequested = false
+    private var microphoneOpen = false
     private let lock = NSLock()
 
     public init() {}
@@ -49,6 +52,10 @@ public final class VoiceTranscriber: @unchecked Sendable {
         guard await Self.microphoneAllowed() else {
             span.end(["outcome": "microphone denied"])
             await onUpdate(.failed("Summon cannot use the microphone. Allow it in System Settings › Privacy & Security › Microphone."))
+            return
+        }
+        guard !lock.withLock({ stopRequested }) else {
+            span.end(["outcome": "let go before the microphone opened"])
             return
         }
         do {
@@ -77,31 +84,39 @@ public final class VoiceTranscriber: @unchecked Sendable {
                         await onUpdate(.text(heard))
                     }
                 } catch {
+                    self?.stopMicrophone()
                     await onUpdate(.failed("Speech stopped: \(error.localizedDescription)"))
                 }
             }
             try await analyzer.start(inputSequence: stream)
-            guard !lock.withLock({ stopRequested }) else {
+            let opened = try lock.withLock { () throws -> Bool in
+                guard !stopRequested else { return false }
+                microphoneOpen = true // set first, so a failed start still has its tap removed
+                try startMicrophone(feeding: continuation, as: format)
+                return true
+            }
+            guard opened else {
                 continuation.finish()
+                await analyzer.cancelAndFinishNow()
                 span.end(["outcome": "let go before the microphone opened"])
                 return
             }
-            try startMicrophone(feeding: continuation, as: format)
             span.end(["locale": locale.identifier])
             await onUpdate(.listening)
         } catch {
             span.fail(error)
-            await stopMicrophone()
+            stopMicrophone()
             await onUpdate(.failed("Voice input is unavailable: \(error.localizedDescription)"))
         }
     }
 
-    /// Stops listening and waits for the last words. Returns everything heard.
+    /// Stops listening and waits for the last words. Returns everything heard. Safe to call more
+    /// than once, and before `start` has opened the microphone.
     @discardableResult
     public func finish() async -> String {
         let span = UsageLog.span("voice.finish")
         lock.withLock { stopRequested = true }
-        await stopMicrophone()
+        stopMicrophone()
         let analyzer = lock.withLock { self.analyzer }
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
         await resultsTask?.value
@@ -165,9 +180,16 @@ public final class VoiceTranscriber: @unchecked Sendable {
         try engine.start()
     }
 
-    private func stopMicrophone() async {
-        if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
-        lock.withLock { input }?.finish()
+    /// Closes the microphone and ends the audio input. Idempotent.
+    private func stopMicrophone() {
+        let input: AsyncStream<AnalyzerInput>.Continuation? = lock.withLock {
+            if microphoneOpen {
+                engine.stop()
+                engine.inputNode.removeTap(onBus: 0)
+                microphoneOpen = false
+            }
+            return self.input
+        }
+        input?.finish()
     }
 }

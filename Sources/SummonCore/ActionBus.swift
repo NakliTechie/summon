@@ -440,6 +440,9 @@ public final class ActionBus: @unchecked Sendable {
         guard key != "search.fts.enabled" else {
             throw CoreError.store("use fts.setEnabled for FTS configuration")
         }
+        if let refusal = ShortcutSettings.refusal(key: key, value: value, read: { try? settings.get($0, in: db)?.stringValue }) {
+            throw CoreError.store(refusal)
+        }
         try settings.set(key, value: value, in: db)
     }
 
