@@ -3,7 +3,7 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
-## Unreleased (0.9.4)
+## 0.9.4 — 2026-11-15
 
 ### Added
 - **Voice in Hindi and other languages.** Settings › General › Listen in picks the language voice
@@ -14,9 +14,9 @@ ad-hoc-signed (not yet Apple-notarized).
   session at once; the download finishes in the background for next time.
 - At macOS's limit of 5 reserved speech languages, installing a new one first releases a spare
   reservation (never the chosen or the automatic language), so a sixth language still works.
-  First-time language installs run one at a time, so two voice sessions never compete for that
-  slot; an installed language never waits, and a stuck download holds up the next install for at
-  most 2 minutes.
+  First-time language installs take turns, so two voice sessions never compete for that slot; an
+  installed language never waits. A new language waits at most 2 minutes behind a download that
+  has not finished, then says another download is still running instead of starting beside it.
 - Automatic now also covers a Mac set to a language only Apple's dictation recognizer offers
   (Hindi, for example), instead of falling back to US English.
 

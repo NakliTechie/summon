@@ -65,13 +65,34 @@ final class VoiceTranscriberLiveTests: XCTestCase {
         XCTAssertFalse(SpeechReservations.same(Locale(identifier: "en_IN"), Locale(identifier: "hi_IN")))
     }
 
-    /// Codex review of ffc6d42: a download that never returns must not block later sessions.
-    func testAQueuedInstallStopsWaitingAtTheLimit() async throws {
+    /// Codex review of 7f65e10: a waiter gives up at the limit and never takes the turn beside a
+    /// download that has not returned; the turn stays held until that download releases it.
+    func testAWaiterGivesUpAtTheLimitWithoutTakingTheTurn() async throws {
         guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
-        let stuck = Task { _ = try? await Task.sleep(for: .seconds(3600)) }
-        defer { stuck.cancel() }
+        let turns = SpeechReservations()
+        let first = await turns.acquire(within: .seconds(1))
+        XCTAssertTrue(first)
         let start = ContinuousClock.now
-        await SpeechReservations.wait(for: stuck, atMost: .milliseconds(200))
+        let second = await turns.acquire(within: .milliseconds(200))
+        XCTAssertFalse(second)
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
+        await turns.release()
+        let third = await turns.acquire(within: .milliseconds(200))
+        XCTAssertTrue(third, "a released turn is free again")
+    }
+
+    /// A waiter gets the turn as soon as the holder releases it.
+    func testAWaiterGetsTheTurnWhenTheHolderReleases() async throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
+        let turns = SpeechReservations()
+        let first = await turns.acquire(within: .seconds(1))
+        XCTAssertTrue(first)
+        let waiter = Task { await turns.acquire(within: .seconds(10)) }
+        try await Task.sleep(for: .milliseconds(100))
+        await turns.release()
+        let start = ContinuousClock.now
+        let got = await waiter.value
+        XCTAssertTrue(got)
         XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
     }
 }
