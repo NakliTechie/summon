@@ -4,6 +4,10 @@
 SHELL := /bin/bash
 SWIFT := swift
 BUILD_FLAGS :=
+# Test and walkthrough runs never write the owner's usage log. The CLI reads the log setting
+# from the real defaults domain and the real home folder, so a temporary HOME does not stop it
+# (on 2026-11-15 make verify added its CLI calls to ~/Library/Logs/Summon/usage.jsonl).
+export SUMMON_USAGE_LOG := 0
 
 .PHONY: build test verify release clean cli-e2e lint no-model-launcher extension-omission app cask-local distribution-local l1-probe battery walkthrough latency-soft latency-hard network-sovereignty version-consistency help
 
