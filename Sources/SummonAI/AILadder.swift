@@ -550,7 +550,10 @@ public final class SummonAIService: @unchecked Sendable {
         if let completion = try? await ladder.complete(
             prompt: WebEnrich.enrichPrompt(question: query, hits: hits)
         ) {
-            return .answer(text: completion.text, rung: completion.rung, sources: hits, note: note)
+            // Name the result the answer came from, checked on the Mac; the model is not trusted to cite.
+            let source = WebAnswerSource.line(answer: completion.text, question: query, hits: hits)
+            let text = source.map { completion.text + "\n\n" + $0 } ?? completion.text
+            return .answer(text: text, rung: completion.rung, sources: hits, note: note)
         }
         return .answer(
             text: "On-device answer synthesis is unavailable on this Mac — showing the top web results:",

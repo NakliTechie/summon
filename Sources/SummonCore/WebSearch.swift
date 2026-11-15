@@ -309,7 +309,9 @@ public enum WebEnrich {
     /// Build a prompt for L1/L0 from hits + question.
     public static func enrichPrompt(question: String, hits: [WebHit]) -> String {
         var lines = [
-            "Answer the question using only the sources below. Cite titles. Be concise.",
+            "Answer the question using only the sources below. Be concise.",
+            "If a source says the answer depends on how something is counted (an acting or interim "
+                + "holder, for example), or two sources disagree, say so in one sentence.",
             "You are ONLY answering a question from web results. You cannot perform, "
                 + "stage, set, change, create, open, or do anything on this Mac, and you "
                 + "must NEVER claim you did or that anything was staged. If the sources "
