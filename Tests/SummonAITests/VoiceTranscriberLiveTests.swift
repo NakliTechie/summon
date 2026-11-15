@@ -88,11 +88,28 @@ final class VoiceTranscriberLiveTests: XCTestCase {
         let first = await turns.acquire(within: .seconds(1))
         XCTAssertTrue(first)
         let waiter = Task { await turns.acquire(within: .seconds(10)) }
-        try await Task.sleep(for: .milliseconds(100))
+        // Codex review of 0a9dd49: release only once the waiter is queued, so the hand-off is what runs.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while await turns.waitingCount == 0, ContinuousClock.now < deadline { await Task.yield() }
+        let queued = await turns.waitingCount
+        XCTAssertEqual(queued, 1)
         await turns.release()
         let start = ContinuousClock.now
         let got = await waiter.value
         XCTAssertTrue(got)
         XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
+    }
+
+    /// Codex review of 0a9dd49: a download that fails still frees the turn for the next language.
+    func testAFailedDownloadFreesTheTurn() async throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
+        struct Failed: Error {}
+        let turns = SpeechReservations()
+        do {
+            try await turns.takeTurn(within: .seconds(1), stillWanted: { true }) { throw Failed() }
+            XCTFail("the work's error reaches the caller")
+        } catch is Failed {}
+        let next = await turns.acquire(within: .milliseconds(200))
+        XCTAssertTrue(next, "the failed turn was freed")
     }
 }

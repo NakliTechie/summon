@@ -374,20 +374,31 @@ actor SpeechReservations {
                  stillWanted: @escaping @Sendable () -> Bool,
                  beforeDownload: @escaping @Sendable () async -> Void) async throws {
         if await AssetInventory.status(forModules: [module]) == .installed { return }
-        guard await acquire(within: Self.queueWait) else {
-            guard stillWanted() else { return }
-            throw DownloadBusy()
-        }
-        // Its own task, so the turn ends only when the download does, whatever happens to the caller.
-        let work = Task { () throws in
-            guard stillWanted() else { return }
+        try await takeTurn(stillWanted: stillWanted) {
             await Self.makeRoom(for: locale, keeping: keep)
             try await VoiceTranscriber.install(module, beforeDownload: beforeDownload)
         }
-        let result = await work.result
+    }
+
+    /// Runs `work` in its own turn and frees the turn when `work` ends, even when it throws. The work
+    /// runs in its own task, so the turn ends only when the download does, whatever happens to the caller.
+    func takeTurn(within limit: Duration = queueWait, stillWanted: @escaping @Sendable () -> Bool,
+                  _ work: @escaping @Sendable () async throws -> Void) async throws {
+        guard await acquire(within: limit) else {
+            guard stillWanted() else { return }
+            throw DownloadBusy()
+        }
+        let task = Task { () throws in
+            guard stillWanted() else { return }
+            try await work()
+        }
+        let result = await task.result
         release()
         try result.get()
     }
+
+    /// The number of sessions waiting for the turn (tests check a waiter is queued).
+    var waitingCount: Int { waiters.count }
 
     /// Takes the turn, waiting at most `limit` for it; false when the limit passes first.
     func acquire(within limit: Duration) async -> Bool {
