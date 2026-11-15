@@ -87,6 +87,7 @@ public struct SearchService: Sendable {
             results.append(calc)
         }
         if let unit = UnitConversion.convert(free) { results.append(unit) }
+        if let date = DateAnswer.result(for: free) { results.append(date) }
         if let color = ColorPickerUtil.parse(free) { results.append(color) }
         results.append(contentsOf: DevUtils.search(query: free))
         results.append(contentsOf: ProcessControl.search(query: free, limit: min(10, limit)))

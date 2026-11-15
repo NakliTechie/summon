@@ -99,6 +99,19 @@ public final class WebSearchLifecycleController {
         }
     }
 
+    private var lastRecovery: Date?
+
+    /// A web query found the recorded backend unreachable, so try one restore. The runtime can
+    /// stop while Summon runs (2026-11-15: every query fell back to Wikipedia until a relaunch).
+    /// At most once a minute, and never while a restore is already running.
+    public func recoverAfterFailedQuery() {
+        guard preferenceEnabled, status != .restoring else { return }
+        if let last = lastRecovery, Date().timeIntervalSince(last) < 60 { return }
+        lastRecovery = Date()
+        UsageLog.record("web.backend.recover")
+        reconcileIfEnabled()
+    }
+
     /// Preference toggle: on restores, off stops (container and data kept).
     public func setEnabled(_ enabled: Bool) {
         if enabled {
