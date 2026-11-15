@@ -135,7 +135,7 @@ public final class ActionBus: @unchecked Sendable {
 
             let outcome: ActionResult.Outcome
             do {
-                try apply(envelope.action, in: db, enforceFTSConsent: true)
+                try apply(envelope.action, in: db, enforcePolicy: true)
                 outcome = .applied
             } catch {
                 outcome = .rejected(reason: Self.rejectionReason(for: error))
@@ -186,11 +186,14 @@ public final class ActionBus: @unchecked Sendable {
         return result
     }
 
+    /// Replays a journal entry. The journal holds actions that were accepted when made, so the
+    /// policy checks (FTS consent, shortcut rules added later) are off: a history that was valid
+    /// then must always rebuild.
     public func applyForReplay(_ action: CoreAction) throws {
         lock.lock()
         defer { lock.unlock() }
         try dbQueue.write { db in
-            try apply(action, in: db, enforceFTSConsent: false)
+            try apply(action, in: db, enforcePolicy: false)
         }
     }
 
@@ -217,7 +220,7 @@ public final class ActionBus: @unchecked Sendable {
                     results.append(ActionResult(envelopeID: envelope.id, outcome: existing))
                     continue
                 }
-                try apply(envelope.action, in: db, enforceFTSConsent: true)
+                try apply(envelope.action, in: db, enforcePolicy: true)
                 try journal.append(envelope: envelope, outcome: .applied, in: db)
                 results.append(ActionResult(envelopeID: envelope.id, outcome: .applied))
             }
@@ -254,21 +257,21 @@ public final class ActionBus: @unchecked Sendable {
     private func apply(
         _ action: CoreAction,
         in db: Database,
-        enforceFTSConsent: Bool
+        enforcePolicy: Bool
     ) throws {
-        try applyPrimary(action, in: db, enforceFTSConsent: enforceFTSConsent)
+        try applyPrimary(action, in: db, enforcePolicy: enforcePolicy)
     }
 
     private func applyPrimary(
         _ action: CoreAction,
         in db: Database,
-        enforceFTSConsent: Bool
+        enforcePolicy: Bool
     ) throws {
         switch action {
         case .settingsSet(let key, let value):
-            try applySetting(key: key, value: value, in: db)
+            try applySetting(key: key, value: value, in: db, enforcePolicy: enforcePolicy)
         case .settingsDelete(let key):
-            try deleteSetting(key: key, in: db)
+            try deleteSetting(key: key, in: db, enforcePolicy: enforcePolicy)
         case .snippetUpsert(let id, let name, let body, let keyword):
             try snippets.upsert(
                 Snippet(id: id, name: name, body: body, keyword: keyword),
@@ -346,14 +349,14 @@ public final class ActionBus: @unchecked Sendable {
         case .favoriteRemove(let resultID):
             try favorites.remove(resultID: resultID, in: db)
         default:
-            try applyAuxiliary(action, in: db, enforceFTSConsent: enforceFTSConsent)
+            try applyAuxiliary(action, in: db, enforcePolicy: enforcePolicy)
         }
     }
 
     private func applyAuxiliary(
         _ action: CoreAction,
         in db: Database,
-        enforceFTSConsent: Bool
+        enforcePolicy: Bool
     ) throws {
         switch action {
         case .importReset(let includeClipboard):
@@ -364,7 +367,7 @@ public final class ActionBus: @unchecked Sendable {
         case .ftsConsentGrant:
             throw CoreError.store("FTS consent cannot run inside a store transaction")
         case .ftsSetEnabled(let enabled):
-            try applyFTS(enabled: enabled, in: db, enforceConsent: enforceFTSConsent)
+            try applyFTS(enabled: enabled, in: db, enforceConsent: enforcePolicy)
         case .usageRecord(
             let resultID,
             let title,
@@ -435,24 +438,25 @@ public final class ActionBus: @unchecked Sendable {
         }
     }
 
-    private func applySetting(key: String, value: JSONValue, in db: Database) throws {
+    private func applySetting(key: String, value: JSONValue, in db: Database, enforcePolicy: Bool) throws {
         guard !key.isEmpty else { throw CoreError.store("settings key must be non-empty") }
         guard key != "search.fts.enabled" else {
             throw CoreError.store("use fts.setEnabled for FTS configuration")
         }
-        if let refusal = ShortcutSettings.refusal(key: key, value: value) {
+        if enforcePolicy, let refusal = ShortcutSettings.refusal(key: key, value: value) {
             throw CoreError.store(refusal)
         }
         try settings.set(key, value: value, in: db)
     }
 
-    private func deleteSetting(key: String, in db: Database) throws {
+    private func deleteSetting(key: String, in db: Database, enforcePolicy: Bool) throws {
         guard !key.isEmpty else { throw CoreError.store("settings key must be non-empty") }
         guard key != "search.fts.enabled" else {
             throw CoreError.store("use fts.setEnabled for FTS configuration")
         }
         // Deleting a shortcut override puts back its default; refuse when another shortcut holds it.
-        if let shortcut = SummonShortcut.allCases.first(where: { $0.settingsKey == key }), let fallback = shortcut.defaultBinding {
+        if enforcePolicy, let shortcut = SummonShortcut.allCases.first(where: { $0.settingsKey == key }),
+           let fallback = shortcut.defaultBinding {
             let current = ShortcutSettings { try? settings.get($0, in: db)?.stringValue }
             if let problem = current.problem(with: fallback, for: shortcut) {
                 throw CoreError.store("Cannot reset: \(problem)")

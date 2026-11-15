@@ -110,6 +110,25 @@ final class ShortcutsTests: XCTestCase {
         XCTAssertEqual(try core.dispatch(action: .settingsDelete(key: "shortcut.launcher"), actor: .user).outcome, .applied)
     }
 
+    /// Codex review of 29ed8bc: replay ran the new checks, so a journal from 0.9.2 holding these
+    /// three accepted actions, or a stored ⇧A, would no longer rebuild.
+    func testAJournalAcceptedBeforeTheChecksStillReplays() throws {
+        let actions: [CoreAction] = [
+            .settingsSet(key: "shortcut.launcher", value: .string("40:4096")),
+            .settingsSet(key: "shortcut.clipboardHistory", value: .string("49:2048")),
+            .settingsDelete(key: "shortcut.launcher"),
+            .settingsSet(key: "shortcut.smartPaste", value: .string("0:512")),
+        ]
+        let entries = actions.enumerated().map { index, action in
+            JournalEntry(seq: Int64(index + 1), id: UUID(), actor: .user, timestamp: Date(), action: action, outcome: "applied")
+        }
+        let core = try SummonCore.inMemory()
+        try core.replay(entries: entries)
+        XCTAssertNil(try core.settings.get("shortcut.launcher"))
+        XCTAssertEqual(try core.settings.get("shortcut.clipboardHistory")?.stringValue, "49:2048")
+        XCTAssertEqual(try core.settings.get("shortcut.smartPaste")?.stringValue, "0:512")
+    }
+
     func testAStoredWindowLayoutKeyFallsBack() {
         let settings = ShortcutSettings { $0 == "shortcut.smartPaste" ? "123:6144" : nil }
         XCTAssertEqual(settings.bindings[.smartPaste], SummonShortcut.smartPaste.defaultBinding)

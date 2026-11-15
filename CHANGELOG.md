@@ -3,7 +3,9 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
-## Unreleased (0.9.3)
+## 0.9.3 — 2026-11-15
+
+Voice and shortcut fixes from four rounds of code review, and test runs that tidy up after themselves.
 
 ### Fixed
 - **Voice always closes the microphone.** Letting go of the key while voice was starting, or a
@@ -28,6 +30,8 @@ ad-hoc-signed (not yet Apple-notarized).
   start never delays letting go. Stopping voice waits for setup to end, so nothing of the session
   is left running, and a failed start cancels its speech analysis. A key press macOS queued for an
   old registration is ignored.
+- Rebuilding the store from the action journal skips the new shortcut checks, so a history that
+  was valid when it was written always rebuilds.
 - Test runs no longer leave an empty `summon-fts-*` folder in the temp directory per run.
 
 ## 0.9.2 — 2026-11-15
