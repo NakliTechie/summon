@@ -27,10 +27,11 @@ public final class VoiceTranscriber: @unchecked Sendable {
     /// The setup `start` runs. `finish` waits for it, so once `finish` returns nothing of this
     /// session is still starting: no microphone, no analyzer, no results task left behind.
     private var setupTask: Task<Void, Never>?
-    /// True while macOS downloads the language's speech files. `finish` does not wait for the
-    /// download: setup stops right after it, before any analyzer or microphone exists, and the
-    /// files stay installed for the next use.
-    private var downloading = false
+    /// Set by setup, in the same lock as its `stopRequested` check, once it starts on audio (after
+    /// any speech-file download). `finish` waits for setup only from then on: before it, setup
+    /// will see the stop and end without an analyzer or a microphone, so a download never holds
+    /// up a release, and the downloaded files stay installed for the next use.
+    private var audioStarted = false
     private var finalized = ""
     private var volatile = ""
     /// Set by `finish` (or a speech error); a `start` still waiting on permission or speech files
@@ -109,14 +110,16 @@ public final class VoiceTranscriber: @unchecked Sendable {
             let locale = await Self.locale(setting: language)
             let recognizer = await Self.makeRecognizer(locale: locale)
             try await Self.install(recognizer.module) {
-                self.lock.withLock { self.downloading = true }
                 let name = Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
                 await onUpdate(.preparing("Getting the \(name) speech files from Apple… (first use only)"))
             }
-            lock.withLock { downloading = false }
-            await Self.keepReserved([locale, await Self.locale()])
-            guard !lock.withLock({ stopRequested }) else {
-                span.end(["outcome": "let go while the speech files downloaded"])
+            let proceed = lock.withLock { () -> Bool in
+                guard !stopRequested else { return false }
+                audioStarted = true
+                return true
+            }
+            guard proceed else {
+                span.end(["outcome": "let go before audio started"])
                 return
             }
             let analyzer = SpeechAnalyzer(modules: [recognizer.module])
@@ -132,7 +135,7 @@ public final class VoiceTranscriber: @unchecked Sendable {
             }
             let results = Task { [weak self] in
                 do {
-                    for try await result in recognizer.results {
+                    for try await result in recognizer.results() {
                         guard let self else { return }
                         let text = result.text
                         let heard: String = self.lock.withLock {
@@ -187,8 +190,11 @@ public final class VoiceTranscriber: @unchecked Sendable {
     @discardableResult
     public func finish() async -> String {
         let span = UsageLog.span("voice.finish")
-        requestStop()
-        let setup = lock.withLock { downloading ? nil : setupTask }
+        let setup = lock.withLock { () -> Task<Void, Never>? in
+            stopRequested = true
+            return audioStarted ? setupTask : nil
+        }
+        stopMicrophone()
         await setup?.value
         let (analyzer, results) = lock.withLock { (self.analyzer, self.resultsTask) }
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
@@ -203,18 +209,19 @@ public final class VoiceTranscriber: @unchecked Sendable {
     /// locale (English), else `DictationTranscriber`; both give live (volatile) results.
     struct Recognizer {
         let module: any SpeechModule
-        let results: AsyncThrowingStream<(text: String, isFinal: Bool), Error>
+        /// Starts reading results when called, so a setup that stops early starts no task.
+        let results: @Sendable () -> AsyncThrowingStream<(text: String, isFinal: Bool), Error>
     }
 
     static func makeRecognizer(locale: Locale) async -> Recognizer {
         if await SpeechTranscriber.supportedLocales.contains(where: { $0.identifier == locale.identifier }) {
             let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [],
                                                 reportingOptions: [.volatileResults], attributeOptions: [])
-            return Recognizer(module: transcriber, results: relay(transcriber.results) { (String($0.text.characters), $0.isFinal) })
+            return Recognizer(module: transcriber, results: { relay(transcriber.results) { (String($0.text.characters), $0.isFinal) } })
         }
         let dictation = DictationTranscriber(locale: locale, contentHints: [.shortForm], transcriptionOptions: [.punctuation],
                                              reportingOptions: [.volatileResults], attributeOptions: [])
-        return Recognizer(module: dictation, results: relay(dictation.results) { (String($0.text.characters), $0.isFinal) })
+        return Recognizer(module: dictation, results: { relay(dictation.results) { (String($0.text.characters), $0.isFinal) } })
     }
 
     private static func relay<S: AsyncSequence & Sendable>(
@@ -242,15 +249,6 @@ public final class VoiceTranscriber: @unchecked Sendable {
         }
     }
 
-    /// Releases Summon's speech-language reservations other than `keep`, because macOS allows only
-    /// `maximumReservedLocales` (5 here) and switching languages would otherwise use them up.
-    static func keepReserved(_ keep: [Locale]) async {
-        let kept = Set(keep.map(\.identifier))
-        for reserved in await AssetInventory.reservedLocales where !kept.contains(reserved.identifier) {
-            _ = await AssetInventory.release(reservedLocale: reserved)
-        }
-    }
-
     /// Transcribes an audio file with the same recognizer setup, for the live test
     /// (`SUMMON_RUN_VOICE_LIVE=1`), which cannot use the microphone without a person.
     static func transcribe(file url: URL, locale: Locale) async throws -> String {
@@ -263,7 +261,7 @@ public final class VoiceTranscriber: @unchecked Sendable {
         let collect = Task { () throws -> String in
             var finalized = ""
             var latest = ""
-            for try await result in recognizer.results {
+            for try await result in recognizer.results() {
                 if result.isFinal { finalized += result.text; latest = "" } else { latest = result.text }
             }
             return finalized + latest
