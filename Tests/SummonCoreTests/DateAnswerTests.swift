@@ -62,5 +62,8 @@ final class DateAnswerTests: XCTestCase {
         let farFuture = try XCTUnwrap(answer("what day is 1 January 2100"))
         XCTAssertTrue(farFuture.title.contains("2100") && farFuture.title.contains("Friday"), farFuture.title)
         XCTAssertNil(answer("what day is 29 feb 2027"), "a date that does not exist gets no answer")
+        XCTAssertNil(answer("what day is 02/29/2027"), "month-first, not a leap year")
+        XCTAssertNil(answer("what day is 29/02/27"), "two-digit year, not a leap year")
+        XCTAssertTrue(try XCTUnwrap(answer("what day is 02/29/2028")).title.contains("Tuesday"))
     }
 }

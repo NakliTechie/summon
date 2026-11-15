@@ -77,6 +77,10 @@ public final class WebSearchLifecycleController {
     /// Launch and re-enable: restore a stopped backend the user left enabled.
     /// A disabled preference inspects nothing.
     public func reconcileIfEnabled() {
+        reconcileIfEnabled(fromRecovery: false)
+    }
+
+    private func reconcileIfEnabled(fromRecovery: Bool) {
         guard preferenceEnabled else {
             refreshStatus()
             return
@@ -92,7 +96,11 @@ public final class WebSearchLifecycleController {
                 case .preferenceOff, .cancelled: break
                 case .notManaged: self.status = .notSetUp
                 case .notOwned: self.status = .notOwned
-                case .alreadyRunning(let baseURL), .recovered(let baseURL, _): self.status = .running(baseURL: baseURL)
+                case .alreadyRunning(let baseURL):
+                    self.status = .running(baseURL: baseURL)
+                    // Nothing was down (a query with no hits), so the next failure may try again at once.
+                    if fromRecovery { self.lastRecovery = nil }
+                case .recovered(let baseURL, _): self.status = .running(baseURL: baseURL)
                 case .unavailable(let reason): self.status = .unavailable(reason)
                 }
             }
@@ -109,7 +117,7 @@ public final class WebSearchLifecycleController {
         if let last = lastRecovery, Date().timeIntervalSince(last) < 60 { return }
         lastRecovery = Date()
         UsageLog.record("web.backend.recover")
-        reconcileIfEnabled()
+        reconcileIfEnabled(fromRecovery: true)
     }
 
     /// Preference toggle: on restores, off stops (container and data kept).

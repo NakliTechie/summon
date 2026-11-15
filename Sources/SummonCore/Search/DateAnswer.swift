@@ -93,7 +93,7 @@ public enum DateAnswer {
         // The detected span must be most of the text, so "what day is my dentist" stays unanswered.
         guard Double(match.range.length) >= Double((text as NSString).length) * 0.6 else { return nil }
         // NSDataDetector turns "29 feb" into 1 March in a non-leap year, so read that day from the text.
-        let leapDay = #"\b29(?:st|nd|rd|th)?\s+(?:of\s+)?feb|\bfeb\w*\.?\s+29(?:st|nd|rd|th)?\b|\b29[/.\-]0?2\b"#
+        let leapDay = #"\b29(?:st|nd|rd|th)?\s+(?:of\s+)?feb|\bfeb\w*\.?\s+29(?:st|nd|rd|th)?\b|\b29[/.\-]0?2\b|\b0?2[/.\-]29\b"#
         let wanted = text.range(of: leapDay, options: .regularExpression) != nil
             ? DateComponents(month: 2, day: 29)
             : calendar.dateComponents([.month, .day], from: date)
@@ -107,7 +107,8 @@ public enum DateAnswer {
             return exact
         }
         guard text.range(of: #"'\d{2}\b|\b\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2}\b"#, options: .regularExpression) == nil else {
-            return date
+            // A two-digit year is left to the detector, but a day that year lacks gets no answer.
+            return calendar.dateComponents([.month, .day], from: date) == wanted ? date : nil
         }
         let today = calendar.startOfDay(for: now)
         let start = calendar.component(.year, from: now)
