@@ -106,7 +106,7 @@ final class VoiceTranscriberLiveTests: XCTestCase {
         struct Failed: Error {}
         let turns = SpeechReservations()
         do {
-            try await turns.takeTurn(within: .seconds(1), stillWanted: { true }) { throw Failed() }
+            try await turns.takeTurn(within: .seconds(1), stillWanted: { true }, { throw Failed() })
             XCTFail("the work's error reaches the caller")
         } catch is Failed {}
         let next = await turns.acquire(within: .milliseconds(200))

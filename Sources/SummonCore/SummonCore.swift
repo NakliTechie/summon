@@ -696,7 +696,7 @@ public final class SummonCore: @unchecked Sendable {
 
 public enum SummonVersion {
     /// Single product version — packaging (cask, Info.plist, release zip) must match.
-    public static let string = "0.9.3"
+    public static let string = "0.9.4"
 }
 
 extension SummonCore {

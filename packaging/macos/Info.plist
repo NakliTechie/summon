@@ -23,9 +23,9 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Summon turns your speech into launcher text with Apple's on-device speech recognition. Audio stays on this Mac.</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.9.3</string>
+	<string>0.9.4</string>
 	<key>CFBundleVersion</key>
-	<string>0.9.3</string>
+	<string>0.9.4</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
