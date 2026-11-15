@@ -3,6 +3,32 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.9.2 — 2026-11-15
+
+Voice into the launcher, shortcuts you can change, and web answers that name their source.
+
+### Added
+- **Voice into the launcher (macOS 26).** Hold ⌥Space past a moment to speak; the search field
+  fills as you talk, and nothing runs until you press Enter. A tap still just opens the launcher.
+  Settings › General can give voice a key of its own (held, or pressed to start and stop) or turn
+  it off. Apple's on-device speech recognition does the transcription: audio stays on this Mac, the
+  microphone is open only while you listen, and listening stops after 60 s.
+- **Shortcuts you can change.** Settings › General records new keys for the launcher, clipboard
+  history and Smart Paste. A key without ⌘, ⌥ or ⌃, a clash with another Summon shortcut, or a
+  window-layout key is refused, and a key another app holds is reported in its row.
+- **Web answers name their source.** Summon checks which result states the answer and adds
+  "From: <title> (<site>)", or says that no result states it. The model is not trusted to cite.
+
+### Changed
+- The usage log deletes lines older than 30 days, keeps its files owner-only, and never joins two
+  lines. Test runs no longer write to it.
+
+### Fixed
+- Smart Paste's check of copied numbers is stricter: a fraction, range, negative, decimal or
+  currency the copied text does not state is no longer filled, while phones in dotted, bracketed
+  and UK "(0)" forms still match.
+- A test or scratch run of Summon can no longer start, stop or remove your real SearXNG.
+
 ## 0.9.1 — 2026-11-15
 
 Date questions answered on the Mac, and web search that restarts its own SearXNG.
