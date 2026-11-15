@@ -51,6 +51,26 @@ final class WebAnswerSourceTests: XCTestCase {
         XCTAssertEqual(line, "From: Prime Minister of India (pmindia.gov.in)")
     }
 
+    /// Codex review 2026-11-15 of 8127d9c.
+    func testATieGoesToTheResultThatStatesTheWholeAnswer() {
+        let race = [WebHit(title: "Race preview", url: "https://a.example/preview", snippet: "Alice withdrew before the race."),
+                    WebHit(title: "Race report", url: "https://b.example/report", snippet: "Alice won the race.")]
+        XCTAssertEqual(WebAnswerSource.line(answer: "Alice won the race.", question: "Who won the race?", hits: race),
+                       "From: Race report (b.example)")
+    }
+
+    func testANegationThatIsNotAboutAnsweringKeepsTheSource() {
+        let race = [WebHit(title: "Race report", url: "https://b.example/report", snippet: "Alice won the race.")]
+        XCTAssertNotNil(WebAnswerSource.line(answer: "The sources do not disagree: Alice won the race.",
+                                             question: "Who won the race?", hits: race))
+    }
+
+    func testAResultStatingTooLittleOfTheAnswerIsNotNamed() {
+        let line = WebAnswerSource.line(answer: "Indira Gandhi, daughter of Jawaharlal Nehru, served from 1966.",
+                                        question: question, hits: [hits[1]])
+        XCTAssertEqual(line, "No result above states this answer; check it before relying on it.")
+    }
+
     func testThePromptAsksForACountingCaveat() {
         XCTAssertTrue(WebEnrich.enrichPrompt(question: question, hits: hits).contains("how something is counted"))
     }

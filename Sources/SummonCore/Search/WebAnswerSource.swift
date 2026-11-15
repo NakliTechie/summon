@@ -13,13 +13,23 @@ public enum WebAnswerSource {
         let asked = Set(words(question))
         let distinctive = Set(words(answer)).subtracting(asked).subtracting(stopWords)
         guard !distinctive.isEmpty else { return nil }
-        var best: (index: Int, score: Int)?
+        // Most distinctive words first; on a tie, most of the answer's words in all (so "Alice won the
+        // race" goes to the result saying she won, not the one saying she withdrew). The named result
+        // must state at least half the distinctive words.
+        let answerWords = Set(words(answer)).subtracting(stopWords)
+        var best: (index: Int, score: Int, overall: Int)?
         for (index, hit) in hits.enumerated() {
             let stated = Set(words(hit.title + " " + hit.snippet))
             let score = distinctive.intersection(stated).count
-            if score > (best?.score ?? 0) { best = (index, score) }
+            let overall = answerWords.intersection(stated).count
+            guard score > 0 else { continue }
+            if best.map({ score > $0.score || (score == $0.score && overall > $0.overall) }) ?? true {
+                best = (index, score, overall)
+            }
         }
-        guard let best else { return "No result above states this answer; check it before relying on it." }
+        guard let best, best.score * 2 >= distinctive.count else {
+            return "No result above states this answer; check it before relying on it."
+        }
         let hit = hits[best.index]
         let site = URL(string: hit.url)?.host.map { $0.hasPrefix("www.") ? String($0.dropFirst(4)) : $0 }
         return "From: \(hit.title)" + (site.map { " (\($0))" } ?? "")
@@ -28,7 +38,8 @@ public enum WebAnswerSource {
     /// "The sources do not say …": there is no answer to attribute.
     static func saysSourcesDoNotAnswer(_ answer: String) -> Bool {
         answer.range(
-            of: #"\b(?:sources?|results?)\b[^.]{0,40}\b(?:do not|don't|does not|doesn't|did not|cannot|can't)\b"#
+            of: #"\b(?:sources?|results?)\b[^.]{0,40}\b(?:do not|don't|does not|doesn't|did not|cannot|can't)\s+"#
+                + #"(?:\w+\s+){0,2}(?:answer|say|mention|state|contain|include|provide|specify|give|tell)\b"#
                 + #"|\bno (?:information|answer|mention)\b|\bnot (?:mentioned|stated|answered)\b"#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil

@@ -191,6 +191,7 @@ public enum UsageLog {
             fileURL.deletingPathExtension().lastPathComponent + ".1." + fileURL.pathExtension
         )
         rename(fileURL.path, old.path) // replaces an earlier archive atomically
+        chmod(old.path, 0o600) // the archive stays owner-only even if the current file was not
     }
 
     /// Delete lines older than `keepDays` from the log and its archive, under the lock.

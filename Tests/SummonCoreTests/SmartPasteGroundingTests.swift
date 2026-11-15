@@ -111,6 +111,18 @@ final class SmartPasteGroundingTests: XCTestCase {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("+1 415.555.0198", in: "Call 415.555.0198"), "dotted phones still match")
     }
 
+    /// Codex review 2026-11-15 of a8fc6b5.
+    func testAmountsNeverTakeThePhoneRuleAndCurrenciesMustAgree() {
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("$1234567", in: "There are 1234567 applicants"))
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1,,234567", in: "Total 1234567"))
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234567", in: "Balance -1234567"), "a negative in the text")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1234567890", in: "Reading 1234567.890"), "a decimal in the text")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("0123456789", in: "Tel 01.23.45.67.89"), "a French dotted phone")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("€50", in: "Fee: 50 INR"), "a different currency")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("₹50", in: "Budget: 50 Indian rupees"))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("$120,000", in: "Base salary 120000 USD"))
+    }
+
     func testMatchesADateInAnotherFormat() {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("2021-03", in: bio))
         XCTAssertTrue(SmartPasteGrounding.isGrounded("03/2021", in: bio))
