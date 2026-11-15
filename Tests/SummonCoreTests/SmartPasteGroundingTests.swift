@@ -95,7 +95,20 @@ final class SmartPasteGroundingTests: XCTestCase {
         XCTAssertTrue(SmartPasteGrounding.isGrounded("\u{2212}123", in: "Balance: -123"))
         XCTAssertTrue(SmartPasteGrounding.isGrounded("+44 (0)20 7123 4567", in: "Tel +44 20 7123 4567"), "a trunk the value adds")
         XCTAssertTrue(SmartPasteGrounding.isGrounded("50%", in: "Discount 50 percent"))
-        XCTAssertTrue(SmartPasteGrounding.isGrounded("₹1,20,000", in: "CTC 120000"), "a currency sign before Indian grouping")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("₹1,20,000", in: "CTC 120000 INR"), "a currency sign before Indian grouping")
+    }
+
+    /// Codex review 2026-11-15 of 0c8f23c.
+    func testSignsDecimalsGroupingAndUnitsStayExact() {
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("-1234567", in: "Balance 1234567"), "a long negative is not a phone")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("123456789", in: "Reading 1234567.89"), "an amount's digits are not a phone")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("₹-123", in: "Balance 123"), "a minus after the currency sign")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("₹-123", in: "Balance Rs -123"))
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("1,,2", in: "Total 12"), "commas must group")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("50%", in: "There are 50 applicants"), "a percent needs a percent")
+        XCTAssertFalse(SmartPasteGrounding.isGrounded("$50", in: "There are 50 applicants"), "an amount needs a currency")
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("$50", in: "Fee: 50 USD"))
+        XCTAssertTrue(SmartPasteGrounding.isGrounded("+1 415.555.0198", in: "Call 415.555.0198"), "dotted phones still match")
     }
 
     func testMatchesADateInAnotherFormat() {

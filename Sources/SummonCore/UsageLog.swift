@@ -149,9 +149,15 @@ public enum UsageLog {
             return // a debug log may drop a line; it must not race a rotation
         }
         defer { flock(lock, LOCK_UN); close(lock) }
-        let descriptor = open(fileURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o600)
+        let descriptor = open(fileURL.path, O_RDWR | O_APPEND | O_CREAT, 0o600)
         guard descriptor >= 0 else { return }
         defer { close(descriptor) }
+        fchmod(descriptor, 0o600) // a file that existed before (a `SUMMON_USAGE_LOG` path) becomes owner-only
+        // A file that does not end in a newline (a crash mid-line, an edit) gets one first, so this
+        // line never joins the last one.
+        let end = lseek(descriptor, 0, SEEK_END)
+        var last: UInt8 = 0x0A
+        if end > 0, pread(descriptor, &last, 1, end - 1) == 1, last != 0x0A { line.insert(0x0A, at: 0) }
         line.withUnsafeBytes { bytes in
             guard var next = bytes.baseAddress else { return }
             var left = bytes.count

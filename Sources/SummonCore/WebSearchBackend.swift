@@ -128,14 +128,20 @@ public struct WebSearchBackend: Sendable {
         return String(cString: directory)
     }
 
-    /// A scratch store (`SUMMON_CONTAINER_DIR`) run with the real `HOME` reads the real recorded
-    /// URL, so it looks like the owner of the real `summon-searxng`. On 2026-10-30 a test run set
-    /// up that way removed the live backend. A scratch run must set `HOME` to scratch as well.
-    static func isScratchStoreWithRealHome(environment: [String: String], accountHome: String?) -> Bool {
-        guard let store = environment["SUMMON_CONTAINER_DIR"], !store.isEmpty, let accountHome else { return false }
-        let home = environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
+    /// The container name is global to the runtime, so a test or scratch run must never change
+    /// the real `summon-searxng`. On 2026-10-30 a run with a scratch store (`SUMMON_CONTAINER_DIR`)
+    /// and the real `HOME` read the real recorded URL and removed the live backend; a scratch `HOME`
+    /// with its own recorded URL would do the same. A run is scratch when it sets a scratch store,
+    /// when `HOME` is not the account's home, or when the account's home is unknown. A scratch run
+    /// may change a container only through stand-in tools (`SUMMON_TOOL_DIRS`), as `make cli-e2e` does.
+    static func scratchRunRefusal(environment: [String: String], accountHome: String?) -> String? {
+        if let tools = environment["SUMMON_TOOL_DIRS"], !tools.isEmpty { return nil }
         func resolved(_ path: String) -> String { URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path }
-        return resolved(home) == resolved(accountHome)
+        let home = environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
+        let scratchStore = !(environment["SUMMON_CONTAINER_DIR"] ?? "").isEmpty
+        guard scratchStore || accountHome.map({ resolved(home) != resolved($0) }) ?? true else { return nil }
+        return "this run uses a scratch store or HOME, and \(containerName) belongs to the whole container runtime, "
+            + "so it is left untouched; run Summon with your own HOME, or set SUMMON_TOOL_DIRS to stand-in tools"
     }
 
     /// Real subprocesses, real tool lookup, real discovery file. The health check
@@ -255,6 +261,9 @@ public struct WebSearchBackend: Sendable {
         backoff: [Duration] = [.seconds(2), .seconds(5)]
     ) async -> ReconcileOutcome {
         guard enabled else { return .preferenceOff }
+        if let refusal = Self.scratchRunRefusal(environment: environment, accountHome: accountHome) {
+            return .unavailable(reason: refusal)
+        }
         var state = await inspect()
         if isOwned, case .runtimeDown(.container) = state,
            let tool = locator.locate(Runtime.container.rawValue) {
@@ -377,6 +386,9 @@ public struct WebSearchBackend: Sendable {
     /// re-enable. A paused container is unpaused first so the stop lands. A
     /// missing container is not an error.
     public func stop() async -> Outcome {
+        if let refusal = Self.scratchRunRefusal(environment: environment, accountHome: accountHome) {
+            return Outcome(ok: false, detail: refusal)
+        }
         let state = await inspect()
         switch state {
         case .running(let runtime, _), .unpublished(let runtime), .degraded(let runtime, _):
@@ -410,12 +422,8 @@ public struct WebSearchBackend: Sendable {
     /// Uses the runtime's own removal commands; never deletes runtime storage
     /// directories directly.
     public func remove(purgeImage: Bool) async -> Outcome {
-        if Self.isScratchStoreWithRealHome(environment: environment, accountHome: accountHome) {
-            return Outcome(
-                ok: false,
-                detail: "SUMMON_CONTAINER_DIR points at a scratch store but HOME is your real home folder, so this "
-                    + "run would remove your real \(Self.containerName); refusing. Set HOME to the scratch folder too."
-            )
+        if let refusal = Self.scratchRunRefusal(environment: environment, accountHome: accountHome) {
+            return Outcome(ok: false, detail: refusal)
         }
         let state = await inspect()
         var runtime: Runtime?

@@ -79,13 +79,26 @@ public enum SmartPasteGrounding {
         // so "1234.56" never grounds "123456", "-123" never grounds "123", and "234" is not
         // read out of "1,234". Invalid grouping ("12,34") never joins.
         // Only a value shaped like one number takes this path: "1/2" or "10:30" is not the number 12 or 1030.
-        let numeric = (value.trimmingCharacters(in: .whitespaces).hasPrefix("-") ? "-" : "")
-            + value.filter { $0.isASCIIDigit || $0 == "." }
+        // A minus anywhere before the first digit ("-123", "₹-123") makes it negative. A "%" or a currency
+        // sign in the value needs a unit beside the number in the text: "50 applicants" is not "50%" or "$50".
+        let negative = value.prefix { !$0.isASCIIDigit }.contains("-")
+        let numeric = (negative ? "-" : "") + value.filter { $0.isASCIIDigit || $0 == "." }
         let token = #"(?<![\d.,])-?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(?![\d])"#
-        if isSingleNumber(value),
-           matches(of: token, in: source).contains(where: { $0.replacingOccurrences(of: ",", with: "") == numeric }) {
-            return true
+        if isSingleNumber(value) {
+            let unit: String? = value.contains("%") ? #"^\s*(?:%|percent\b|per cent\b)"#
+                : value.range(of: #"\p{Sc}"#, options: .regularExpression) != nil ? currencyNearby : nil
+            for (text, before, after) in matchesWithContext(of: token, in: source)
+            where text.replacingOccurrences(of: ",", with: "") == numeric {
+                guard let unit else { return true }
+                if value.contains("%") ? after.range(of: unit, options: [.regularExpression, .caseInsensitive]) != nil
+                    : (before + " " + after).range(of: unit, options: [.regularExpression, .caseInsensitive]) != nil {
+                    return true
+                }
+            }
         }
+        // A negative or decimal value is an amount, never a phone: the digit match below would drop its
+        // sign or point ("-1234567" against "1234567", "123456789" against "1234567.89").
+        guard !negative, !(isSingleNumber(value) && value.contains(".")) else { return false }
         // A formatted number ("+91 55555 01234", "(415) 555-0198", "+44 (0)20 7123 4567"): digits
         // joined by spaces, dots, dashes or brackets. A comma never joins here ("12, 34", "12,34"),
         // and under 7 digits only a single group counts, so no number is built from two.
@@ -95,7 +108,8 @@ public enum SmartPasteGrounding {
         // and "+44 (0)20 …" matches "+44 20 …".
         let international = value.trimmingCharacters(in: .whitespaces).hasPrefix("+")
         let valueDigits = Set([value, withoutTrunk(value)].map { $0.filter(\.isASCIIDigit) })
-        for span in matches(of: #"\d(?:\d|[ \t\u00A0\u202F().\-–/])*\d"#, in: source) {
+        for span in matches(of: #"\d(?:\d|[ \t\u00A0\u202F().\-–/])*\d"#, in: source)
+        where span.range(of: #"\d\.\d{1,2}$"#, options: .regularExpression) == nil { // "1234567.89" is an amount
             let variants = Set([span, withoutTrunk(span)].map { $0.filter(\.isASCIIDigit) })
             for spanDigits in variants where spanDigits.count >= 7 {
                 for digits in valueDigits where numberMatches(digits, spanDigits, international: international) {
@@ -123,8 +137,27 @@ public enum SmartPasteGrounding {
     /// One amount or count: an optional sign and currency sign or percent around digits with
     /// commas and one decimal point. Not a fraction, time, range or phone.
     private static func isSingleNumber(_ value: String) -> Bool {
-        value.range(of: #"^\s*-?\s*\p{Sc}?\s*-?\d[\d,]*(?:\.\d+)?\s*(?:\p{Sc}|%)?\s*$"#,
-                    options: .regularExpression) != nil
+        let grouped = #"(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)"#
+        return value.range(of: #"^\s*-?\s*\p{Sc}?\s*-?"# + grouped + #"(?:\.\d+)?\s*(?:\p{Sc}|%)?\s*$"#,
+                           options: .regularExpression) != nil
+    }
+
+    /// A currency sign or name within a few characters of the number.
+    private static let currencyNearby =
+        #"\p{Sc}|\b(?:usd|inr|eur|gbp|aud|cad|sgd|rs\.?|rupees?|dollars?|euros?|pounds?|lakhs?|crores?)\b"#
+
+    /// Each match with up to 12 characters of text on either side.
+    private static func matchesWithContext(of pattern: String, in text: String) -> [(String, String, String)] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.matches(in: text, range: range).compactMap { match -> (String, String, String)? in
+            guard let found = Range(match.range, in: text) else { return nil }
+            let start = text.index(found.lowerBound, offsetBy: -12, limitedBy: text.startIndex) ?? text.startIndex
+            let end = text.index(found.upperBound, offsetBy: 12, limitedBy: text.endIndex) ?? text.endIndex
+            let before = text[start..<found.lowerBound]
+            let after = text[found.upperBound..<end]
+            return (String(text[found]), String(before), String(after))
+        }
     }
 
     // MARK: Dates

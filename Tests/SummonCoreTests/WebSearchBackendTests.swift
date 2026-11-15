@@ -85,7 +85,7 @@ final class WebSearchBackendTests: XCTestCase {
         health: @escaping @Sendable (String) async -> Bool = { _ in true },
         readinessPolls: Int = 3,
         onSleep: @escaping @Sendable () -> Void = {},
-        environment: [String: String] = [:]
+        environment: [String: String] = ["HOME": "/Users/owner"]
     ) -> WebSearchBackend {
         WebSearchBackend(
             runner: runner,
@@ -437,19 +437,34 @@ final class WebSearchBackendTests: XCTestCase {
                                   environment: ["SUMMON_CONTAINER_DIR": "/tmp/scratch/container", "HOME": "/Users/owner"])
         let outcome = await backend.remove(purgeImage: false)
         XCTAssertFalse(outcome.ok)
-        XCTAssertTrue(outcome.detail.contains("Set HOME to the scratch folder"), outcome.detail)
+        XCTAssertTrue(outcome.detail.contains("left untouched"), outcome.detail)
         XCTAssertEqual(runner.count("container", ["rm"]), 0)
         XCTAssertEqual(cleared.value, 0, "the recorded URL stays")
     }
 
-    func testScratchStoreGuardAllowsAScratchHomeAndTheNormalApp() {
-        let guarded = { WebSearchBackend.isScratchStoreWithRealHome(environment: $0, accountHome: "/Users/owner") }
-        XCTAssertTrue(guarded(["SUMMON_CONTAINER_DIR": "/tmp/s/container", "HOME": "/Users/owner/"]))
-        XCTAssertFalse(guarded(["SUMMON_CONTAINER_DIR": "/tmp/s/container", "HOME": "/tmp/s"]), "cli-e2e sets both")
-        XCTAssertFalse(guarded(["HOME": "/Users/owner"]), "the app sets no scratch store")
-        XCTAssertFalse(guarded(["SUMMON_CONTAINER_DIR": "", "HOME": "/Users/owner"]))
-        XCTAssertFalse(WebSearchBackend.isScratchStoreWithRealHome(
-            environment: ["SUMMON_CONTAINER_DIR": "/tmp/s"], accountHome: nil))
+    /// Codex review 2026-11-15: a scratch HOME with its own recorded URL, stop and reconcile too.
+    func testAScratchRunChangesNoContainerWithRealTools() async {
+        let runner = containerWorld(state: Box("running"))
+        let backend = makeBackend(runner: runner, tools: ["container"], environment: ["HOME": "/tmp/s"])
+        let removed = await backend.remove(purgeImage: false)
+        XCTAssertFalse(removed.ok)
+        let stopped = await backend.stop()
+        XCTAssertFalse(stopped.ok)
+        guard case .unavailable = await backend.reconcile(enabled: true) else { return XCTFail("reconcile ran") }
+        XCTAssertEqual(runner.count("container", ["rm"]) + runner.count("container", ["stop"])
+                       + runner.count("container", ["start"]) + runner.count("container", ["system"]), 0)
+    }
+
+    func testScratchRunRule() {
+        let refusal = { WebSearchBackend.scratchRunRefusal(environment: $0, accountHome: "/Users/owner") }
+        XCTAssertNotNil(refusal(["SUMMON_CONTAINER_DIR": "/tmp/s/container", "HOME": "/Users/owner/"]))
+        XCTAssertNotNil(refusal(["HOME": "/tmp/s"]), "a scratch HOME")
+        XCTAssertNotNil(WebSearchBackend.scratchRunRefusal(environment: ["HOME": "/Users/owner"], accountHome: nil),
+                        "an unknown account home fails closed")
+        XCTAssertNil(refusal(["HOME": "/Users/owner"]), "the app as the user runs it")
+        XCTAssertNil(refusal(["SUMMON_CONTAINER_DIR": "", "HOME": "/Users/owner"]))
+        XCTAssertNil(refusal(["SUMMON_CONTAINER_DIR": "/tmp/s/container", "HOME": "/tmp/s", "SUMMON_TOOL_DIRS": "/x/fake-docker"]),
+                     "cli-e2e: scratch, with stand-in tools")
     }
 
     func testRemoveWithPurgeImageUsesTheRuntimeImageCommand() async {
