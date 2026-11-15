@@ -559,8 +559,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     query: prompt, provider: provider, allowOnce: allowOnce, actor: .user
                 ) {
                 case let .answer(text, rung, sources, note):
-                    // The configured backend failed: try to bring it back for the next query.
-                    if note != nil { await MainActor.run { self?.webLifecycle?.recoverAfterFailedQuery() } }
+                    // Summon's own SearXNG was found stopped or failed: bring it back for the next query.
+                    if WebSearchBackend.shouldRecover(
+                        configuredBaseURL: core.webConfig.baseURL,
+                        recordedURL: SearXNGDiscovery.discoveredBaseURL(),
+                        providerFailed: note != nil,
+                        recordedStale: verified.note != nil
+                    ) {
+                        await MainActor.run { self?.webLifecycle?.recoverAfterFailedQuery() }
+                    }
                     // A fallback answer carries the failed provider in `note`, and a
                     // stale recorded backend in `verified.note`; show them with the
                     // answer rather than presenting the floor as the provider.

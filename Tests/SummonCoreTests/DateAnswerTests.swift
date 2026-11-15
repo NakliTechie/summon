@@ -50,4 +50,13 @@ final class DateAnswerTests: XCTestCase {
         XCTAssertNil(answer("how to get to france from japan"))
         XCTAssertNil(answer("safari"))
     }
+
+    /// Codex review 2026-11-15.
+    func testPastQuestionsLookBackLeapDaysAndTwoDigitYears() throws {
+        XCTAssertEqual(try XCTUnwrap(answer("days since 1 nov")).title.hasPrefix("14 days since"), true)
+        XCTAssertTrue(try XCTUnwrap(answer("what day was 1 nov")).title.contains("2026"))
+        let leap = try XCTUnwrap(answer("what day is 29 feb"))
+        XCTAssertTrue(leap.title.contains("29") && leap.title.contains("2028"), leap.title)
+        XCTAssertTrue(try XCTUnwrap(answer("what day is 04/01/30")).title.contains("2030"))
+    }
 }

@@ -497,6 +497,28 @@ extension WebSearchBackend {
         )
     }
 
+    /// Whether a web query's failure should restart Summon's own SearXNG. Only the backend
+    /// this profile set up (a recorded URL) is ever restarted, and only when it is the one
+    /// that failed: Summon found it stopped (`recordedStale`), or the configured provider
+    /// that failed is that same URL. A failing custom URL never starts the local backend.
+    public static func shouldRecover(
+        configuredBaseURL: String,
+        recordedURL: String?,
+        providerFailed: Bool,
+        recordedStale: Bool
+    ) -> Bool {
+        guard let recordedURL else { return false }
+        if recordedStale { return true }
+        guard providerFailed else { return false }
+        func key(_ url: String) -> String {
+            var text = url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            while text.hasSuffix("/") { text.removeLast() }
+            return text
+        }
+        let configured = key(configuredBaseURL)
+        return configured.isEmpty || configured == key(recordedURL)
+    }
+
     /// Last non-empty lines of a subprocess transcript, bounded for a status line.
     public static func tail(_ output: String, lines: Int = 3, maxLength: Int = 240) -> String {
         let kept = output

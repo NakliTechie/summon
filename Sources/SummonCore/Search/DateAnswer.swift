@@ -5,20 +5,21 @@ import Foundation
 /// model or the web: on 2026-11-15 Apple FM said 20 November 2026 is a Saturday (it is a Friday)
 /// and the web route returned Wikipedia pages about other days.
 public enum DateAnswer {
-    private enum Question { case weekday, daysUntil, daysSince }
+    private enum Question { case weekday, pastWeekday, daysUntil, daysSince }
 
     /// A calculator row for a calendar question, or nil when the query is not one.
     public static func result(for query: String, now: Date = Date(), calendar: Calendar = .current) -> SearchResult? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let (question, rest) = parse(trimmed),
-              let date = detectDate(in: rest, now: now, calendar: calendar) else { return nil }
+              let date = detectDate(in: rest, now: now, calendar: calendar,
+                                    pastWhenYearless: question == .daysSince || question == .pastWeekday) else { return nil }
         let day = calendar.startOfDay(for: date)
         let today = calendar.startOfDay(for: now)
         let offset = calendar.dateComponents([.day], from: today, to: day).day ?? 0
         let full = format(day, calendar: calendar)
         let title: String
         switch question {
-        case .weekday:
+        case .weekday, .pastWeekday:
             title = full
         case .daysUntil, .daysSince:
             title = "\(abs(offset)) \(abs(offset) == 1 ? "day" : "days") \(offset >= 0 ? "until" : "since") \(full)"
@@ -57,8 +58,10 @@ public enum DateAnswer {
     private static func parse(_ query: String) -> (Question, String)? {
         let lower = query.lowercased()
         let patterns: [(String, Question)] = [
-            (#"^(?:what|which)\s+day(?:\s+of\s+the\s+week)?\s+(?:is|was|will\s+be|falls\s+on)\s+(.+)$"#, .weekday),
-            (#"^(?:what|which)\s+weekday\s+(?:is|was|will\s+be)\s+(.+)$"#, .weekday),
+            (#"^(?:what|which)\s+day(?:\s+of\s+the\s+week)?\s+was\s+(.+)$"#, .pastWeekday),
+            (#"^(?:what|which)\s+weekday\s+was\s+(.+)$"#, .pastWeekday),
+            (#"^(?:what|which)\s+day(?:\s+of\s+the\s+week)?\s+(?:is|will\s+be|falls\s+on)\s+(.+)$"#, .weekday),
+            (#"^(?:what|which)\s+weekday\s+(?:is|will\s+be)\s+(.+)$"#, .weekday),
             (#"^(.+?)\s+is\s+(?:what|which)\s+day\??$"#, .weekday),
             (#"^(?:day\s+of\s+(?:the\s+)?week\s+(?:for|of)|weekday\s+(?:for|of))\s+(.+)$"#, .weekday),
             (#"^(?:how\s+many\s+)?days\s+(?:until|till|til|to|before)\s+(.+)$"#, .daysUntil),
@@ -74,9 +77,10 @@ public enum DateAnswer {
         return nil
     }
 
-    /// The date named in `text`. A date with no year is the next one on or after today
-    /// ("25 dec" in November is this year's; "1 jan" is next year's).
-    private static func detectDate(in text: String, now: Date, calendar: Calendar) -> Date? {
+    /// The date named in `text`. A date with no year is its next occurrence on or after today
+    /// ("25 dec" in November is this year's, "1 jan" next year's), or its latest occurrence on or
+    /// before today for "days since" and "what day was". "29 feb" goes to the nearest leap year.
+    private static func detectDate(in text: String, now: Date, calendar: Calendar, pastWhenYearless: Bool) -> Date? {
         switch text {
         case "today": return now
         case "tomorrow": return calendar.date(byAdding: .day, value: 1, to: now)
@@ -88,13 +92,25 @@ public enum DateAnswer {
               let date = match.date else { return nil }
         // The detected span must be most of the text, so "what day is my dentist" stays unanswered.
         guard Double(match.range.length) >= Double((text as NSString).length) * 0.6 else { return nil }
-        let statesYear = text.range(of: #"\b(19|20)\d{2}\b|'\d{2}\b"#, options: .regularExpression) != nil
-        guard !statesYear else { return date }
-        var parts = calendar.dateComponents([.month, .day], from: date)
-        parts.year = calendar.component(.year, from: now)
-        guard let thisYear = calendar.date(from: parts) else { return date }
-        if calendar.startOfDay(for: thisYear) >= calendar.startOfDay(for: now) { return thisYear }
-        parts.year = (parts.year ?? 0) + 1
-        return calendar.date(from: parts) ?? thisYear
+        let year = #"\b(19|20)\d{2}\b|'\d{2}\b|\b\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2}\b"#
+        guard text.range(of: year, options: .regularExpression) == nil else { return date }
+        // NSDataDetector turns "29 feb" into 1 March in a non-leap year, so read that day from the text.
+        let leapDay = #"\b29(?:st|nd|rd|th)?\s+feb|\bfeb\w*\.?\s+29\b|\b29[/.\-]0?2\b"#
+        let wanted = text.range(of: leapDay, options: .regularExpression) != nil
+            ? DateComponents(month: 2, day: 29)
+            : calendar.dateComponents([.month, .day], from: date)
+        let today = calendar.startOfDay(for: now)
+        let start = calendar.component(.year, from: now)
+        let step = pastWhenYearless ? -1 : 1
+        for offset in 0..<9 {
+            var parts = wanted
+            parts.year = start + offset * step
+            // A date that does not exist that year (29 February) rolls into March: skip it.
+            guard let candidate = calendar.date(from: parts),
+                  calendar.dateComponents([.month, .day], from: candidate) == wanted else { continue }
+            let day = calendar.startOfDay(for: candidate)
+            if pastWhenYearless ? day <= today : day >= today { return candidate }
+        }
+        return date
     }
 }

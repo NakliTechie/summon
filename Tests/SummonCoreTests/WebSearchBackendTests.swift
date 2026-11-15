@@ -653,4 +653,21 @@ final class WebSearchBackendTests: XCTestCase {
         let long = String(repeating: "x", count: 500)
         XCTAssertEqual(WebSearchBackend.tail(long).count, 240)
     }
+
+    /// Codex review 2026-11-15: restart only Summon's own SearXNG, and only when it is what failed.
+    func testShouldRecoverOnlyTheRecordedBackendThatFailed() {
+        let local = "http://127.0.0.1:8080/"
+        XCTAssertTrue(WebSearchBackend.shouldRecover(configuredBaseURL: "", recordedURL: local, providerFailed: false, recordedStale: true))
+        XCTAssertTrue(WebSearchBackend.shouldRecover(configuredBaseURL: "http://127.0.0.1:8080", recordedURL: local,
+                                                     providerFailed: true, recordedStale: false))
+        XCTAssertFalse(WebSearchBackend.shouldRecover(configuredBaseURL: "https://search.example.org", recordedURL: local,
+                                                      providerFailed: true, recordedStale: false), "a custom URL failed")
+        XCTAssertFalse(
+            WebSearchBackend.shouldRecover(configuredBaseURL: "", recordedURL: nil, providerFailed: true, recordedStale: true),
+            "never set up from this profile"
+        )
+        XCTAssertFalse(
+            WebSearchBackend.shouldRecover(configuredBaseURL: "", recordedURL: local, providerFailed: false, recordedStale: false)
+        )
+    }
 }
