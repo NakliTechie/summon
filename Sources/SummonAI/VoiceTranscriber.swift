@@ -345,26 +345,56 @@ public final class VoiceTranscriber: @unchecked Sendable {
 /// here). Installing a language reserves it automatically (Apple's `AssetInventory` notes), so
 /// after five languages the next install would fail with `tooManyAssetLocalesAllocated`. Only at
 /// that limit, before a new install, this releases one reservation that is neither the new (chosen)
-/// language nor the automatic one. Installs run strictly one after another (each waits for the
-/// one before it), so freeing a slot and the install that takes it never interleave with another
-/// session's; a session stopped while it waited drops out before touching any reservation.
+/// language nor the automatic one. First-time installs queue one after another, so freeing a
+/// slot and the install that takes it do not interleave with another session's; a session
+/// stopped while it waited drops out before touching any reservation. An installed language skips
+/// the queue, and a queued install waits at most `queueWait` for the one ahead, so a download that
+/// never returns cannot block voice.
 @available(macOS 26.0, *)
 actor SpeechReservations {
     static let shared = SpeechReservations()
     private var tail: Task<Void, Never>?
+    static let queueWait: Duration = .seconds(120)
 
     func install(_ module: any SpeechModule, locale: Locale, keeping keep: [Locale],
                  stillWanted: @escaping @Sendable () -> Bool,
                  beforeDownload: @escaping @Sendable () async -> Void) async throws {
+        if await AssetInventory.status(forModules: [module]) == .installed { return }
         let previous = tail
         let work = Task { () throws in
-            await previous?.value
+            await Self.wait(for: previous, atMost: Self.queueWait)
             guard stillWanted() else { return }
             await Self.makeRoom(for: locale, keeping: keep)
             try await VoiceTranscriber.install(module, beforeDownload: beforeDownload)
         }
         tail = Task { _ = try? await work.value }
         try await work.value
+    }
+
+    /// Waits for `task` to end, or for `limit`, whichever comes first. A task group cannot do this:
+    /// it returns only after every child ends, and awaiting another task's value ignores
+    /// cancellation, so a stuck download would hold the group open. Two detached waiters race to
+    /// resume one continuation instead; the loser's resume is dropped.
+    static func wait(for task: Task<Void, Never>?, atMost limit: Duration) async {
+        guard let task else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = ResumeOnce(continuation)
+            let timer = Task { try? await Task.sleep(for: limit); once.resume() }
+            Task { await task.value; timer.cancel(); once.resume() }
+        }
+    }
+
+    private final class ResumeOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Void, Never>?
+        init(_ continuation: CheckedContinuation<Void, Never>) { self.continuation = continuation }
+        func resume() {
+            let taken = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                defer { continuation = nil }
+                return continuation
+            }
+            taken?.resume()
+        }
     }
 
     private static func makeRoom(for locale: Locale, keeping keep: [Locale]) async {

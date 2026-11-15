@@ -64,4 +64,14 @@ final class VoiceTranscriberLiveTests: XCTestCase {
         XCTAssertFalse(SpeechReservations.same(Locale(identifier: "en_IN"), Locale(identifier: "en_GB")))
         XCTAssertFalse(SpeechReservations.same(Locale(identifier: "en_IN"), Locale(identifier: "hi_IN")))
     }
+
+    /// Codex review of ffc6d42: a download that never returns must not block later sessions.
+    func testAQueuedInstallStopsWaitingAtTheLimit() async throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
+        let stuck = Task { _ = try? await Task.sleep(for: .seconds(3600)) }
+        defer { stuck.cancel() }
+        let start = ContinuousClock.now
+        await SpeechReservations.wait(for: stuck, atMost: .milliseconds(200))
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
+    }
 }

@@ -14,7 +14,9 @@ ad-hoc-signed (not yet Apple-notarized).
   session at once; the download finishes in the background for next time.
 - At macOS's limit of 5 reserved speech languages, installing a new one first releases a spare
   reservation (never the chosen or the automatic language), so a sixth language still works.
-  Language installs run one at a time, so two voice sessions never compete for that slot.
+  First-time language installs run one at a time, so two voice sessions never compete for that
+  slot; an installed language never waits, and a stuck download holds up the next install for at
+  most 2 minutes.
 - Automatic now also covers a Mac set to a language only Apple's dictation recognizer offers
   (Hindi, for example), instead of falling back to US English.
 
