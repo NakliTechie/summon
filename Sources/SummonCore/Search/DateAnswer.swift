@@ -92,13 +92,23 @@ public enum DateAnswer {
               let date = match.date else { return nil }
         // The detected span must be most of the text, so "what day is my dentist" stays unanswered.
         guard Double(match.range.length) >= Double((text as NSString).length) * 0.6 else { return nil }
-        let year = #"\b(19|20)\d{2}\b|'\d{2}\b|\b\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2}\b"#
-        guard text.range(of: year, options: .regularExpression) == nil else { return date }
         // NSDataDetector turns "29 feb" into 1 March in a non-leap year, so read that day from the text.
-        let leapDay = #"\b29(?:st|nd|rd|th)?\s+feb|\bfeb\w*\.?\s+29\b|\b29[/.\-]0?2\b"#
+        let leapDay = #"\b29(?:st|nd|rd|th)?\s+(?:of\s+)?feb|\bfeb\w*\.?\s+29(?:st|nd|rd|th)?\b|\b29[/.\-]0?2\b"#
         let wanted = text.range(of: leapDay, options: .regularExpression) != nil
             ? DateComponents(month: 2, day: 29)
             : calendar.dateComponents([.month, .day], from: date)
+        // A stated four-digit year is used as written: NSDataDetector misreads some ("1 January 2100"
+        // came back as 2027). A two-digit year ("04/01/30", "'30") is left to the detector.
+        if let range = text.range(of: #"\b\d{4}\b"#, options: .regularExpression), let stated = Int(text[range]) {
+            var parts = wanted
+            parts.year = stated
+            guard let exact = calendar.date(from: parts),
+                  calendar.dateComponents([.month, .day], from: exact) == wanted else { return nil } // 29 Feb 2027
+            return exact
+        }
+        guard text.range(of: #"'\d{2}\b|\b\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2}\b"#, options: .regularExpression) == nil else {
+            return date
+        }
         let today = calendar.startOfDay(for: now)
         let start = calendar.component(.year, from: now)
         let step = pastWhenYearless ? -1 : 1

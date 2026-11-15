@@ -555,19 +555,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     core.webConfig.enabled = true
                     _ = try? core.persistWebConfig(actor: .user)
                 }
-                switch try await service.searchAndAnswer(
-                    query: prompt, provider: provider, allowOnce: allowOnce, actor: .user
-                ) {
-                case let .answer(text, rung, sources, note):
-                    // Summon's own SearXNG was found stopped or failed: bring it back for the next query.
+                // Summon's own SearXNG was found stopped, or failed this query: bring it back for the
+                // next one, whatever this query's outcome (answer, no results, or an error).
+                let recover: @Sendable (Bool) async -> Void = { providerFailed in
                     if WebSearchBackend.shouldRecover(
                         configuredBaseURL: core.webConfig.baseURL,
                         recordedURL: SearXNGDiscovery.discoveredBaseURL(),
-                        providerFailed: note != nil,
+                        providerFailed: providerFailed,
                         recordedStale: verified.note != nil
                     ) {
                         await MainActor.run { self?.webLifecycle?.recoverAfterFailedQuery() }
                     }
+                }
+                let outcome: WebSearchOutcome
+                do {
+                    outcome = try await service.searchAndAnswer(
+                        query: prompt, provider: provider, allowOnce: allowOnce, actor: .user
+                    )
+                } catch {
+                    await recover(true)
+                    throw error
+                }
+                switch outcome {
+                case let .answer(text, rung, sources, note):
+                    await recover(note != nil)
                     // A fallback answer carries the failed provider in `note`, and a
                     // stale recorded backend in `verified.note`; show them with the
                     // answer rather than presenting the floor as the provider.
@@ -580,6 +591,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 case let .needsConsent(host):
                     return .needsConsent(host: host)
                 case .noResults:
+                    await recover(true) // a running backend makes this a cheap no-op check
                     return .noResults
                 case .disabled:
                     return .unavailable
