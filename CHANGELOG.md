@@ -12,6 +12,8 @@ ad-hoc-signed (not yet Apple-notarized).
   first use of a language shows "Getting the … speech files from Apple" while macOS fetches them,
   and the 60 s listening limit starts only after that. Letting go during that download ends the
   session at once; the download finishes in the background for next time.
+- At macOS's limit of 5 reserved speech languages, installing a new one first releases a spare
+  reservation (never the chosen or the automatic language), so a sixth language still works.
 - Automatic now also covers a Mac set to a language only Apple's dictation recognizer offers
   (Hindi, for example), instead of falling back to US English.
 

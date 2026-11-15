@@ -95,7 +95,13 @@ public final class VoiceTranscriber: @unchecked Sendable {
         await setup?.value
     }
 
-    private func setUp(language: String?, onUpdate: @escaping @MainActor @Sendable (Update) -> Void) async {
+    private func setUp(language: String?, onUpdate deliver: @escaping @MainActor @Sendable (Update) -> Void) async {
+        // `finish` may return while setup still waits on permission or a download; from then on
+        // this session reports nothing, so a late failure never reaches the launcher.
+        let onUpdate: @MainActor @Sendable (Update) -> Void = { [weak self] update in
+            guard let self, !self.lock.withLock({ self.stopRequested }) else { return }
+            deliver(update)
+        }
         let span = UsageLog.span("voice.start")
         guard await Self.microphoneAllowed() else {
             span.end(["outcome": "microphone denied"])
@@ -109,6 +115,8 @@ public final class VoiceTranscriber: @unchecked Sendable {
         do {
             let locale = await Self.locale(setting: language)
             let recognizer = await Self.makeRecognizer(locale: locale)
+            // This session's locale is the chosen one; keep the automatic one as well.
+            await SpeechReservations.shared.makeRoom(for: locale, keeping: [await Self.locale()])
             try await Self.install(recognizer.module) {
                 let name = Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
                 await onUpdate(.preparing("Getting the \(name) speech files from Apple… (first use only)"))
@@ -145,8 +153,8 @@ public final class VoiceTranscriber: @unchecked Sendable {
                         await onUpdate(.text(heard))
                     }
                 } catch {
-                    self?.requestStop()
                     await onUpdate(.failed("Speech stopped: \(error.localizedDescription)"))
+                    self?.requestStop()
                 }
             }
             lock.withLock { resultsTask = results }
@@ -325,5 +333,30 @@ public final class VoiceTranscriber: @unchecked Sendable {
     private func closeEngine() {
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
+    }
+}
+
+/// Keeps Summon under macOS's limit on reserved speech languages (`maximumReservedLocales`, 5
+/// here). Installing a language reserves it automatically (Apple's `AssetInventory` notes), so
+/// after five languages the next install would fail with `tooManyAssetLocalesAllocated`. Only at
+/// that limit, before a new install, this releases one reservation that is neither the new (chosen)
+/// language nor the automatic one. An actor, so two sessions never evict at the same time.
+@available(macOS 26.0, *)
+actor SpeechReservations {
+    static let shared = SpeechReservations()
+
+    func makeRoom(for locale: Locale, keeping keep: [Locale]) async {
+        let reserved = await AssetInventory.reservedLocales
+        guard !reserved.contains(where: { Self.same($0, locale) }),
+              reserved.count >= AssetInventory.maximumReservedLocales else { return }
+        let protected = keep + [locale]
+        if let spare = reserved.first(where: { held in !protected.contains { Self.same($0, held) } }) {
+            _ = await AssetInventory.release(reservedLocale: spare)
+        }
+    }
+
+    /// Reserved locales may come back as variants of the one reserved, so compare language and region.
+    static func same(_ lhs: Locale, _ rhs: Locale) -> Bool {
+        lhs.language.languageCode == rhs.language.languageCode && lhs.region == rhs.region
     }
 }

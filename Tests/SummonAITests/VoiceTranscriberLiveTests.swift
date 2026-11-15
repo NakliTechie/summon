@@ -56,4 +56,12 @@ final class VoiceTranscriberLiveTests: XCTestCase {
         print("voice-live \(locale.identifier): \"\(phrase)\" → \"\(heard)\" recall \(recall)")
         XCTAssertGreaterThanOrEqual(recall, 0.6, heard)
     }
+
+    /// Reserved locales may come back as variants, so the limit check compares language and region.
+    func testReservationsTreatVariantsAsTheSameLanguage() throws {
+        guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
+        XCTAssertTrue(SpeechReservations.same(Locale(identifier: "hi_IN"), Locale(identifier: "hi-Deva_IN")))
+        XCTAssertFalse(SpeechReservations.same(Locale(identifier: "en_IN"), Locale(identifier: "en_GB")))
+        XCTAssertFalse(SpeechReservations.same(Locale(identifier: "en_IN"), Locale(identifier: "hi_IN")))
+    }
 }
