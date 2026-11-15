@@ -23,6 +23,8 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     private let webRemoveButton = NSButton(title: "Remove local backend…", target: nil, action: nil)
     private let onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)?
     private let webLifecycle: WebSearchLifecycleController?
+    private let shortcutHost: ShortcutHost?
+    private var shortcutsView: ShortcutsSettingsView?
 
     public init(
         core: SummonCore,
@@ -30,7 +32,8 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         onOpenIgnoreList: @escaping () -> Void,
         onLoginItemChanged: @escaping () -> Void,
         onSetUpWebSearch: ((@escaping @MainActor (WebSearchInstaller.Phase) -> Void) -> Void)? = nil,
-        webLifecycle: WebSearchLifecycleController? = nil
+        webLifecycle: WebSearchLifecycleController? = nil,
+        shortcutHost: ShortcutHost? = nil
     ) {
         self.core = core
         self.onOpenClipboard = onOpenClipboard
@@ -38,9 +41,10 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
         self.onLoginItemChanged = onLoginItemChanged
         self.onSetUpWebSearch = onSetUpWebSearch
         self.webLifecycle = webLifecycle
+        self.shortcutHost = shortcutHost
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 440),
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 540),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -120,6 +124,7 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
     }
 
     private func refresh() {
+        shortcutsView?.refresh(errors: [:])
         loginToggle.state = LoginItemService.isEnabled ? .on : .off
         ftsToggle.state = core.search.ftsEnabled ? .on : .off
         webToggle.state = core.webConfig.enabled ? .on : .off
@@ -138,16 +143,21 @@ public final class PreferencesWindowController: NSWindowController, NSTextFieldD
             "Summon stays resident so ⌥Space and local clipboard history remain available. "
                 + "Launch at login is recommended, but Summon changes it only after your choice."
         )
-        let shortcuts = label(
-            "Launcher: \(ShortcutCatalog.launcher)\n"
-                + "Clipboard history: \(ShortcutCatalog.clipboardHistory)\n"
-                + "Window shortcuts: \(WindowShortcut.defaultSummary)\n"
+        let windowShortcuts = label(
+            "Window shortcuts: \(WindowShortcut.defaultSummary)\n"
                 + "Window actions affect the focused window on the active Space only."
         )
-        return tab(
-            section: .general,
-            views: [heading("Startup and shortcuts"), details, loginToggle, separator(), shortcuts]
-        )
+        var views: [NSView] = [heading("Startup and shortcuts"), details, loginToggle, separator()]
+        if let shortcutHost {
+            let editable = ShortcutsSettingsView(core: core, host: shortcutHost)
+            shortcutsView = editable
+            views.append(label("Click a shortcut, then press the keys you want. Esc cancels."))
+            views.append(editable)
+        } else {
+            views.append(label("Launcher: \(ShortcutCatalog.launcher)\nClipboard history: \(ShortcutCatalog.clipboardHistory)"))
+        }
+        views.append(windowShortcuts)
+        return tab(section: .general, views: views)
     }
 
     private func makeSearchTab() -> NSViewController {

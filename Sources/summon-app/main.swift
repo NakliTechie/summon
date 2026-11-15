@@ -26,6 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var clipboardHotkey: GlobalHotkey?
     var smartPasteController: SmartPasteController!
     var smartPasteHotkey: GlobalHotkey?
+    var voiceHotkey: GlobalHotkey?
+    /// The running `VoiceTranscriber` (macOS 26), typed loosely so this file builds on macOS 14.
+    var voiceSession: AnyObject?
+    var holdToTalkWork: DispatchWorkItem?
+    var voiceLimitWork: DispatchWorkItem?
     var windowHotkeys: [GlobalHotkey] = []
     var windowShortcutRegistrationErrors: [String] = []
     var windowShortcutLastError: String?
@@ -90,46 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pasteboard = PasteboardService(core: core)
             pasteboard.startPolling()
 
-            // Preserve the resident app and menu fallback when the preferred key is occupied.
-            hotkey = GlobalHotkey(id: 1)
-            hotkey?.onPressed = { [weak self] in
-                self?.clipboardHistory.hide()
-                self?.panel.toggle()
-            }
-            registerPrimaryHotkey()
+            // App shortcuts come from Settings; the launcher keeps a ⌃⌥Space fallback.
+            installAppShortcuts()
             registerWindowHotkeys()
-
-            // Clipboard hotkey is optional (another app may own ⌥⇧C).
-            clipboardHotkey = GlobalHotkey(id: 2)
-            clipboardHotkey?.onPressed = { [weak self] in
-                self?.panel.hide()
-                self?.clipboardHistory.toggle()
-            }
-            do {
-                try clipboardHotkey?.register(
-                    keyCode: UInt32(kVK_ANSI_C),
-                    modifiers: UInt32(optionKey | shiftKey)
-                )
-            } catch {
-                fputs(
-                    "Summon: clipboard hotkey \(ShortcutCatalog.clipboardHistory) not registered: \(error)\n",
-                    stderr
-                )
-            }
-
-            // Smart-paste hotkey is optional (another app may own ⌥⌘V).
-            smartPasteHotkey = GlobalHotkey(id: 3)
-            smartPasteHotkey?.onPressed = { [weak self] in
-                self?.smartPasteController.run()
-            }
-            do {
-                try smartPasteHotkey?.register(
-                    keyCode: UInt32(kVK_ANSI_V),
-                    modifiers: UInt32(optionKey | cmdKey)
-                )
-            } catch {
-                fputs("Summon: smart-paste hotkey ⌥⌘V not registered: \(error)\n", stderr)
-            }
 
             startAgentSocketMonitoring()
             installStatusItem()
@@ -154,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func installStatusItem() {
+    func installStatusItem() {
         if statusItem == nil {
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         }
@@ -287,32 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
     }
 
-    private func registerPrimaryHotkey() {
-        guard let hotkey else { return }
-        do {
-            try hotkey.register()
-            primaryHotkeyLabel = "⌥Space"
-            primaryHotkeyError = nil
-        } catch {
-            do {
-                try hotkey.register(
-                    keyCode: 49,
-                    modifiers: UInt32(optionKey | controlKey)
-                )
-                primaryHotkeyLabel = "⌃⌥Space"
-                primaryHotkeyError = nil
-            } catch {
-                primaryHotkeyError = error.localizedDescription
-            }
-        }
-        let state = primaryHotkeyError.map { "unavailable:\($0)" } ?? primaryHotkeyLabel
-        _ = try? core.dispatch(
-            action: .settingsSet(key: "hotkey.primary.active", value: .string(state)),
-            actor: .system
-        )
-    }
-
-    private func registerWindowHotkeys() {
+    func registerWindowHotkeys() {
         windowHotkeys.removeAll()
         windowShortcutRegistrationErrors.removeAll()
         for shortcut in WindowShortcut.defaults {
@@ -648,7 +591,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onSetUpWebSearch: { [weak self] onPhase in
                     MainActor.assumeIsolated { self?.beginWebSearchInstall(onPhase: onPhase) }
                 },
-                webLifecycle: webLifecycle
+                webLifecycle: webLifecycle,
+                shortcutHost: shortcutHost
             )
         }
         preferences?.show(section: section)

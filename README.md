@@ -68,12 +68,14 @@ Every capability is reachable by machine: a local CLI and a default-off UNIX soc
 ## Keys and commands
 
 ```
-⌥Space                          open the launcher
+⌥Space                          open the launcher; hold it to speak (macOS 26)
 ⌥⇧C                             clipboard history (text · image · HTML · RTF)
 ⌥⌘V                             Smart Paste into the frontmost form
 Tab  or  ⌘K                     act on the selected result
 ⌃⌥ + arrows / U I J K / ⏎ C     arrange the focused window
 ```
+
+Settings › General changes the launcher, clipboard and Smart Paste shortcuts, and how voice starts. Voice uses Apple's on-device speech recognition; audio stays on your Mac, and the microphone is open only while you hold the key.
 
 ## Verify it yourself
 

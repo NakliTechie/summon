@@ -7,7 +7,8 @@ import Foundation
 /// and the consequences of Quit. Snippet and quicklink *creation* remain the
 /// developer CLI until the native-creation product decision (forward pass 13 · W1).
 public enum GuideContent {
-    public static let lines: [(title: String, body: String)] = [
+    /// Computed, so the shortcut labels follow what the user set in Settings.
+    public static var lines: [(title: String, body: String)] { [
         ("↑↓", "Navigate results"),
         ("↩", "Run primary action"),
         ("Tab / ⌘K", "Object → action menu"),
@@ -43,7 +44,7 @@ public enum GuideContent {
         ("?", "This help"),
         ("No account", "Local stores only · AGPL"),
         ("AI", "Staged only — never auto-run"),
-    ]
+    ] }
 
     public static func searchResults() -> [SearchResult] {
         lines.enumerated().map { idx, line in

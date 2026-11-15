@@ -83,12 +83,15 @@ public struct WindowShortcut: Sendable, Equatable {
 /// Accessibility is not required for `RegisterEventHotKey`.
 public final class GlobalHotkey: @unchecked Sendable {
     public var onPressed: (() -> Void)?
+    /// Called when the shortcut's keys are let go (hold-to-talk needs the release).
+    public var onReleased: (() -> Void)?
     private var hotKeyRef: EventHotKeyRef?
     private let signature: OSType
     private let id: UInt32
 
     private static let lock = NSLock()
     private static var callbacks: [UInt32: () -> Void] = [:]
+    private static var releaseCallbacks: [UInt32: () -> Void] = [:]
     private static var handlerRef: EventHandlerRef?
     /// - Parameter id: Unique id (1 = launcher, 2 = clipboard, …).
     public init(id: UInt32 = 1, signature: OSType = OSType(0x53554D4E)) {
@@ -110,6 +113,9 @@ public final class GlobalHotkey: @unchecked Sendable {
             Self.callbacks[id] = { [weak self] in
                 self?.onPressed?()
             }
+            Self.releaseCallbacks[id] = { [weak self] in
+                self?.onReleased?()
+            }
             do {
                 try Self.installSharedHandlerIfNeeded_locked()
             } catch {
@@ -130,6 +136,7 @@ public final class GlobalHotkey: @unchecked Sendable {
         guard reg == noErr else {
             Self.lock.lock()
             Self.callbacks.removeValue(forKey: id)
+            Self.releaseCallbacks.removeValue(forKey: id)
             Self.lock.unlock()
             throw CoreError.io("RegisterEventHotKey failed: \(reg) (key=\(keyCode) mods=\(modifiers))")
         }
@@ -142,6 +149,7 @@ public final class GlobalHotkey: @unchecked Sendable {
         }
         Self.lock.lock()
         Self.callbacks.removeValue(forKey: id)
+        Self.releaseCallbacks.removeValue(forKey: id)
         if Self.callbacks.isEmpty, let handlerRef = Self.handlerRef {
             RemoveEventHandler(handlerRef)
             Self.handlerRef = nil
@@ -152,10 +160,10 @@ public final class GlobalHotkey: @unchecked Sendable {
     private static func installSharedHandlerIfNeeded_locked() throws {
         if handlerRef != nil { return }
 
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
+        ]
 
         let handler: EventHandlerUPP = { _, theEvent, _ -> OSStatus in
             guard let theEvent else { return noErr }
@@ -174,7 +182,9 @@ public final class GlobalHotkey: @unchecked Sendable {
             let callback: (() -> Void)?
             GlobalHotkey.lock.lock()
             defer { GlobalHotkey.lock.unlock() }
-            callback = GlobalHotkey.callbacks[hkID.id]
+            callback = GetEventKind(theEvent) == UInt32(kEventHotKeyReleased)
+                ? GlobalHotkey.releaseCallbacks[hkID.id]
+                : GlobalHotkey.callbacks[hkID.id]
 
             if let callback {
                 DispatchQueue.main.async {
@@ -187,8 +197,8 @@ public final class GlobalHotkey: @unchecked Sendable {
         let status = InstallEventHandler(
             GetApplicationEventTarget(),
             handler,
-            1,
-            &eventType,
+            eventTypes.count,
+            &eventTypes,
             nil,
             &handlerRef
         )
