@@ -38,7 +38,9 @@ final class VoiceTranscriberLiveTests: XCTestCase {
         }
         guard #available(macOS 26.0, *) else { throw XCTSkip("needs macOS 26") }
         let locale = await VoiceTranscriber.locale(setting: "hi_IN")
-        XCTAssertEqual(locale.language.languageCode?.identifier, "hi")
+        XCTAssertEqual(locale.identifier, "hi_IN")
+        let british = await VoiceTranscriber.locale(setting: "en_GB")
+        XCTAssertEqual(british.identifier, "en_GB", "an exact choice keeps its region")
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("voice-hi-\(UUID().uuidString).aiff")
         defer { try? FileManager.default.removeItem(at: file) }
         let phrase = "भारत की राजधानी क्या है"

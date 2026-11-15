@@ -105,11 +105,11 @@ extension AppDelegate {
         guard #available(macOS 26.0, *), let transcriber = voiceSession as? VoiceTranscriber else { return }
         voiceSession = nil
         let generation = voiceGeneration
+        panel.setListening(false) // at once, not after the last words arrive or a download ends
         Task { @MainActor [weak self] in
             let heard = await transcriber.finish()
-            guard let self, self.voiceGeneration == generation else { return }
-            self.panel.setListening(false)
-            if !heard.isEmpty { self.panel.showVoiceText(heard) }
+            guard let self, self.voiceGeneration == generation, !heard.isEmpty else { return }
+            self.panel.showVoiceText(heard)
         }
     }
 

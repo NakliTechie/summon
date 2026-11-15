@@ -10,7 +10,10 @@ ad-hoc-signed (not yet Apple-notarized).
   listens in: Automatic (as before), or any language Apple's recognizers offer, Hindi among them.
   English uses Apple's speech transcriber; other languages use Apple's dictation transcriber. The
   first use of a language shows "Getting the … speech files from Apple" while macOS fetches them,
-  and the 60 s listening limit starts only after that.
+  and the 60 s listening limit starts only after that. Letting go during that download ends the
+  session at once; the download finishes in the background for next time.
+- Automatic now also covers a Mac set to a language only Apple's dictation recognizer offers
+  (Hindi, for example), instead of falling back to US English.
 
 ## 0.9.3 — 2026-11-15
 
