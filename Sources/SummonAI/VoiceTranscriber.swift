@@ -116,8 +116,13 @@ public final class VoiceTranscriber: @unchecked Sendable {
             let locale = await Self.locale(setting: language)
             let recognizer = await Self.makeRecognizer(locale: locale)
             // This session's locale is the chosen one; keep the automatic one as well.
-            await SpeechReservations.shared.makeRoom(for: locale, keeping: [await Self.locale()])
-            try await Self.install(recognizer.module) {
+            let automatic = await Self.locale()
+            let stillWanted: @Sendable () -> Bool = { [weak self] in
+                guard let self else { return false }
+                return !self.lock.withLock { self.stopRequested }
+            }
+            try await SpeechReservations.shared.install(recognizer.module, locale: locale, keeping: [automatic],
+                                                       stillWanted: stillWanted) {
                 let name = Locale.current.localizedString(forIdentifier: locale.identifier) ?? locale.identifier
                 await onUpdate(.preparing("Getting the \(name) speech files from Apple… (first use only)"))
             }
@@ -250,7 +255,7 @@ public final class VoiceTranscriber: @unchecked Sendable {
 
     /// Installs the language's speech files when macOS does not have them yet, calling
     /// `beforeDownload` first so the launcher can say why it is waiting.
-    static func install(_ module: any SpeechModule, beforeDownload: () async -> Void = {}) async throws {
+    static func install(_ module: any SpeechModule, beforeDownload: @Sendable () async -> Void = {}) async throws {
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
             await beforeDownload()
             try await request.downloadAndInstall()
@@ -340,12 +345,29 @@ public final class VoiceTranscriber: @unchecked Sendable {
 /// here). Installing a language reserves it automatically (Apple's `AssetInventory` notes), so
 /// after five languages the next install would fail with `tooManyAssetLocalesAllocated`. Only at
 /// that limit, before a new install, this releases one reservation that is neither the new (chosen)
-/// language nor the automatic one. An actor, so two sessions never evict at the same time.
+/// language nor the automatic one. Installs run strictly one after another (each waits for the
+/// one before it), so freeing a slot and the install that takes it never interleave with another
+/// session's; a session stopped while it waited drops out before touching any reservation.
 @available(macOS 26.0, *)
 actor SpeechReservations {
     static let shared = SpeechReservations()
+    private var tail: Task<Void, Never>?
 
-    func makeRoom(for locale: Locale, keeping keep: [Locale]) async {
+    func install(_ module: any SpeechModule, locale: Locale, keeping keep: [Locale],
+                 stillWanted: @escaping @Sendable () -> Bool,
+                 beforeDownload: @escaping @Sendable () async -> Void) async throws {
+        let previous = tail
+        let work = Task { () throws in
+            await previous?.value
+            guard stillWanted() else { return }
+            await Self.makeRoom(for: locale, keeping: keep)
+            try await VoiceTranscriber.install(module, beforeDownload: beforeDownload)
+        }
+        tail = Task { _ = try? await work.value }
+        try await work.value
+    }
+
+    private static func makeRoom(for locale: Locale, keeping keep: [Locale]) async {
         let reserved = await AssetInventory.reservedLocales
         guard !reserved.contains(where: { Self.same($0, locale) }),
               reserved.count >= AssetInventory.maximumReservedLocales else { return }
