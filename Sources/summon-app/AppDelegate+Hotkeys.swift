@@ -39,7 +39,9 @@ extension AppDelegate {
     func registerAppShortcuts() -> [SummonShortcut: String] {
         let settings = shortcutSettings
         var errors: [SummonShortcut: String] = [:]
+        var notes: [SummonShortcut: String] = [:]
         var labels: [SummonShortcut: String] = [:]
+        var taken: [HotkeyBinding: SummonShortcut] = [:]
         let pairs: [(SummonShortcut, GlobalHotkey?)] = [(.launcher, hotkey), (.clipboardHistory, clipboardHotkey),
                                                         (.smartPaste, smartPasteHotkey), (.voice, voiceHotkey)]
         for (shortcut, key) in pairs {
@@ -51,29 +53,41 @@ extension AppDelegate {
                 }
                 continue
             }
+            // Two Summon shortcuts on one key (set from the command line, an import or a reset): the
+            // first in this order keeps it and the other row says why it is off.
+            if let owner = taken[binding] {
+                key.unregister()
+                errors[shortcut] = "\(binding.label) is already the \(owner.title.lowercased()) shortcut"
+                continue
+            }
             do {
                 try key.register(keyCode: binding.keyCode, modifiers: binding.modifiers, exclusive: true)
+                taken[binding] = shortcut
                 labels[shortcut] = binding.label
             } catch {
                 let fallback = HotkeyBinding(keyCode: 49, modifiers: HotkeyBinding.option | HotkeyBinding.control)
                 if shortcut == .launcher, binding == shortcut.defaultBinding,
                    (try? key.register(keyCode: fallback.keyCode, modifiers: fallback.modifiers, exclusive: true)) != nil {
                     labels[shortcut] = fallback.label
+                    taken[fallback] = shortcut
+                    notes[shortcut] = "Another app uses \(binding.label), so Summon uses \(fallback.label)"
                     continue
                 }
                 errors[shortcut] = "\(binding.label) could not be registered: \(error.localizedDescription)"
                 fputs("Summon: \(shortcut.title) shortcut \(binding.label) not registered: \(error)\n", stderr)
             }
         }
-        shortcutErrors = errors
         ShortcutCatalog.setActiveLabels(labels)
         primaryHotkeyLabel = labels[.launcher] ?? settings.bindings[.launcher]?.label ?? "none"
         primaryHotkeyError = errors[.launcher]
+        let failed = errors.keys.map(\.rawValue).sorted().joined(separator: " ")
+        errors.merge(notes) { error, _ in error }
+        shortcutErrors = errors
         let state = primaryHotkeyError.map { "unavailable:\($0)" } ?? primaryHotkeyLabel
         _ = try? core.dispatch(action: .settingsSet(key: "hotkey.primary.active", value: .string(state)), actor: .system)
         UsageLog.record("shortcuts.registered", [
             "active": labels.map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: " "),
-            "failed": errors.keys.map(\.rawValue).sorted().joined(separator: " "),
+            "failed": failed,
         ])
         if statusItem != nil { installStatusItem() } // the menu names the launcher shortcut
         return errors

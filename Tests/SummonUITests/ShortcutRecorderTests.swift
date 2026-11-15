@@ -51,6 +51,28 @@ extension ShortcutRecorderTests {
         XCTAssertEqual(view.statuses[.launcher]?.isHidden, true)
     }
 
+    func testCoreKnowsEveryWindowLayoutKey() {
+        let window = Set(WindowShortcut.defaults.map { HotkeyBinding(keyCode: $0.keyCode, modifiers: $0.modifiers) })
+        XCTAssertEqual(window, HotkeyBinding.windowLayoutKeys)
+    }
+
+    /// Codex review of 5dc12af: Reset put the launcher back on ⌥Space while clipboard history held it.
+    @MainActor
+    func testResetIsRefusedWhenTheDefaultIsTaken() throws {
+        let core = try SummonCore.inMemory()
+        _ = try core.dispatch(action: .settingsSet(key: "shortcut.launcher", value: .string("40:4096")), actor: .user)
+        _ = try core.dispatch(action: .settingsSet(key: "shortcut.clipboardHistory", value: .string("49:2048")), actor: .user)
+        let view = ShortcutsSettingsView(core: core, host: ShortcutHost(apply: { [:] }, suspend: { _ in }))
+        let reset = try XCTUnwrap(Self.buttons(in: view).first { $0.identifier?.rawValue == "launcher" })
+        reset.performClick(nil)
+        XCTAssertEqual(try core.settings.get("shortcut.launcher")?.stringValue, "40:4096")
+        XCTAssertEqual(view.statuses[.launcher]?.stringValue, "Cannot reset: ⌥Space is already the clipboard history shortcut")
+    }
+
+    private static func buttons(in view: NSView) -> [NSButton] {
+        view.subviews.flatMap { ($0 as? NSButton).map { [$0] } ?? [] + buttons(in: $0) }
+    }
+
     /// Codex review of b239fac: closing Preferences mid-recording left every global shortcut off,
     /// because the closed window is kept and the recorder never left it.
     @MainActor

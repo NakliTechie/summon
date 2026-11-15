@@ -41,6 +41,12 @@ public struct HotkeyBinding: Equatable, Hashable, Sendable {
         Self.functionKeys.contains(keyCode) || modifiers & (Self.command | Self.option | Self.control) != 0
     }
 
+    /// The 13 fixed window-layout keys (⌃⌥ with ← → ↑ ↓ U I J K ↩ C D F G). SummonUI's
+    /// `WindowShortcut.defaults` names them; a test keeps the two lists equal.
+    public static let windowLayoutKeys: Set<HotkeyBinding> = Set([123, 124, 126, 125, 32, 34, 38, 40, 36, 8, 2, 3, 5].map {
+        HotkeyBinding(keyCode: $0, modifiers: control | option)
+    })
+
     static let functionKeys: Set<UInt32> = [122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90]
 
     /// US-layout names for the ANSI key codes (`kVK_*`); a key outside the table shows its code.
@@ -132,7 +138,8 @@ public struct ShortcutSettings: Sendable {
     public init(read: (String) -> String?) {
         var bindings: [SummonShortcut: HotkeyBinding] = [:]
         for shortcut in SummonShortcut.allCases {
-            if let stored = read(shortcut.settingsKey).flatMap(HotkeyBinding.init(storage:)), stored.isUsableGlobally {
+            if let stored = read(shortcut.settingsKey).flatMap(HotkeyBinding.init(storage:)),
+               stored.isUsableGlobally, !HotkeyBinding.windowLayoutKeys.contains(stored) {
                 bindings[shortcut] = stored
             } else if let fallback = shortcut.defaultBinding {
                 bindings[shortcut] = fallback
@@ -149,9 +156,7 @@ public struct ShortcutSettings: Sendable {
 
     /// Why `binding` cannot be used for `shortcut`, or nil when it can.
     public func problem(with binding: HotkeyBinding, for shortcut: SummonShortcut) -> String? {
-        guard binding.isUsableGlobally else {
-            return "\(binding.label) needs ⌘, ⌥ or ⌃ (or a function key), so typing never triggers it"
-        }
+        guard binding.isUsableGlobally else { return Self.typingProblem(binding) }
         var others = active
         others[shortcut] = nil
         if shortcut == .voice { others = bindings.filter { $0.key != .voice } }
@@ -163,8 +168,9 @@ public struct ShortcutSettings: Sendable {
 
     /// Why a write to a shortcut setting is refused, or nil to allow it. Every write path (the
     /// Settings recorder, `summon settings set`, an import) goes through the action bus, which
-    /// calls this, so a stored shortcut is always one the recorder would accept.
-    public static func refusal(key: String, value: JSONValue, read: (String) -> String?) -> String? {
+    /// calls this. It checks the value alone: a clash with another Summon shortcut depends on
+    /// writes not yet made (an import writes one key at a time), so registration reports clashes.
+    public static func refusal(key: String, value: JSONValue) -> String? {
         if key == VoiceShortcutMode.settingsKey {
             guard let raw = value.stringValue, VoiceShortcutMode(rawValue: raw) != nil else {
                 let modes = VoiceShortcutMode.allCases.map(\.rawValue).joined(separator: ", ")
@@ -176,6 +182,14 @@ public struct ShortcutSettings: Sendable {
         guard let binding = value.stringValue.flatMap(HotkeyBinding.init(storage:)) else {
             return "\(key) must be \"keyCode:modifiers\", for example \"49:2048\" for ⌥Space"
         }
-        return ShortcutSettings(read: read).problem(with: binding, for: shortcut)
+        guard binding.isUsableGlobally else { return Self.typingProblem(binding) }
+        guard !HotkeyBinding.windowLayoutKeys.contains(binding) else {
+            return "\(binding.label) is one of Summon's window-layout shortcuts"
+        }
+        return nil
+    }
+
+    static func typingProblem(_ binding: HotkeyBinding) -> String {
+        "\(binding.label) needs ⌘, ⌥ or ⌃ (or a function key), so typing never triggers it"
     }
 }

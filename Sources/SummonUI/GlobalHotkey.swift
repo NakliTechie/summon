@@ -92,6 +92,10 @@ public final class GlobalHotkey: @unchecked Sendable {
     /// for an older registration finds a newer number and is dropped, so turning a shortcut off
     /// also cancels its events already on the way. Read and written on the main thread only.
     private var generation = 0
+    /// The id Carbon sees for the current registration. Each registration takes a fresh one, so
+    /// a press still in Carbon's queue for an earlier registration matches no callback.
+    private var dispatchID: UInt32 = 0
+    private static var nextDispatchID: UInt32 = 1
 
     private static let lock = NSLock()
     private static var callbacks: [UInt32: () -> Void] = [:]
@@ -117,24 +121,26 @@ public final class GlobalHotkey: @unchecked Sendable {
         Self.lock.lock()
         do {
             defer { Self.lock.unlock() }
-            Self.callbacks[id] = { [weak self] in
+            dispatchID = Self.nextDispatchID
+            Self.nextDispatchID &+= 1
+            Self.callbacks[dispatchID] = { [weak self] in
                 guard let self, self.generation == current else { return }
                 self.onPressed?()
             }
-            Self.releaseCallbacks[id] = { [weak self] in
+            Self.releaseCallbacks[dispatchID] = { [weak self] in
                 guard let self, self.generation == current else { return }
                 self.onReleased?()
             }
             do {
                 try Self.installSharedHandlerIfNeeded_locked()
             } catch {
-                Self.callbacks.removeValue(forKey: id)
-                Self.releaseCallbacks.removeValue(forKey: id)
+                Self.callbacks.removeValue(forKey: dispatchID)
+                Self.releaseCallbacks.removeValue(forKey: dispatchID)
                 throw error
             }
         }
 
-        let hotKeyID = EventHotKeyID(signature: signature, id: id)
+        let hotKeyID = EventHotKeyID(signature: signature, id: dispatchID)
         let reg = RegisterEventHotKey(
             keyCode,
             modifiers,
@@ -145,8 +151,8 @@ public final class GlobalHotkey: @unchecked Sendable {
         )
         guard reg == noErr else {
             Self.lock.lock()
-            Self.callbacks.removeValue(forKey: id)
-            Self.releaseCallbacks.removeValue(forKey: id)
+            Self.callbacks.removeValue(forKey: dispatchID)
+            Self.releaseCallbacks.removeValue(forKey: dispatchID)
             Self.lock.unlock()
             if reg == OSStatus(eventHotKeyExistsErr) { throw CoreError.io("another app already uses these keys") }
             throw CoreError.io("RegisterEventHotKey failed: \(reg) (key=\(keyCode) mods=\(modifiers))")
@@ -160,8 +166,8 @@ public final class GlobalHotkey: @unchecked Sendable {
             self.hotKeyRef = nil
         }
         Self.lock.lock()
-        Self.callbacks.removeValue(forKey: id)
-        Self.releaseCallbacks.removeValue(forKey: id)
+        Self.callbacks.removeValue(forKey: dispatchID)
+        Self.releaseCallbacks.removeValue(forKey: dispatchID)
         if Self.callbacks.isEmpty, let handlerRef = Self.handlerRef {
             RemoveEventHandler(handlerRef)
             Self.handlerRef = nil

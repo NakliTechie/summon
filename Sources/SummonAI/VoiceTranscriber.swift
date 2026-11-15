@@ -23,9 +23,10 @@ public final class VoiceTranscriber: @unchecked Sendable {
     private var resultsTask: Task<Void, Never>?
     private var finalized = ""
     private var volatile = ""
-    /// Set by `finish`; a `start` still waiting on permission or speech files then opens no microphone.
-    /// `start` checks it and opens the microphone under `lock`, and `finish` sets it and closes the
-    /// microphone under `lock`, so a release at any moment leaves the microphone closed.
+    /// Set by `finish` (or a speech error); a `start` still waiting on permission or speech files
+    /// then opens no microphone. Only the flags change under `lock`; the engine calls run outside
+    /// it, so a slow driver never holds up a release. `start` marks the microphone open after the
+    /// engine starts and closes it itself if a stop came in meanwhile, so it is never left open.
     private var stopRequested = false
     private var microphoneOpen = false
     private let lock = NSLock()
@@ -84,21 +85,32 @@ public final class VoiceTranscriber: @unchecked Sendable {
                         await onUpdate(.text(heard))
                     }
                 } catch {
-                    self?.stopMicrophone()
+                    self?.requestStop()
                     await onUpdate(.failed("Speech stopped: \(error.localizedDescription)"))
                 }
             }
             try await analyzer.start(inputSequence: stream)
-            let opened = try lock.withLock { () throws -> Bool in
-                guard !stopRequested else { return false }
-                microphoneOpen = true // set first, so a failed start still has its tap removed
-                try startMicrophone(feeding: continuation, as: format)
-                return true
-            }
-            guard opened else {
+            guard !lock.withLock({ stopRequested }) else {
                 continuation.finish()
                 await analyzer.cancelAndFinishNow()
                 span.end(["outcome": "let go before the microphone opened"])
+                return
+            }
+            do {
+                try startMicrophone(feeding: continuation, as: format)
+            } catch {
+                closeEngine()
+                throw error
+            }
+            let keep = lock.withLock { () -> Bool in
+                microphoneOpen = true
+                return !stopRequested
+            }
+            guard keep else {
+                stopMicrophone()
+                continuation.finish()
+                await analyzer.cancelAndFinishNow()
+                span.end(["outcome": "let go while the microphone opened"])
                 return
             }
             span.end(["locale": locale.identifier])
@@ -115,8 +127,7 @@ public final class VoiceTranscriber: @unchecked Sendable {
     @discardableResult
     public func finish() async -> String {
         let span = UsageLog.span("voice.finish")
-        lock.withLock { stopRequested = true }
-        stopMicrophone()
+        requestStop()
         let analyzer = lock.withLock { self.analyzer }
         try? await analyzer?.finalizeAndFinishThroughEndOfInput()
         await resultsTask?.value
@@ -180,16 +191,25 @@ public final class VoiceTranscriber: @unchecked Sendable {
         try engine.start()
     }
 
-    /// Closes the microphone and ends the audio input. Idempotent.
+    private func requestStop() {
+        lock.withLock { stopRequested = true }
+        stopMicrophone()
+    }
+
+    /// Closes the microphone if this call is the one that finds it open, and ends the audio input.
+    /// Idempotent: only one caller sees `microphoneOpen` true.
     private func stopMicrophone() {
-        let input: AsyncStream<AnalyzerInput>.Continuation? = lock.withLock {
-            if microphoneOpen {
-                engine.stop()
-                engine.inputNode.removeTap(onBus: 0)
-                microphoneOpen = false
-            }
-            return self.input
+        let (close, input) = lock.withLock { () -> (Bool, AsyncStream<AnalyzerInput>.Continuation?) in
+            let open = microphoneOpen
+            microphoneOpen = false
+            return (open, self.input)
         }
+        if close { closeEngine() }
         input?.finish()
+    }
+
+    private func closeEngine() {
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
     }
 }

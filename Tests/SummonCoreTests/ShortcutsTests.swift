@@ -76,14 +76,31 @@ final class ShortcutsTests: XCTestCase {
             try core.dispatch(action: .settingsSet(key: key, value: .string(value)), actor: .user).outcome
         }
         for (key, value) in [("shortcut.launcher", "0:512"), ("shortcut.launcher", "space"),
-                             ("shortcut.launcher", "8:2560"), ("shortcut.voice.mode", "shout")] {
+                             ("shortcut.launcher", "123:6144"), ("shortcut.voice.mode", "shout")] {
             guard case .rejected = try outcome(key, value) else { return XCTFail("\(key)=\(value) was stored") }
         }
         XCTAssertNil(try core.settings.get("shortcut.launcher"))
         XCTAssertEqual(try outcome("shortcut.launcher", "40:4096"), .applied)
         XCTAssertEqual(try outcome("shortcut.voice.mode", "toggle"), .applied)
         XCTAssertEqual(try core.settings.get("shortcut.launcher")?.stringValue, "40:4096")
-        XCTAssertNil(ShortcutSettings.refusal(key: "search.defaultAction", value: .string("open"), read: { _ in nil }))
+        XCTAssertNil(ShortcutSettings.refusal(key: "search.defaultAction", value: .string("open")))
+    }
+
+    /// Codex review of 5dc12af: checking clashes on each write rejected a valid import, because the
+    /// import writes the clipboard key (⌥Space) before the launcher key (⌃K) that frees it.
+    func testAnImportThatSwapsShortcutsIsAccepted() throws {
+        let source = try SummonCore.inMemory()
+        _ = try source.dispatch(action: .settingsSet(key: "shortcut.launcher", value: .string("40:4096")), actor: .user)
+        _ = try source.dispatch(action: .settingsSet(key: "shortcut.clipboardHistory", value: .string("49:2048")), actor: .user)
+        let target = try SummonCore.inMemory()
+        try DataExport.importJSON(try DataExport.export(core: source), into: target)
+        XCTAssertEqual(try target.settings.get("shortcut.launcher")?.stringValue, "40:4096")
+        XCTAssertEqual(try target.settings.get("shortcut.clipboardHistory")?.stringValue, "49:2048")
+    }
+
+    func testAStoredWindowLayoutKeyFallsBack() {
+        let settings = ShortcutSettings { $0 == "shortcut.smartPaste" ? "123:6144" : nil }
+        XCTAssertEqual(settings.bindings[.smartPaste], SummonShortcut.smartPaste.defaultBinding)
     }
 
     func testAStoredShortcutThatTypingWouldTriggerFallsBack() {

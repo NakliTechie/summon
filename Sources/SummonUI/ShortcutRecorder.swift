@@ -202,6 +202,9 @@ public final class ShortcutsSettingsView: NSStackView {
     @objc private func resetPressed(_ sender: NSButton) {
         guard let raw = sender.identifier?.rawValue, let shortcut = SummonShortcut(rawValue: raw) else { return }
         guard (try? core.settings.get(shortcut.settingsKey)) != nil else { return refresh(errors: host.apply()) }
+        if let fallback = shortcut.defaultBinding, let problem = settings.problem(with: fallback, for: shortcut) {
+            return refresh(errors: [shortcut: "Cannot reset: \(problem)"])
+        }
         save(.settingsDelete(key: shortcut.settingsKey), for: shortcut)
     }
 

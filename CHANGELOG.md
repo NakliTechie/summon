@@ -16,12 +16,15 @@ ad-hoc-signed (not yet Apple-notarized).
 - Closing Settings while a shortcut was being recorded left every global shortcut off until restart.
 - Recording a shortcut while holding the voice key stops voice first, and a key press queued for a
   shortcut that was just turned off is dropped.
-- `summon settings set` refuses the same shortcuts the Settings recorder refuses (a key without
-  ⌘, ⌥ or ⌃, a clash, a malformed value or an unknown voice mode). A bad stored value falls back
-  to the default.
+- `summon settings set` and imports refuse a shortcut key without ⌘, ⌥ or ⌃, a window-layout
+  key, a malformed value or an unknown voice mode; a bad stored value falls back to the default.
+  Two Summon shortcuts on one key keep the first and say so in the other's Settings row, and Reset
+  is refused when the default key is taken.
 - Summon claims its shortcuts exclusively, so a key another app already holds is reported in its
   Settings row instead of both apps answering. Startup registration errors now show when Settings
-  opens.
+  opens, including "Another app uses ⌥Space, so Summon uses ⌃⌥Space".
+- Opening and closing the microphone no longer holds a lock across the audio driver, so a slow
+  start never delays letting go, and a key press macOS queued for an old registration is ignored.
 - Test runs no longer leave an empty `summon-fts-*` folder in the temp directory per run.
 
 ## 0.9.2 — 2026-11-15
