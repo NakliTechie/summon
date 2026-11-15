@@ -3,6 +3,23 @@
 Notable changes to Summon. Versions follow semver; the 0.6.x line ships
 ad-hoc-signed (not yet Apple-notarized).
 
+## 0.9.1 — 2026-11-15
+
+Date questions answered on the Mac, and web search that restarts its own SearXNG.
+
+### Added
+- **Calendar questions answered on this Mac.** "What day is 20th nov?", "what day was
+  1 jan 2000", "how many days until 25 dec" and "days since 4 july" show a calculator row
+  such as "Friday, 20 November 2026 · in 5 days", with no model and no web search. A date
+  with no year takes its next occurrence (or its last one for "was" and "since"); a stated
+  year is used as written; 29 February goes to a leap year; a date that does not exist gets
+  no answer. Apple FM had called 20 November 2026 a Saturday.
+
+### Fixed
+- When a web query finds Summon's own SearXNG down or failing, Summon restarts it, at most
+  once a minute, and only when the web-search preference is on. A custom search URL you set
+  yourself is never restarted.
+
 ## 0.9.0 — 2026-11-02
 
 Smart Paste fills forms with Apple Foundation Models, and a round of launcher fixes found by daily use.
